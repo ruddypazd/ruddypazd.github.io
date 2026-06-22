@@ -189,14 +189,16 @@ function renderVisitMap(countries) {
                 zoomButtons: false,
                 backgroundColor: 'transparent',
                 regionStyle: {
-                    initial: { fill: '#141a2b', stroke: '#05060a', strokeWidth: 0.4 },
-                    hover: { fill: '#a060ff' },
+                    initial: { fill: '#1b2236', stroke: '#05060a', strokeWidth: 0.4 },
+                    hover: { fill: '#ff3da6' },
                 },
                 series: {
                     regions: [{
                         attribute: 'fill',
-                        scale: ['#1f6f8b', '#00e5ff'],
-                        normalizeFunction: 'polynomial',
+                        // Dos tonos neón: el menos visitado en violeta, el más en cian.
+                        // Ambos resaltan claramente sobre el fondo oscuro.
+                        scale: ['#a060ff', '#00e5ff'],
+                        normalizeFunction: 'linear',
                         values: values,
                     }],
                 },
