@@ -18,16 +18,18 @@ document.addEventListener('DOMContentLoaded', () => {
     /* ---- Menú móvil ---- */
     const burger = document.querySelector('.nav__burger');
     const links = document.querySelector('.nav__links');
-    burger.addEventListener('click', () => {
-        burger.classList.toggle('open');
-        links.classList.toggle('open');
-    });
-    links.querySelectorAll('a').forEach(a =>
-        a.addEventListener('click', () => {
-            burger.classList.remove('open');
-            links.classList.remove('open');
-        })
-    );
+    const overlay = document.querySelector('.nav__overlay');
+    const setMenu = (open) => {
+        burger.classList.toggle('open', open);
+        links.classList.toggle('open', open);
+        if (overlay) overlay.classList.toggle('open', open);
+        document.body.classList.toggle('nav-open', open);
+        burger.setAttribute('aria-label', open ? 'Cerrar menú' : 'Abrir menú');
+    };
+    burger.addEventListener('click', () => setMenu(!links.classList.contains('open')));
+    if (overlay) overlay.addEventListener('click', () => setMenu(false));
+    links.querySelectorAll('a').forEach(a => a.addEventListener('click', () => setMenu(false)));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
 
     /* ---- Reveal al hacer scroll ---- */
     const revealEls = document.querySelectorAll('.reveal');
