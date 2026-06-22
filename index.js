@@ -182,25 +182,24 @@ function renderVisitMap(countries) {
     const values = {};
     entries.forEach(([cc, n]) => { if (cc !== 'XX') values[cc] = n; });
     try {
-        if (typeof jsVectorMap === 'function' && Object.keys(values).length) {
+        const visited = Object.keys(values);
+        if (typeof jsVectorMap === 'function' && visited.length) {
             new jsVectorMap({
                 selector: '#world-map',
                 map: 'world',
                 zoomButtons: false,
                 backgroundColor: 'transparent',
+                regionsSelectable: false,
+                // Marca los países visitados; el estilo "selected" los pinta en neón.
+                selectedRegions: visited,
                 regionStyle: {
                     initial: { fill: '#1b2236', stroke: '#05060a', strokeWidth: 0.4 },
-                    hover: { fill: '#ff3da6' },
+                    selected: { fill: '#00e5ff' },
+                    hover: { fillOpacity: 0.85 },
                 },
-                series: {
-                    regions: [{
-                        attribute: 'fill',
-                        // Dos tonos neón: el menos visitado en violeta, el más en cian.
-                        // Ambos resaltan claramente sobre el fondo oscuro.
-                        scale: ['#a060ff', '#00e5ff'],
-                        normalizeFunction: 'linear',
-                        values: values,
-                    }],
+                onRegionTooltipShow(event, tooltip, code) {
+                    const v = values[code];
+                    if (v) tooltip.text(`${tooltip.text()}: ${v} ${v === 1 ? 'visita' : 'visitas'}`, true);
                 },
             });
         }
