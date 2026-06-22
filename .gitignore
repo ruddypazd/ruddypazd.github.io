@@ -1,0 +1,15 @@
+# Claude Code
+.claude/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# Logs y temporales
+*.log
+node_modules/
