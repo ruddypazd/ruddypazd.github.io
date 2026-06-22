@@ -103,9 +103,118 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    /* ---- Contador de visitas (Cloudflare Worker + KV) ---- */
+    initVisitCounter();
+
     /* ---- Fondo: red de partículas estilo cyber ---- */
     initParticles(reduceMotion);
 });
+
+/* ===========================================================
+   Contador de visitas
+   ----------------------------------------------------------
+   Reemplaza COUNTER_API con la URL de tu Worker, por ejemplo:
+     https://visitas.tudominio.com
+   o el subdominio por defecto:
+     https://visit-counter.TU-USUARIO.workers.dev
+   =========================================================== */
+const COUNTER_API = 'https://visitas.ruddypazd.com';
+
+function initVisitCounter() {
+    const el = document.querySelector('[data-visits]');
+    const box = document.querySelector('.footer__counter');
+    if (!el || !box) return;
+
+    // Cuenta una sola visita por sesión del navegador
+    const isNewVisit = !sessionStorage.getItem('rp_visited');
+    const url = COUNTER_API + (isNewVisit ? '?hit=1' : '');
+
+    fetch(url, { method: 'GET' })
+        .then(r => r.ok ? r.json() : Promise.reject(r.status))
+        .then(data => {
+            const n = typeof data === 'number' ? data : (data.count ?? data.visits);
+            if (n == null) throw new Error('respuesta sin contador');
+            sessionStorage.setItem('rp_visited', '1');
+            box.hidden = false;
+            animateNumber(el, n);
+            if (data.countries) renderVisitMap(data.countries);
+        })
+        .catch(() => { /* Worker no configurado aún: el contador queda oculto */ });
+}
+
+/* ---- Mapa de visitas por país ---- */
+function flagEmoji(cc) {
+    if (!cc || cc.length !== 2) return '🏳️';
+    const base = 0x1F1E6;
+    return String.fromCodePoint(base + cc.charCodeAt(0) - 65, base + cc.charCodeAt(1) - 65);
+}
+
+function countryName(cc) {
+    if (cc === 'XX') return 'Desconocido';
+    try { return new Intl.DisplayNames(['es'], { type: 'region' }).of(cc) || cc; }
+    catch (e) { return cc; }
+}
+
+function renderVisitMap(countries) {
+    const entries = Object.entries(countries).filter(([, n]) => n > 0);
+    if (!entries.length) return;
+
+    const section = document.getElementById('visitmap');
+    const listEl = document.querySelector('[data-country-list]');
+    if (!section || !listEl) return;
+
+    section.hidden = false;
+    const reveal = section.querySelector('.reveal');
+    if (reveal) reveal.classList.add('in');
+
+    // Lista ordenada con banderas y barras
+    entries.sort((a, b) => b[1] - a[1]);
+    const max = entries[0][1];
+    listEl.innerHTML = entries.slice(0, 12).map(([cc, n]) => `
+        <li>
+            <span class="flag">${flagEmoji(cc)}</span>
+            <span class="cname">${countryName(cc)}</span>
+            <span class="cbar"><i style="width:${Math.max(6, (n / max) * 100)}%"></i></span>
+            <span class="cnum">${n.toLocaleString('es')}</span>
+        </li>`).join('');
+
+    // Mapa mundial (jsVectorMap). Si la librería no cargó, queda solo la lista.
+    const values = {};
+    entries.forEach(([cc, n]) => { if (cc !== 'XX') values[cc] = n; });
+    try {
+        if (typeof jsVectorMap === 'function' && Object.keys(values).length) {
+            new jsVectorMap({
+                selector: '#world-map',
+                map: 'world',
+                zoomButtons: false,
+                backgroundColor: 'transparent',
+                regionStyle: {
+                    initial: { fill: '#141a2b', stroke: '#05060a', strokeWidth: 0.4 },
+                    hover: { fill: '#a060ff' },
+                },
+                series: {
+                    regions: [{
+                        attribute: 'fill',
+                        scale: ['#1f6f8b', '#00e5ff'],
+                        normalizeFunction: 'polynomial',
+                        values: values,
+                    }],
+                },
+            });
+        }
+    } catch (e) { /* la lista ya cubre el caso si el mapa falla */ }
+}
+
+function animateNumber(el, target) {
+    const dur = 1200, start = performance.now();
+    const step = (now) => {
+        const p = Math.min((now - start) / dur, 1);
+        el.textContent = Math.floor((1 - Math.pow(1 - p, 3)) * target).toLocaleString('es');
+        if (p < 1) requestAnimationFrame(step);
+        else el.textContent = target.toLocaleString('es');
+    };
+    requestAnimationFrame(step);
+}
 
 function initParticles(reduceMotion) {
     const canvas = document.getElementById('bg-canvas');

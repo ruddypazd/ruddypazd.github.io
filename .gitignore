@@ -1,6 +1,9 @@
 # Claude Code
 .claude/
 
+# Configuración de Cloudflare (solo referencia local, no se publica)
+cloudflare/
+
 # Sistema operativo
 .DS_Store
 Thumbs.db
