@@ -1,13 +1,364 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <meta name="description" content="Roy Ruddy Paz Demiquel — Ingeniero de IA / Machine Learning. Portafolio y currículum.">
+    <title>Roy Ruddy Paz · AI / ML Engineer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>hello world</h1>
+    <!-- Fondo animado -->
+    <canvas id="bg-canvas" aria-hidden="true"></canvas>
+    <div class="grid-overlay" aria-hidden="true"></div>
+    <div class="scanline" aria-hidden="true"></div>
+
+    <!-- Navegación -->
+    <header class="nav">
+        <a href="#hero" class="nav__logo">RP<span>_</span></a>
+        <nav class="nav__links">
+            <a href="#about">Sobre&nbsp;mí</a>
+            <a href="#skills">Skills</a>
+            <a href="#experience">Experiencia</a>
+            <a href="#projects">Proyectos</a>
+            <a href="#contact" class="nav__cta">Contacto</a>
+        </nav>
+        <button class="nav__burger" aria-label="Abrir menú"><span></span><span></span><span></span></button>
+    </header>
+
+    <main>
+        <!-- HERO -->
+        <section id="hero" class="hero">
+            <div class="hero__inner reveal">
+                <div class="hero__avatar">
+                    <span class="hero__avatar-ring"></span>
+                    <img src="images/perfil.jpeg" alt="Roy Ruddy Paz Demiquel" loading="eager">
+                </div>
+                <p class="hero__eyebrow"><span class="dot"></span> CEO @ Servisofts · CTO @ UpLabs&nbsp;AI</p>
+                <h1 class="hero__title">
+                    Roy&nbsp;Ruddy <span class="grad">Paz&nbsp;Demiquel</span>
+                </h1>
+                <p class="hero__role" data-typing>CEO &amp; CTO · Ingeniero de Software</p>
+                <p class="hero__tagline">
+                    Más de 16 años construyendo sistemas de software. Hoy lidero la tecnología como
+                    <strong>CEO de Servisofts</strong> y <strong>CTO de UpLabs&nbsp;AI</strong>,
+                    desarrollando soluciones full-stack, IA aplicada e infraestructura para clientes
+                    en <strong>EE.&nbsp;UU., España y Bolivia</strong>.
+                </p>
+                <div class="hero__actions">
+                    <a href="#projects" class="btn btn--primary">Ver proyectos</a>
+                    <a href="#" class="btn btn--ghost" data-cv>Descargar CV</a>
+                </div>
+                <div class="hero__stats">
+                    <div><strong class="plus" data-count="16">0</strong><span>Años de experiencia</span></div>
+                    <div><strong data-count="3">0</strong><span>Países (EEUU · ES · BO)</span></div>
+                    <div><strong class="plus" data-count="50">0</strong><span>Proyectos entregados</span></div>
+                </div>
+            </div>
+            <a href="#about" class="hero__scroll" aria-label="Bajar">↓</a>
+        </section>
+
+        <!-- SOBRE MÍ -->
+        <section id="about" class="section">
+            <div class="section__head reveal">
+                <span class="section__index">01</span>
+                <h2 class="section__title">Sobre mí</h2>
+            </div>
+            <div class="about reveal">
+                <div class="about__text">
+                    <!-- EDITA: tu biografía real -->
+                    <p>
+                        Llevo desde <strong>2009</strong> dedicado al desarrollo de sistemas de software.
+                        En ese recorrido he construido desde aplicaciones a medida hasta plataformas
+                        empresariales completas, y hoy lidero la tecnología desde la dirección:
+                        <strong>CEO de Servisofts SRL</strong> y <strong>CTO de UpLabs&nbsp;AI</strong>.
+                    </p>
+                    <p>
+                        Como ingeniero <strong>full-stack y DevOps</strong> me muevo por toda la pila
+                        tecnológica: del código a la infraestructura. Mi especialidad es conectar mundos
+                        que normalmente no hablan entre sí, como los <strong>agentes de IA para
+                        llamadas y WhatsApp</strong> (Asterisk, ARI/AMI) integrados en la
+                        infraestructura de cada empresa.
+                    </p>
+                    <p>
+                        También tengo amplia experiencia en <strong>software de gestión empresarial</strong>:
+                        ERPs completos con módulos de RRHH y Contabilidad, sistemas CRM y un manejo
+                        detallado de finanzas y contabilidad, con experiencia directa en el sector de
+                        <strong>brokers de seguros</strong>.
+                    </p>
+                    <p>
+                        He liderado y desarrollado proyectos para clientes en
+                        <strong>Estados Unidos, España y Bolivia</strong>, combinando visión de negocio
+                        con ejecución técnica de punta a punta.
+                    </p>
+                </div>
+                <aside class="about__card">
+                    <h3>Datos rápidos</h3>
+                    <ul class="kv">
+                        <li><span>Roles</span><b>CEO &amp; CTO</b></li>
+                        <li><span>Servisofts SRL</span><b>CEO</b></li>
+                        <li><span>UpLabs AI</span><b>CTO</b></li>
+                        <li><span>Experiencia</span><b>Desde 2009</b></li>
+                        <li><span>Ubicación</span><b>Santa Cruz, Bolivia</b></li>
+                        <li><span>Proyectos</span><b>EEUU · ES · BO</b></li>
+                        <li><span>Estado</span><b class="ok">Disponible</b></li>
+                    </ul>
+                </aside>
+            </div>
+        </section>
+
+        <!-- SKILLS -->
+        <section id="skills" class="section">
+            <div class="section__head reveal">
+                <span class="section__index">02</span>
+                <h2 class="section__title">Conocimientos &amp; Skills</h2>
+            </div>
+            <!-- Tarjetas destacadas: especialidades -->
+            <div class="features">
+                <article class="skill-feature reveal">
+                    <div class="skill-feature__glow"></div>
+                    <span class="skill-feature__badge">⚡ Especialidad</span>
+                    <h3>Agentes de IA: Voz &amp; WhatsApp</h3>
+                    <p>
+                        Desarrollo agentes de Inteligencia Artificial para <strong>llamadas
+                        telefónicas</strong> (sobre Asterisk, ARI/AMI) y <strong>mensajería por
+                        WhatsApp</strong>, integrándolos directamente en la infraestructura y los
+                        sistemas de cada empresa.
+                    </p>
+                    <ul class="tags">
+                        <li>Asterisk</li><li>SIP Trunks</li><li>ARI</li><li>AMI</li>
+                        <li>WhatsApp API</li><li>Agentes IA</li><li>IA + Voz</li>
+                    </ul>
+                </article>
+                <article class="skill-feature skill-feature--violet reveal">
+                    <div class="skill-feature__glow"></div>
+                    <span class="skill-feature__badge">💼 Negocio &amp; Software de gestión</span>
+                    <h3>ERP, CRM &amp; Finanzas</h3>
+                    <p>
+                        He diseñado y desarrollado <strong>ERPs completos</strong> con módulos de
+                        Recursos Humanos y Contabilidad, además de sistemas CRM. Combino el código
+                        con un conocimiento detallado de <strong>finanzas y contabilidad</strong>,
+                        incluida experiencia en el sector de <strong>brokers de seguros</strong>.
+                    </p>
+                    <ul class="tags">
+                        <li>ERP a medida</li><li>CRM</li><li>Módulo RRHH</li><li>Contabilidad</li>
+                        <li>Finanzas</li><li>Brokers de seguros</li><li>Facturación</li>
+                    </ul>
+                </article>
+            </div>
+
+            <div class="skills">
+                <article class="skill-card reveal">
+                    <h3>Lenguajes de programación</h3>
+                    <ul class="tags">
+                        <li>Java</li><li>Python</li><li>C#</li>
+                        <li>C++</li><li>JavaScript</li><li>SQL</li>
+                    </ul>
+                </article>
+                <article class="skill-card reveal">
+                    <h3>Backend &amp; Frameworks</h3>
+                    <ul class="tags">
+                        <li>Spring Framework</li><li>JSP</li><li>Servlets</li>
+                        <li>Back-End Development</li><li>GraphQL</li><li>REST APIs</li><li>XML</li>
+                    </ul>
+                </article>
+                <article class="skill-card reveal">
+                    <h3>Frontend</h3>
+                    <ul class="tags">
+                        <li>HTML5</li><li>CSS</li><li>JavaScript</li>
+                        <li>React.js</li><li>Redux.js</li><li>jQuery</li>
+                        <li>Diseño web adaptable</li><li>Front-end Development</li>
+                    </ul>
+                </article>
+                <article class="skill-card reveal">
+                    <h3>Desarrollo móvil</h3>
+                    <ul class="tags">
+                        <li>React Native</li><li>Android</li>
+                        <li>Android Studio</li><li>iOS</li>
+                    </ul>
+                </article>
+                <article class="skill-card reveal">
+                    <h3>Bases de datos</h3>
+                    <ul class="tags">
+                        <li>PostgreSQL</li><li>Oracle Database</li><li>MySQL</li>
+                        <li>Microsoft SQL Server</li><li>Cassandra</li><li>SQL</li>
+                    </ul>
+                </article>
+                <article class="skill-card reveal">
+                    <h3>Data, IA &amp; Machine Learning</h3>
+                    <ul class="tags">
+                        <li>Python</li><li>Pandas</li><li>PySpark</li>
+                        <li>OpenCV</li><li>LLMs</li><li>Agentes IA</li>
+                    </ul>
+                </article>
+                <article class="skill-card reveal">
+                    <h3>DevOps &amp; Servidores</h3>
+                    <ul class="tags">
+                        <li>Linux</li><li>Windows Server</li><li>Git</li>
+                        <li>Docker</li><li>Nginx</li><li>CI/CD</li>
+                        <li>Bash</li><li>n8n</li>
+                    </ul>
+                </article>
+                <article class="skill-card reveal">
+                    <h3>Infraestructura &amp; Redes</h3>
+                    <ul class="tags">
+                        <li>Administración de redes</li><li>Infraestructura</li>
+                        <li>Proxy reverso</li><li>Firewall</li>
+                    </ul>
+                </article>
+                <article class="skill-card reveal">
+                    <h3>Diseño &amp; Multimedia</h3>
+                    <ul class="tags">
+                        <li>Blender</li><li>Adobe Illustrator</li>
+                        <li>Adobe Photoshop</li><li>UI / UX</li>
+                    </ul>
+                </article>
+            </div>
+        </section>
+
+        <!-- EXPERIENCIA -->
+        <section id="experience" class="section">
+            <div class="section__head reveal">
+                <span class="section__index">03</span>
+                <h2 class="section__title">Experiencia</h2>
+            </div>
+            <div class="timeline">
+                <!-- EDITA cada entrada con tu experiencia real -->
+                <div class="tl-item reveal">
+                    <div class="tl-dot"></div>
+                    <div class="tl-content">
+                        <span class="tl-date">ene. 2025 — Actualidad</span>
+                        <h3>Chief Technology Officer · UpLabs AI</h3>
+                        <p>Lidero el desarrollo de agentes de IA para <strong>llamadas telefónicas</strong>
+                        y <strong>mensajería por WhatsApp</strong>, integrándolos en la infraestructura
+                        de distintas empresas. Santa Cruz, Bolivia.</p>
+                        <ul class="tl-bullets">
+                            <li>Agentes de voz con IA sobre telefonía IP (Asterisk, ARI/AMI).</li>
+                            <li>Agentes conversacionales de WhatsApp integrados a sistemas de cada empresa.</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="tl-item reveal">
+                    <div class="tl-dot"></div>
+                    <div class="tl-content">
+                        <span class="tl-date">jun. 2012 — Actualidad</span>
+                        <h3>CEO · Servisofts SRL</h3>
+                        <p>Dirijo una empresa de desarrollo <strong>web y móvil</strong> para empresas,
+                        especializada en soluciones <strong>ERP y CRM</strong> a medida. Lidero la
+                        estrategia tecnológica y la entrega de proyectos.</p>
+                        <ul class="tl-bullets">
+                            <li>Desarrollo full-stack con React.js, Redux, GraphQL, Oracle y PostgreSQL.</li>
+                            <li>ERPs y CRMs completos, además de apps Android e iOS para distintos sectores.</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="tl-item reveal">
+                    <div class="tl-dot"></div>
+                    <div class="tl-content">
+                        <span class="tl-date">jun. 2014 — ene. 2025</span>
+                        <h3>Chief Technology Officer · Strasol SRL</h3>
+                        <p>Responsable de la tecnología y el desarrollo de sistemas durante más de 10
+                        años, liderando equipos técnicos y la entrega de proyectos de software.</p>
+                        <ul class="tl-bullets">
+                            <li>Arquitectura y desarrollo back-end y front-end de plataformas web.</li>
+                            <li>Diseño web adaptable y coordinación técnica de proyectos.</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="tl-item reveal">
+                    <div class="tl-dot"></div>
+                    <div class="tl-content">
+                        <span class="tl-date">2009 — 2012</span>
+                        <h3>Project Manager · Servisis SRL</h3>
+                        <p>Inicio de mi carrera profesional gestionando proyectos de software y
+                        coordinando equipos de desarrollo.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- PROYECTOS -->
+        <section id="projects" class="section">
+            <div class="section__head reveal">
+                <span class="section__index">04</span>
+                <h2 class="section__title">Proyectos destacados</h2>
+            </div>
+            <div class="projects">
+                <!-- EDITA con tus proyectos reales -->
+                <article class="project reveal">
+                    <div class="project__glow"></div>
+                    <span class="project__num">/01</span>
+                    <h3>Asistente de voz con IA</h3>
+                    <p>Agente conversacional inteligente conectado a una central Asterisk vía ARI/AMI, capaz de atender y gestionar llamadas reales de forma autónoma.</p>
+                    <ul class="tags tags--sm"><li>Asterisk</li><li>ARI</li><li>LLMs</li><li>Python</li></ul>
+                    <a href="#" class="project__link">Ver más →</a>
+                </article>
+                <article class="project reveal">
+                    <div class="project__glow"></div>
+                    <span class="project__num">/02</span>
+                    <h3>Agente de WhatsApp con IA</h3>
+                    <p>Agente conversacional por WhatsApp que atiende clientes de forma autónoma, integrado a los sistemas internos de cada empresa para responder y operar en tiempo real.</p>
+                    <ul class="tags tags--sm"><li>WhatsApp API</li><li>LLMs</li><li>n8n</li><li>Integraciones</li></ul>
+                    <a href="#" class="project__link">Ver más →</a>
+                </article>
+                <article class="project reveal">
+                    <div class="project__glow"></div>
+                    <span class="project__num">/03</span>
+                    <h3>ERP completo (RRHH + Contabilidad)</h3>
+                    <p>Sistema ERP a medida con módulos de Recursos Humanos y Contabilidad, gestión financiera y facturación, adaptado a procesos reales de negocio.</p>
+                    <ul class="tags tags--sm"><li>ERP</li><li>Contabilidad</li><li>RRHH</li><li>Finanzas</li></ul>
+                    <a href="#" class="project__link">Ver más →</a>
+                </article>
+                <article class="project reveal">
+                    <div class="project__glow"></div>
+                    <span class="project__num">/04</span>
+                    <h3>CRM para brokers de seguros</h3>
+                    <p>Plataforma CRM orientada al sector asegurador: gestión de clientes, pólizas y comisiones, con flujos pensados para brokers de seguros.</p>
+                    <ul class="tags tags--sm"><li>CRM</li><li>Seguros</li><li>Pólizas</li><li>Comisiones</li></ul>
+                    <a href="#" class="project__link">Ver más →</a>
+                </article>
+                <article class="project reveal">
+                    <div class="project__glow"></div>
+                    <span class="project__num">/05</span>
+                    <h3>Infraestructura &amp; despliegue</h3>
+                    <p>Configuración de servidores Linux/Windows con Nginx como proxy reverso, redes y despliegue de aplicaciones full-stack en producción.</p>
+                    <ul class="tags tags--sm"><li>Linux</li><li>Nginx</li><li>DevOps</li><li>Redes</li></ul>
+                    <a href="#" class="project__link">Ver más →</a>
+                </article>
+            </div>
+        </section>
+
+        <!-- CONTACTO -->
+        <section id="contact" class="section section--contact">
+            <div class="contact reveal">
+                <span class="section__index">05</span>
+                <h2 class="contact__title">Construyamos algo <span class="grad">inteligente</span></h2>
+                <p class="contact__sub">¿Tienes un proyecto de IA o una oportunidad? Escríbeme.</p>
+                <div class="contact__actions">
+                    <a href="https://wa.me/59175666929?text=Hola%20Roy%2C%20vi%20tu%20portafolio%20y%20me%20gustar%C3%ADa%20conversar." target="_blank" rel="noopener" class="btn btn--whatsapp btn--lg">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.82 11.82 0 018.413 3.488 11.82 11.82 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.51 5.26l-.999 3.648 3.488-.92zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+                        Escríbeme por WhatsApp
+                    </a>
+                    <a href="mailto:ruddypazd@gmail.com" class="btn btn--ghost btn--lg">ruddypazd@gmail.com</a>
+                </div>
+                <div class="contact__socials">
+                    <a href="https://www.linkedin.com/in/ruddypazd/" target="_blank" rel="noopener">LinkedIn</a>
+                    <a href="https://github.com/ruddypazd" target="_blank" rel="noopener">GitHub</a>
+                    <a href="https://x.com/ruddypazd" target="_blank" rel="noopener">X</a>
+                    <a href="https://instagram.com/ruddypazd" target="_blank" rel="noopener">Instagram</a>
+                    <a href="https://facebook.com/ruddypazd" target="_blank" rel="noopener">Facebook</a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>© <span data-year></span> Roy Ruddy Paz Demiquel · Hecho con código y café ☕</p>
+    </footer>
+
     <script src="index.js"></script>
 </body>
 </html>
