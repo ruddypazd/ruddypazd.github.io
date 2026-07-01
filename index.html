@@ -47,7 +47,6 @@
             <a href="#contributions">GitHub</a>
             <a href="#skills">Skills</a>
             <a href="#experience">Experiencia</a>
-            <a href="#projects">Proyectos</a>
             <a href="#contact" class="nav__cta">Contacto</a>
         </nav>
         <button class="nav__burger" aria-label="Abrir menú"><span></span><span></span><span></span></button>
@@ -74,7 +73,7 @@
                     en <strong>EE.&nbsp;UU., España y Bolivia</strong>.
                 </p>
                 <div class="hero__actions">
-                    <a href="#projects" class="btn btn--primary">Ver proyectos</a>
+                    <a href="#skills" class="btn btn--primary">Ver mi stack</a>
                     <a href="#" class="btn btn--ghost" data-cv>Descargar CV</a>
                 </div>
                 <div class="hero__stats">
@@ -151,113 +150,196 @@
             </div>
         </section>
 
-        <!-- SKILLS -->
-        <section id="skills" class="section">
+        <!-- SKILLS · DIAGRAMA DE INFRAESTRUCTURA -->
+        <section id="skills" class="section section--infra">
             <div class="section__head reveal">
                 <span class="section__index">03</span>
                 <h2 class="section__title">Conocimientos &amp; Skills</h2>
             </div>
-            <!-- Tarjetas destacadas: especialidades -->
-            <div class="features">
-                <article class="skill-feature reveal">
-                    <div class="skill-feature__glow"></div>
-                    <span class="skill-feature__badge">⚡ Especialidad</span>
-                    <h3>Agentes de IA: Voz &amp; WhatsApp</h3>
-                    <p>
-                        Desarrollo agentes de Inteligencia Artificial para <strong>llamadas
-                        telefónicas</strong> (sobre Asterisk, ARI/AMI) y <strong>mensajería por
-                        WhatsApp</strong>, integrándolos directamente en la infraestructura y los
-                        sistemas de cada empresa.
-                    </p>
-                    <ul class="tags">
-                        <li>Asterisk</li><li>SIP Trunks</li><li>ARI</li><li>AMI</li>
-                        <li>WhatsApp API</li><li>Agentes IA</li><li>IA + Voz</li>
-                    </ul>
-                </article>
-                <article class="skill-feature skill-feature--violet reveal">
-                    <div class="skill-feature__glow"></div>
-                    <span class="skill-feature__badge">💼 Negocio &amp; Software de gestión</span>
-                    <h3>ERP, CRM &amp; Finanzas</h3>
-                    <p>
-                        He diseñado y desarrollado <strong>ERPs completos</strong> con módulos de
-                        Recursos Humanos y Contabilidad, además de sistemas CRM. Combino el código
-                        con un conocimiento detallado de <strong>finanzas y contabilidad</strong>,
-                        incluida experiencia en el sector de <strong>brokers de seguros</strong>.
-                    </p>
-                    <ul class="tags">
-                        <li>ERP a medida</li><li>CRM</li><li>Módulo RRHH</li><li>Contabilidad</li>
-                        <li>Finanzas</li><li>Brokers de seguros</li><li>Facturación</li>
-                    </ul>
-                </article>
+            <p class="infra__intro reveal">
+                Mi conocimiento, dibujado como lo que realmente es: <strong>una infraestructura
+                viva</strong>. Del proveedor de internet al firewall, la DMZ con Nginx y Asterisk,
+                los <strong>servidores Linux 🐧</strong> —donde corre casi todo— con
+                <strong>microservicios, Redis y RabbitMQ</strong>, y los <strong>agentes de IA que
+                contestan llamadas y mensajes</strong> y lo registran todo en la base de datos.
+                <span class="infra__hint">// haz click en cualquier nodo para ver qué hace — el tráfico está en vivo ⚡</span>
+            </p>
+
+            <div class="infra reveal" id="infra">
+                <svg class="infra__svg" aria-hidden="true">
+                    <g class="infra__links"></g>
+                    <g class="infra__labels"></g>
+                    <g class="infra__packets"></g>
+                </svg>
+
+                <!-- Zona: Internet / Nube externa -->
+                <div class="izone izone--net">
+                    <span class="izone__tag">🌐 Internet · Dominios · Nube externa</span>
+                    <div class="izone__row">
+                        <article class="inode" id="n-users" tabindex="0" role="button">
+                            <span class="inode__icon">🌍</span>
+                            <h3>Usuarios &amp; Apps</h3>
+                            <p>Web responsive · apps móviles</p>
+                            <ul class="inode__tags"><li>React Native</li><li>Android</li><li>iOS</li></ul>
+                        </article>
+                        <article class="inode" id="n-dns" tabindex="0" role="button">
+                            <span class="inode__icon">☁️</span>
+                            <h3>Dominios &amp; DNS</h3>
+                            <p>DNS · WAF · CDN · SSL</p>
+                            <ul class="inode__tags"><li>Cloudflare</li><li>GoDaddy</li></ul>
+                        </article>
+                        <article class="inode" id="n-isp" tabindex="0" role="button">
+                            <span class="inode__icon">📡</span>
+                            <h3>Proveedor ISP</h3>
+                            <p>Fibra · IP pública · troncal SIP</p>
+                            <ul class="inode__tags"><li>WAN</li><li>SIP Trunk</li></ul>
+                        </article>
+                        <article class="inode" id="n-integr" tabindex="0" role="button">
+                            <span class="inode__icon">🔌</span>
+                            <h3>Integraciones</h3>
+                            <p>APIs de terceros</p>
+                            <ul class="inode__tags"><li>Meta Business</li><li>Twilio</li><li>Zadarma</li></ul>
+                        </article>
+                        <article class="inode" id="n-cloud" tabindex="0" role="button">
+                            <span class="inode__icon">☁</span>
+                            <h3>Multi-cloud</h3>
+                            <p>Cómputo &amp; servicios externos</p>
+                            <ul class="inode__tags"><li>Google Cloud</li><li>AWS</li><li>Azure</li></ul>
+                        </article>
+                    </div>
+                </div>
+
+                <!-- Zona: Perímetro -->
+                <div class="izone izone--edge">
+                    <span class="izone__tag">🧱 Perímetro de red</span>
+                    <div class="izone__row">
+                        <article class="inode" id="n-modem" tabindex="0" role="button">
+                            <span class="inode__icon">📶</span>
+                            <h3>Módem</h3>
+                            <p>Enlace del ISP</p>
+                            <ul class="inode__tags"><li>WAN</li></ul>
+                        </article>
+                        <article class="inode" id="n-fw" tabindex="0" role="button">
+                            <span class="inode__icon">🛡️</span>
+                            <h3>Firewall</h3>
+                            <p>Filtrado · NAT · VPN</p>
+                            <ul class="inode__tags"><li>Reglas</li><li>NAT</li><li>VPN</li></ul>
+                        </article>
+                        <article class="inode" id="n-switch" tabindex="0" role="button">
+                            <span class="inode__icon">🔀</span>
+                            <h3>Switch</h3>
+                            <p>Núcleo de la LAN</p>
+                            <ul class="inode__tags"><li>VLANs</li><li>Ethernet</li></ul>
+                        </article>
+                    </div>
+                </div>
+
+                <!-- Zona: DMZ -->
+                <div class="izone izone--dmz">
+                    <span class="izone__tag">🚧 DMZ</span>
+                    <div class="izone__row">
+                        <article class="inode inode--linux" id="n-nginx" tabindex="0" role="button">
+                            <span class="inode__icon">🚦</span>
+                            <h3>Nginx · Proxy reverso</h3>
+                            <p>DNAT 80/443 · TLS · rutas</p>
+                            <ul class="inode__tags"><li>Linux</li><li>Proxy reverso</li><li>SSL</li></ul>
+                        </article>
+                        <article class="inode inode--linux" id="n-asterisk" tabindex="0" role="button">
+                            <span class="inode__icon">☎️</span>
+                            <h3>Asterisk PBX</h3>
+                            <p>Telefonía IP · IVR · grabación</p>
+                            <ul class="inode__tags"><li>Linux</li><li>SIP</li><li>ARI · AMI</li><li>FFmpeg</li></ul>
+                        </article>
+                    </div>
+                </div>
+
+                <!-- Zona: LAN servidores -->
+                <div class="izone izone--lan">
+                    <span class="izone__tag">🐧 LAN · Servidores Linux</span>
+                    <div class="izone__row">
+                        <article class="inode inode--linux" id="n-web" tabindex="0" role="button">
+                            <span class="inode__icon">🖥️</span>
+                            <h3>Server Web</h3>
+                            <p>Frontend · SPA · responsive</p>
+                            <ul class="inode__tags"><li>HTML5</li><li>CSS3</li><li>JavaScript</li><li>React</li><li>Redux</li><li>jQuery</li></ul>
+                        </article>
+                        <article class="inode inode--linux" id="n-back" tabindex="0" role="button">
+                            <span class="inode__icon">⚙️</span>
+                            <h3>Backend</h3>
+                            <p>APIs &amp; servicios</p>
+                            <ul class="inode__tags"><li>Java · Spring</li><li>Python</li><li>C#</li><li>C++</li><li>Bash</li><li>GraphQL</li><li>REST</li><li>JSP · Servlets</li><li>XML</li></ul>
+                        </article>
+                        <article class="inode inode--linux" id="n-micro" tabindex="0" role="button">
+                            <span class="inode__icon">🧬</span>
+                            <h3>Microservicios</h3>
+                            <p>Caché · colas · eventos</p>
+                            <ul class="inode__tags"><li>Redis</li><li>RabbitMQ</li><li>Docker</li><li>Eventos</li></ul>
+                        </article>
+                        <article class="inode inode--linux" id="n-db" tabindex="0" role="button">
+                            <span class="inode__icon">🗄️</span>
+                            <h3>Bases de datos</h3>
+                            <p>Clúster de datos</p>
+                            <ul class="inode__tags"><li>Oracle</li><li>PostgreSQL</li><li>MySQL</li><li>SQL Server</li><li>Cassandra</li></ul>
+                        </article>
+                        <article class="inode inode--linux" id="n-erp" tabindex="0" role="button">
+                            <span class="inode__icon">📊</span>
+                            <h3>CRM · ERP a medida</h3>
+                            <p>RRHH · contabilidad · finanzas</p>
+                            <ul class="inode__tags"><li>ERP</li><li>CRM</li><li>Facturación</li></ul>
+                        </article>
+                        <article class="inode inode--linux" id="n-siem" tabindex="0" role="button">
+                            <span class="inode__icon">👁️</span>
+                            <h3>SIEM · Wazuh</h3>
+                            <p>Seguridad &amp; monitoreo</p>
+                            <ul class="inode__tags"><li>Wazuh</li><li>Logs</li><li>Alertas</li></ul>
+                        </article>
+                        <article class="inode inode--linux" id="n-n8n" tabindex="0" role="button">
+                            <span class="inode__icon">🧩</span>
+                            <h3>n8n</h3>
+                            <p>Workflows &amp; agentes</p>
+                            <ul class="inode__tags"><li>Automatización</li><li>Webhooks</li><li>Orquestación</li></ul>
+                        </article>
+                        <article class="inode inode--linux" id="n-ai" tabindex="0" role="button">
+                            <span class="inode__icon">🤖</span>
+                            <h3>Agentes IA</h3>
+                            <p>Contestan llamadas · loops · orquestación</p>
+                            <ul class="inode__tags"><li>LLMs</li><li>LangChain</li><li>LangGraph</li><li>Pandas</li><li>PySpark</li><li>OpenCV</li></ul>
+                        </article>
+                    </div>
+                </div>
+
+                <!-- Zona: herramientas transversales -->
+                <div class="izone izone--lab">
+                    <span class="izone__tag">🧰 Detrás del stack</span>
+                    <div class="izone__row">
+                        <article class="inode inode--linux" id="n-devops" tabindex="0" role="button">
+                            <span class="inode__icon">🚀</span>
+                            <h3>DevOps &amp; Tooling</h3>
+                            <p>Del commit a producción</p>
+                            <ul class="inode__tags"><li>Git</li><li>Docker</li><li>CI/CD</li><li>Linux</li><li>Bash</li></ul>
+                        </article>
+                        <article class="inode" id="n-design" tabindex="0" role="button">
+                            <span class="inode__icon">🎨</span>
+                            <h3>Diseño &amp; Multimedia</h3>
+                            <p>UI/UX · 3D · video</p>
+                            <ul class="inode__tags"><li>Blender</li><li>Illustrator</li><li>Photoshop</li><li>UI · UX</li><li>FFmpeg</li></ul>
+                        </article>
+                        <article class="inode" id="n-win" tabindex="0" role="button">
+                            <span class="inode__icon">🪟</span>
+                            <h3>Windows Server</h3>
+                            <p>Uso puntual · lo mío es Linux 🐧</p>
+                            <ul class="inode__tags"><li>Active Directory</li></ul>
+                        </article>
+                    </div>
+                </div>
             </div>
 
-            <div class="skills">
-                <article class="skill-card reveal">
-                    <h3>Lenguajes de programación</h3>
-                    <ul class="tags">
-                        <li>Java</li><li>Python</li><li>C#</li>
-                        <li>C++</li><li>JavaScript</li><li>SQL</li>
-                    </ul>
-                </article>
-                <article class="skill-card reveal">
-                    <h3>Backend &amp; Frameworks</h3>
-                    <ul class="tags">
-                        <li>Spring Framework</li><li>JSP</li><li>Servlets</li>
-                        <li>Back-End Development</li><li>GraphQL</li><li>REST APIs</li><li>XML</li>
-                    </ul>
-                </article>
-                <article class="skill-card reveal">
-                    <h3>Frontend</h3>
-                    <ul class="tags">
-                        <li>HTML5</li><li>CSS</li><li>JavaScript</li>
-                        <li>React.js</li><li>Redux.js</li><li>jQuery</li>
-                        <li>Diseño web adaptable</li><li>Front-end Development</li>
-                    </ul>
-                </article>
-                <article class="skill-card reveal">
-                    <h3>Desarrollo móvil</h3>
-                    <ul class="tags">
-                        <li>React Native</li><li>Android</li>
-                        <li>Android Studio</li><li>iOS</li>
-                    </ul>
-                </article>
-                <article class="skill-card reveal">
-                    <h3>Bases de datos</h3>
-                    <ul class="tags">
-                        <li>PostgreSQL</li><li>Oracle Database</li><li>MySQL</li>
-                        <li>Microsoft SQL Server</li><li>Cassandra</li><li>SQL</li>
-                    </ul>
-                </article>
-                <article class="skill-card reveal">
-                    <h3>Data, IA &amp; Machine Learning</h3>
-                    <ul class="tags">
-                        <li>Python</li><li>Pandas</li><li>PySpark</li>
-                        <li>OpenCV</li><li>LLMs</li><li>Agentes IA</li>
-                    </ul>
-                </article>
-                <article class="skill-card reveal">
-                    <h3>DevOps &amp; Servidores</h3>
-                    <ul class="tags">
-                        <li>Linux</li><li>Windows Server</li><li>Git</li>
-                        <li>Docker</li><li>Nginx</li><li>CI/CD</li>
-                        <li>Bash</li><li>n8n</li>
-                    </ul>
-                </article>
-                <article class="skill-card reveal">
-                    <h3>Infraestructura &amp; Redes</h3>
-                    <ul class="tags">
-                        <li>Administración de redes</li><li>Infraestructura</li>
-                        <li>Proxy reverso</li><li>Firewall</li>
-                    </ul>
-                </article>
-                <article class="skill-card reveal">
-                    <h3>Diseño &amp; Multimedia</h3>
-                    <ul class="tags">
-                        <li>Blender</li><li>Adobe Illustrator</li>
-                        <li>Adobe Photoshop</li><li>UI / UX</li>
-                    </ul>
-                </article>
-            </div>
+            <ul class="infra__flows reveal">
+                <li><i class="f--cyan"></i> Tráfico web</li>
+                <li><i class="f--pink"></i> Voz &amp; agentes IA</li>
+                <li><i class="f--violet"></i> Integraciones &amp; orquestación</li>
+                <li><i class="f--green"></i> Monitoreo SIEM</li>
+            </ul>
         </section>
 
         <!-- EXPERIENCIA -->
@@ -321,61 +403,10 @@
             </div>
         </section>
 
-        <!-- PROYECTOS -->
-        <section id="projects" class="section">
-            <div class="section__head reveal">
-                <span class="section__index">05</span>
-                <h2 class="section__title">Proyectos destacados</h2>
-            </div>
-            <div class="projects">
-                <!-- EDITA con tus proyectos reales -->
-                <article class="project reveal">
-                    <div class="project__glow"></div>
-                    <span class="project__num">/01</span>
-                    <h3>Asistente de voz con IA</h3>
-                    <p>Agente conversacional inteligente conectado a una central Asterisk vía ARI/AMI, capaz de atender y gestionar llamadas reales de forma autónoma.</p>
-                    <ul class="tags tags--sm"><li>Asterisk</li><li>ARI</li><li>LLMs</li><li>Python</li></ul>
-                    <a href="#" class="project__link">Ver más →</a>
-                </article>
-                <article class="project reveal">
-                    <div class="project__glow"></div>
-                    <span class="project__num">/02</span>
-                    <h3>Agente de WhatsApp con IA</h3>
-                    <p>Agente conversacional por WhatsApp que atiende clientes de forma autónoma, integrado a los sistemas internos de cada empresa para responder y operar en tiempo real.</p>
-                    <ul class="tags tags--sm"><li>WhatsApp API</li><li>LLMs</li><li>n8n</li><li>Integraciones</li></ul>
-                    <a href="#" class="project__link">Ver más →</a>
-                </article>
-                <article class="project reveal">
-                    <div class="project__glow"></div>
-                    <span class="project__num">/03</span>
-                    <h3>ERP completo (RRHH + Contabilidad)</h3>
-                    <p>Sistema ERP a medida con módulos de Recursos Humanos y Contabilidad, gestión financiera y facturación, adaptado a procesos reales de negocio.</p>
-                    <ul class="tags tags--sm"><li>ERP</li><li>Contabilidad</li><li>RRHH</li><li>Finanzas</li></ul>
-                    <a href="#" class="project__link">Ver más →</a>
-                </article>
-                <article class="project reveal">
-                    <div class="project__glow"></div>
-                    <span class="project__num">/04</span>
-                    <h3>CRM para brokers de seguros</h3>
-                    <p>Plataforma CRM orientada al sector asegurador: gestión de clientes, pólizas y comisiones, con flujos pensados para brokers de seguros.</p>
-                    <ul class="tags tags--sm"><li>CRM</li><li>Seguros</li><li>Pólizas</li><li>Comisiones</li></ul>
-                    <a href="#" class="project__link">Ver más →</a>
-                </article>
-                <article class="project reveal">
-                    <div class="project__glow"></div>
-                    <span class="project__num">/05</span>
-                    <h3>Infraestructura &amp; despliegue</h3>
-                    <p>Configuración de servidores Linux/Windows con Nginx como proxy reverso, redes y despliegue de aplicaciones full-stack en producción.</p>
-                    <ul class="tags tags--sm"><li>Linux</li><li>Nginx</li><li>DevOps</li><li>Redes</li></ul>
-                    <a href="#" class="project__link">Ver más →</a>
-                </article>
-            </div>
-        </section>
-
         <!-- CONTACTO -->
         <section id="contact" class="section section--contact">
             <div class="contact reveal">
-                <span class="section__index">06</span>
+                <span class="section__index">05</span>
                 <h2 class="contact__title">Construyamos algo <span class="grad">inteligente</span></h2>
                 <p class="contact__sub">¿Tienes un proyecto de IA o una oportunidad? Escríbeme.</p>
                 <div class="contact__actions">
@@ -398,7 +429,7 @@
         <!-- MAPA DE VISITAS -->
         <section id="visitmap" class="section section--map" hidden>
             <div class="section__head reveal">
-                <span class="section__index">07</span>
+                <span class="section__index">06</span>
                 <h2 class="section__title">De dónde me visitan</h2>
             </div>
             <div class="visitmap reveal">
@@ -407,6 +438,19 @@
             </div>
         </section>
     </main>
+
+    <!-- Popup de detalle de nodo (diagrama de infraestructura) -->
+    <div class="imodal" id="imodal" hidden>
+        <div class="imodal__overlay" data-imodal-close></div>
+        <div class="imodal__card" role="dialog" aria-modal="true" aria-labelledby="imodal-title">
+            <button class="imodal__close" data-imodal-close aria-label="Cerrar">×</button>
+            <span class="imodal__icon" aria-hidden="true"></span>
+            <span class="imodal__zone"></span>
+            <h3 id="imodal-title"></h3>
+            <p class="imodal__body"></p>
+            <ul class="imodal__tags inode__tags"></ul>
+        </div>
+    </div>
 
     <footer class="footer">
         <p class="footer__counter" hidden>
