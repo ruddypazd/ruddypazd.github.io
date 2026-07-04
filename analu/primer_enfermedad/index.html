@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ana Lucía · Primera enfermedad</title>
+<meta name="description" content="Dashboard de la primera enfermedad de Ana Lucía: su historia, atención en el Hospital Católico y control de gastos.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,ital,wght@9..144,0,400;9..144,0,500;9..144,0,600;9..144,1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <a class="back" href="../">← Perfil de Ana Lucía</a>
+    <span class="status" id="status"><span class="dot"></span><span id="statusText">Cargando…</span></span>
+  </div>
+
+  <!-- Hero -->
+  <header class="hero reveal">
+    <span class="kicker">Primera enfermedad · en curso</span>
+    <h1>Su primera <em>batalla</em></h1>
+    <p class="tagline">A los pocos meses de nacer, Analu enfrentó su primera enfermedad. Aquí registramos su historia, su atención y sus gastos — día a día.</p>
+    <div class="pill-row">
+      <span class="pill">Ingreso <b>03/07/2026</b></span>
+      <span class="pill">Hospital <b>Católico</b></span>
+      <span class="pill">Estado <b>en tratamiento</b></span>
+    </div>
+  </header>
+
+  <!-- Historia -->
+  <section class="block reveal">
+    <div class="sec-head">
+      <span class="tag">Qué pasó</span>
+      <h2>Su historia</h2>
+    </div>
+    <div class="story">
+      <p class="lede">Pensábamos que despertaría como siempre. Esa mañana Analu amaneció distinta: apagadita, con mucho sueño y sin ganas de su leche.</p>
+      <p class="body">El <b>3 de julio de 2026</b>, Ana Lucía (bebé prematura) despertó enfermita: decaída, con mucho sueño, sin ganas de tomar su leche, y con tos y flema al respirar.</p>
+      <p class="body">Esa misma noche la llevaron al <b>Hospital Católico</b>, donde quedó internada para estudios y tratamiento: laboratorios, panel viral respiratorio, radiografía de tórax, antibióticos y sueros. Su lucha, una vez más, apenas empezaba.</p>
+      <div class="callout">💗 Esta historia está <b>en curso</b>. La iremos completando con cada día, cada avance y cada logro de nuestra guerrera.</div>
+    </div>
+  </section>
+
+  <!-- Resumen / KPIs -->
+  <section class="block reveal">
+    <div class="sec-head">
+      <span class="tag">Resumen de gastos</span>
+      <h2>Los números</h2>
+      <p>Todos los importes en bolivianos (Bs.). Datos en vivo desde la hoja de control.</p>
+    </div>
+    <div class="kpis">
+      <div class="kpi big">
+        <span class="label">Total acumulado</span>
+        <span class="value" id="kpiTotal">—</span>
+        <span class="foot"><span id="kpiItems">—</span> ítems · <span id="kpiComps">—</span> comprobantes</span>
+      </div>
+      <div class="kpi">
+        <span class="label">Día de mayor gasto</span>
+        <span class="value" id="kpiTopDay">—</span>
+        <span class="foot" id="kpiTopDayVal">—</span>
+      </div>
+      <div class="kpi">
+        <span class="label">Categoría más costosa</span>
+        <span class="value" id="kpiTopCat">—</span>
+        <span class="foot" id="kpiTopCatVal">—</span>
+      </div>
+      <div class="kpi">
+        <span class="label">Promedio / comprobante</span>
+        <span class="value" id="kpiAvg">—</span>
+        <span class="foot">sobre <span id="kpiComps2">—</span> comprobantes</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Gráficos -->
+  <section class="block reveal">
+    <div class="grid">
+      <article class="panel tall">
+        <h3>En qué se gastó</h3>
+        <p class="note">Distribución por categoría · toca para filtrar</p>
+        <div class="chart-box"><canvas id="chartCat"></canvas></div>
+        <ul class="legend" id="legendCat"></ul>
+      </article>
+      <div style="display:flex;flex-direction:column;gap:20px">
+        <article class="panel">
+          <h3>Por comprobante</h3>
+          <p class="note">Total de cada boleta o factura</p>
+          <div class="chart-box" style="height:200px"><canvas id="chartComp"></canvas></div>
+        </article>
+        <article class="panel">
+          <h3>Por día</h3>
+          <p class="note">Gasto según la fecha</p>
+          <div class="chart-box" style="height:200px"><canvas id="chartDay"></canvas></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Radiografía -->
+  <section class="block reveal">
+    <div class="sec-head">
+      <span class="tag">Registro médico</span>
+      <h2>Radiografía de tórax</h2>
+    </div>
+    <div class="xray">
+      <!-- CÓMO PONER LA IMAGEN: coloca la foto como "radiografia.jpg" en esta carpeta.
+           Si usas otro nombre, cámbialo en el src de abajo. -->
+      <div class="frame" id="xrayFrame">
+        <img src="radiografia.jpg" alt="Radiografía de tórax de Ana Lucía"
+             onerror="this.parentNode.innerHTML='<div class=&quot;ph&quot;>Aún no se agregó la imagen.<br>Coloca <b>radiografia.jpg</b> en esta carpeta.</div>';">
+      </div>
+      <div class="txt">
+        <p>Como parte de los estudios, se le realizó una radiografía de tórax para evaluar su respiración, la tos y la flema.</p>
+        <p>La guardamos aquí como parte de su historia. Toca la imagen para verla en grande.</p>
+        <div class="disc">La interpretación de la radiografía corresponde al médico radiólogo. Este dashboard la muestra solo como <b>registro familiar</b>, no como diagnóstico.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tabla -->
+  <section class="block reveal">
+    <div class="sec-head">
+      <span class="tag">Detalle</span>
+      <h2>Todos los gastos</h2>
+    </div>
+    <div class="panel">
+      <div class="table-head">
+        <p class="note" style="margin:0">Cada ítem de cada comprobante</p>
+        <input type="search" id="filter" placeholder="Buscar ítem, categoría o comprobante…" aria-label="Buscar">
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="table-scroll">
+        <table id="table">
+          <thead>
+            <tr>
+              <th>Comprobante</th><th>Fecha</th><th>Categoría</th>
+              <th>Descripción</th><th class="num">Cant.</th><th class="num">Importe</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+          <tfoot>
+            <tr><td colspan="5" id="tfootLabel">Total mostrado</td><td class="num" id="tfootVal">—</td></tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    Hecho con amor por <span class="hn">Roy Ruddy</span> y <span class="hn">María José</span> para <span class="hn">Ana Lucía</span>.<br>
+    Los gastos se actualizan editando la hoja de control · La historia se irá completando con el tiempo.
+  </footer>
+
+</div>
+
+<!-- Lightbox radiografía -->
+<div class="lightbox" id="lightbox"><img src="" alt="Radiografía ampliada"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
