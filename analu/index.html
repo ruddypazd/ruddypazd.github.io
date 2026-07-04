@@ -1,1 +1,91 @@
-hola
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gastos médicos · Ana Lucía</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="head">
+    <p class="eyebrow">Hospital Católico · Nota de venta &amp; factura</p>
+    <h1>Gastos médicos de <span>Ana Lucía</span></h1>
+    <p class="sub">Control de gastos de hospitalización. Los importes están en bolivianos (Bs.).</p>
+  </header>
+
+  <section class="hero" aria-label="Resumen">
+    <div class="total-card">
+      <span class="total-label">Total acumulado</span>
+      <span class="total-value" id="kpiTotal">—</span>
+      <span class="total-foot"><span id="kpiItems">—</span> ítems · <span id="kpiComps">—</span> comprobantes</span>
+    </div>
+    <div class="kpis">
+      <div class="kpi">
+        <span class="kpi-label">Día de mayor gasto</span>
+        <span class="kpi-value" id="kpiTopDay">—</span>
+        <span class="kpi-foot" id="kpiTopDayVal">—</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Categoría más costosa</span>
+        <span class="kpi-value" id="kpiTopCat">—</span>
+        <span class="kpi-foot" id="kpiTopCatVal">—</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Gasto promedio / comprobante</span>
+        <span class="kpi-value" id="kpiAvg">—</span>
+        <span class="kpi-foot">sobre <span id="kpiComps2">—</span> comprobantes</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <article class="panel panel-tall">
+      <h2>En qué se gastó</h2>
+      <p class="panel-note">Distribución por categoría</p>
+      <div class="chart-box"><canvas id="chartCat"></canvas></div>
+      <ul class="legend" id="legendCat"></ul>
+    </article>
+
+    <article class="panel">
+      <h2>Por comprobante</h2>
+      <p class="panel-note">Total de cada boleta o factura</p>
+      <div class="chart-box"><canvas id="chartComp"></canvas></div>
+    </article>
+
+    <article class="panel">
+      <h2>Por día</h2>
+      <p class="panel-note">Gasto acumulado según la fecha</p>
+      <div class="chart-box"><canvas id="chartDay"></canvas></div>
+    </article>
+  </section>
+
+  <section class="panel table-panel">
+    <div class="table-head">
+      <h2>Detalle completo</h2>
+      <input type="search" id="filter" placeholder="Buscar ítem o categoría…" aria-label="Buscar">
+    </div>
+    <div class="table-scroll">
+      <table id="table">
+        <thead>
+          <tr>
+            <th>Comprobante</th><th>Fecha</th><th>Categoría</th>
+            <th>Descripción</th><th class="num">Cant.</th><th class="num">Importe (Bs.)</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="disclaimer" id="note"></p>
+  <footer class="foot">Actualiza los datos en <code>script.js</code> · Hecho para el seguimiento de gastos de Ana Lucía</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
