@@ -265,15 +265,16 @@ function initReveal(){
   document.querySelectorAll(".reveal").forEach(el=>io.observe(el));
 }
 
-/* ---------- lightbox radiografía ---------- */
+/* ---------- lightbox (galería + radiografía) ---------- */
 function initLightbox(){
-  const frame = document.getElementById("xrayFrame");
-  const img = frame.querySelector("img");
   const lb = document.getElementById("lightbox");
-  if(img){
-    frame.addEventListener("click", ()=>{ lb.querySelector("img").src = img.src; lb.classList.add("open"); });
-    lb.addEventListener("click", ()=> lb.classList.remove("open"));
-  }
+  const lbImg = lb.querySelector("img");
+  document.querySelectorAll(".zoom img, #xrayFrame img").forEach(img=>{
+    img.style.cursor = "zoom-in";
+    img.addEventListener("click", e=>{ e.stopPropagation(); lbImg.src = img.src; lb.classList.add("open"); });
+  });
+  lb.addEventListener("click", ()=> lb.classList.remove("open"));
+  document.addEventListener("keydown", e=>{ if(e.key==="Escape") lb.classList.remove("open"); });
 }
 
 /* ---------- init ---------- */

@@ -143,6 +143,24 @@ section.block{margin-top:52px}
 .legend .lg-val{font-variant-numeric:tabular-nums;color:var(--ink-soft)}
 .legend .lg-pct{font-size:12px;color:var(--pink-strong);font-weight:600;min-width:38px;text-align:right}
 
+/* ---------- Galería de recuerdos ---------- */
+.gallery{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
+.photo{
+  background:var(--white);border:1px solid var(--line);border-radius:26px;
+  padding:12px;box-shadow:var(--shadow);overflow:hidden;
+}
+.photo img{
+  width:100%;height:auto;display:block;border-radius:18px;cursor:zoom-in;
+  transition:transform .45s ease;
+}
+.photo:hover img{transform:scale(1.03)}
+.photo figcaption{
+  padding:16px 10px 6px;text-align:center;
+  font-family:'Fraunces',serif;font-style:italic;
+  color:var(--rose-ink);font-size:15.5px;line-height:1.45;
+}
+@media (max-width:640px){ .gallery{grid-template-columns:1fr} }
+
 /* ---------- Radiography ---------- */
 .xray{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:center}
 .xray .frame{
