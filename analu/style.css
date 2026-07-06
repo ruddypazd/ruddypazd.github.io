@@ -1,0 +1,240 @@
+:root{
+--cream:#fdf8f4;
+--cream-2:#faf0ea;
+--white:#ffffff;
+--pink:#f6b8c6;
+--pink-soft:#fce4ea;
+--pink-strong:#e98aa0;
+--rose-ink:#8f4a5b;
+--ink:#3a2f33;
+--ink-soft:#7a6d72;
+--line:#f0e3dc;
+--shadow:0 20px 50px -25px rgba(160,90,110,.35);
+--radius:26px;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+font-family:'Inter',system-ui,sans-serif;
+color:var(--ink);
+background:
+    radial-gradient(900px 600px at 85% -5%, var(--pink-soft), transparent 60%),
+    radial-gradient(700px 500px at 0% 10%, #fbeef4, transparent 55%),
+    var(--cream);
+line-height:1.65;
+-webkit-font-smoothing:antialiased;
+overflow-x:hidden;
+}
+
+.wrap{max-width:960px;margin:0 auto;padding:32px 22px 80px}
+
+/* ---------- Hero ---------- */
+.hero{
+position:relative;
+text-align:center;
+padding:56px 28px 48px;
+margin-top:16px;
+background:linear-gradient(160deg,var(--white),var(--cream-2));
+border:1px solid var(--line);
+border-radius:36px;
+box-shadow:var(--shadow);
+overflow:hidden;
+}
+.hero::before{
+content:"";
+position:absolute;inset:0;
+background:
+    radial-gradient(400px 220px at 50% -30%, rgba(246,184,198,.45), transparent 70%);
+pointer-events:none;
+}
+.avatar{
+position:relative;
+width:132px;height:132px;
+margin:0 auto 22px;
+border-radius:50%;
+overflow:hidden;
+background:linear-gradient(150deg,var(--pink),var(--pink-strong));
+box-shadow:0 18px 40px -18px rgba(233,138,160,.9), inset 0 2px 6px rgba(255,255,255,.5);
+border:4px solid var(--white);
+}
+.avatar img{
+width:100%;height:100%;
+object-fit:cover;
+display:block;
+}
+.kicker{
+position:relative;
+display:inline-block;
+font-size:12px;letter-spacing:.24em;text-transform:uppercase;
+color:var(--pink-strong);font-weight:600;
+margin-bottom:14px;
+}
+.hero h1{
+position:relative;
+font-family:'Fraunces',serif;
+font-weight:500;
+font-size:clamp(40px,8vw,68px);
+line-height:1.02;
+letter-spacing:-.01em;
+color:var(--ink);
+}
+.hero h1 em{font-style:italic;color:var(--pink-strong)}
+.hero .tagline{
+position:relative;
+margin:18px auto 0;
+max-width:520px;
+color:var(--ink-soft);
+font-size:17px;
+}
+.badges{
+position:relative;
+display:flex;flex-wrap:wrap;gap:10px;justify-content:center;
+margin-top:26px;
+}
+.badge{
+background:var(--white);
+border:1px solid var(--line);
+border-radius:999px;
+padding:9px 16px;
+font-size:13px;font-weight:500;
+color:var(--rose-ink);
+box-shadow:0 6px 16px -12px rgba(160,90,110,.5);
+}
+.badge b{color:var(--pink-strong)}
+
+/* ---------- Section shell ---------- */
+section.block{margin-top:56px}
+.sec-head{margin-bottom:22px;text-align:center}
+.sec-head .tag{
+font-size:12px;letter-spacing:.22em;text-transform:uppercase;
+color:var(--pink-strong);font-weight:600;
+}
+.sec-head h2{
+font-family:'Fraunces',serif;font-weight:500;
+font-size:clamp(26px,4.5vw,36px);
+color:var(--ink);margin-top:6px;
+}
+
+/* ---------- Quick facts ---------- */
+.facts{
+display:grid;
+grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+gap:16px;
+}
+.fact{
+background:var(--white);
+border:1px solid var(--line);
+border-radius:var(--radius);
+padding:22px 20px;
+box-shadow:0 12px 30px -24px rgba(160,90,110,.5);
+transition:transform .25s ease, box-shadow .25s ease;
+}
+.fact:hover{transform:translateY(-4px);box-shadow:var(--shadow)}
+.fact .n{
+font-family:'Fraunces',serif;
+font-size:32px;color:var(--pink-strong);line-height:1;
+}
+.fact .l{margin-top:8px;font-size:13px;color:var(--ink-soft)}
+
+/* ---------- Story / timeline ---------- */
+.story{
+background:var(--white);
+border:1px solid var(--line);
+border-radius:32px;
+padding:clamp(26px,5vw,46px);
+box-shadow:var(--shadow);
+}
+.lede{
+font-family:'Fraunces',serif;
+font-style:italic;
+font-size:clamp(19px,3vw,23px);
+color:var(--rose-ink);
+line-height:1.5;
+margin-bottom:34px;
+padding-left:20px;
+border-left:3px solid var(--pink);
+}
+.timeline{position:relative;padding-left:34px}
+.timeline::before{
+content:"";position:absolute;left:9px;top:6px;bottom:6px;
+width:2px;background:linear-gradient(var(--pink),var(--pink-soft));
+}
+.tl-item{position:relative;padding-bottom:34px}
+.tl-item:last-child{padding-bottom:0}
+.tl-item::before{
+content:"";position:absolute;left:-33px;top:4px;
+width:16px;height:16px;border-radius:50%;
+background:var(--white);
+border:3px solid var(--pink-strong);
+box-shadow:0 0 0 4px var(--pink-soft);
+}
+.tl-item .when{
+font-size:12px;font-weight:600;letter-spacing:.06em;
+text-transform:uppercase;color:var(--pink-strong);
+}
+.tl-item h3{
+font-family:'Fraunces',serif;font-weight:500;
+font-size:20px;color:var(--ink);margin:4px 0 8px;
+}
+.tl-item p{color:var(--ink-soft);font-size:15.5px}
+
+/* ---------- Enfermedades ---------- */
+.illness-list{
+display:grid;
+grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+gap:16px;
+}
+.illness{
+display:flex;align-items:center;gap:16px;
+text-decoration:none;
+background:var(--white);
+border:1px solid var(--line);
+border-radius:var(--radius);
+padding:20px 22px;
+box-shadow:0 12px 30px -24px rgba(160,90,110,.5);
+transition:transform .25s ease, box-shadow .25s ease;
+}
+.illness:hover{transform:translateY(-4px);box-shadow:var(--shadow)}
+.illness .ico{
+flex:0 0 auto;
+width:46px;height:46px;border-radius:50%;
+display:grid;place-items:center;
+font-size:22px;
+background:var(--pink-soft);
+}
+.illness .txt .t{
+font-family:'Fraunces',serif;font-weight:500;
+font-size:18px;color:var(--ink);
+}
+.illness .txt .d{font-size:13px;color:var(--ink-soft);margin-top:2px}
+.illness .arrow{margin-left:auto;color:var(--pink-strong);font-size:20px}
+
+/* ---------- Quote ---------- */
+.quote{
+margin-top:56px;
+text-align:center;
+padding:44px 28px;
+background:linear-gradient(160deg,var(--pink-soft),var(--white));
+border:1px solid var(--line);
+border-radius:32px;
+}
+.quote p{
+font-family:'Fraunces',serif;font-style:italic;
+font-size:clamp(21px,3.5vw,28px);
+color:var(--rose-ink);line-height:1.4;
+max-width:640px;margin:0 auto;
+}
+.quote .heart{font-size:26px;margin-bottom:12px}
+
+/* ---------- Footer ---------- */
+.foot{
+margin-top:60px;text-align:center;
+color:var(--ink-soft);font-size:13.5px;
+}
+.foot .hn{color:var(--pink-strong)}
+
+@media (max-width:520px){
+.hero{padding:44px 20px 38px}
+.avatar{width:110px;height:110px;font-size:44px}
+}
