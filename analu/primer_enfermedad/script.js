@@ -19,7 +19,8 @@ const CAT_COLORS = {
   "Imagenología":    "#f4c99e",
   "Insumos":         "#b98cc4",
   "Sueros":          "#eaa0ae",
-  "Procedimientos":  "#cbb2d6"
+  "Procedimientos":  "#cbb2d6",
+  "Honorarios médicos": "#c98fae"
 };
 const FALLBACK_COLORS = ["#e98aa0","#f2b5c4","#d38fb0","#f4c99e","#b98cc4","#eaa0ae","#cbb2d6","#f0a9b8"];
 
