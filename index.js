@@ -547,9 +547,11 @@ function initLiveSession() {
         const box = document.getElementById('session-map');
         if (!box || typeof jsVectorMap !== 'function') return;
         located = true;
+        // Destruye el mapa anterior en su propio try: si falla, igual recreamos.
+        try { if (map && typeof map.destroy === 'function') map.destroy(); } catch (e) { /* noop */ }
+        map = null;
+        box.innerHTML = '';
         try {
-            if (map && typeof map.destroy === 'function') map.destroy();
-            box.innerHTML = '';
             map = new jsVectorMap({
                 selector: '#session-map',
                 map: 'world',
