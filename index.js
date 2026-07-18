@@ -700,6 +700,7 @@ function initChat() {
     let streaming = false, connected = false;
     let bubble = null, raw = '';
     const CURSOR = '<span class="chat__cursor">▋</span>';
+    const GREETING = '¡Hola! Soy <strong>Nemotron</strong>, la IA de este sitio. Pregúntame lo que quieras. 🤖';
 
     const updateBtn = () => { sendBtn.disabled = streaming || !connected; };
 
@@ -713,6 +714,19 @@ function initChat() {
         log.appendChild(el);
         log.scrollTop = log.scrollHeight;
         return b;
+    }
+
+    // Pinta el historial recibido al iniciar sesión (o el saludo si está vacío)
+    function renderHistory(messages) {
+        log.innerHTML = '';
+        if (!Array.isArray(messages) || !messages.length) {
+            addMsg('ai', GREETING, true);
+            return;
+        }
+        messages.forEach((m) => {
+            if (m.role === 'user') addMsg('user', m.content || '');
+            else addMsg('ai', renderMarkdown(m.content || ''), true);
+        });
     }
 
     rpSocket.onState((s) => {
@@ -730,7 +744,9 @@ function initChat() {
     });
 
     rpSocket.onMessage((msg) => {
-        if (msg.type === 'start') {
+        if (msg.type === 'history') {
+            renderHistory(msg.messages);
+        } else if (msg.type === 'start') {
             streaming = true; raw = '';
             bubble = addMsg('ai', CURSOR, true);
             updateBtn();
