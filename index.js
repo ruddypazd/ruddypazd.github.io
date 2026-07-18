@@ -572,8 +572,10 @@ function initLiveSession() {
                     initial: { fontFamily: 'JetBrains Mono, monospace', fontSize: 12, fill: '#e8ecf6' },
                 },
             });
-            // Acerca la cámara al punto (si la versión lo soporta)
-            try { map.setFocus?.({ coords: [lat, lon], scale: 4, animate: true }); } catch (e) { /* opcional */ }
+            // Acerca la cámara al punto. Con un tick para que el mapa recién
+            // creado ya esté montado (importante al reconectar).
+            const m = map;
+            setTimeout(() => { try { m.setFocus?.({ coords: [lat, lon], scale: 4, animate: true }); } catch (e) { /* opcional */ } }, 80);
         } catch (e) { /* si el mapa falla, quedan los datos de texto */ }
     }
 
