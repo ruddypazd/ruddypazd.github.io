@@ -603,6 +603,19 @@ function initChat() {
     toggles.forEach(t => t.addEventListener('click', () => setOpen(!open)));
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && open) setOpen(false); });
 
+    // Ajusta la altura al viewport visible: al abrirse el teclado en el móvil,
+    // el panel se encoge y el input queda siempre a la vista (nunca se sale).
+    if (window.visualViewport) {
+        const vv = window.visualViewport;
+        const applyVV = () => {
+            root.style.setProperty('--vvh', vv.height + 'px');
+            if (open) log.scrollTop = log.scrollHeight;
+        };
+        vv.addEventListener('resize', applyVV);
+        vv.addEventListener('scroll', applyVV);
+        applyVV();
+    }
+
     let streaming = false, connected = false;
     let bubble = null, raw = '';
     const CURSOR = '<span class="chat__cursor">▋</span>';

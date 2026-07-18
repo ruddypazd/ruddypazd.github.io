@@ -563,9 +563,10 @@ body.nav-open { overflow: hidden; }
 
 .chat__form { display: flex; gap: .5rem; padding: .7rem; border-top: 1px solid var(--panel-brd); }
 .chat__input {
-    flex: 1; resize: none; max-height: 120px; background: var(--bg-soft); color: var(--text);
+    flex: 1 1 auto; min-width: 0; width: 100%; resize: none; max-height: 120px;
+    background: var(--bg-soft); color: var(--text);
     border: 1px solid var(--panel-brd); border-radius: 12px; padding: .6rem .8rem;
-    font-family: var(--font); font-size: .92rem; outline: none; line-height: 1.4;
+    font-family: var(--font); font-size: 16px; outline: none; line-height: 1.4;
 }
 .chat__input:focus { border-color: var(--cyan); box-shadow: 0 0 0 2px rgba(0,229,255,.15); }
 .chat__send {
@@ -579,8 +580,11 @@ body.nav-open { overflow: hidden; }
 @media (max-width: 560px) {
     .chatw { right: 16px; bottom: 16px; }
     .chatw.open .chatw__panel {
-        position: fixed; inset: 0;
-        width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh;
+        /* Anclado por bordes (nunca 100vw) para no exceder el ancho de pantalla.
+           La altura sigue al viewport visible para que el input quede sobre el teclado. */
+        position: fixed; top: 0; left: 0; right: 0; bottom: auto;
+        width: auto; max-width: 100%;
+        height: var(--vvh, 100dvh); max-height: none;
         border-radius: 0; border: none;
     }
     .chatw.open .chatw__fab { display: none; }
