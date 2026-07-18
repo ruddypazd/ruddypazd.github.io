@@ -543,14 +543,12 @@ function initLiveSession() {
         }
     }
 
-    function renderMarker(lat, lon, name) {
+    // Crea el mapa UNA sola vez (sin marcadores). Se reutiliza siempre;
+    // así al reconectar no hay que destruir/recrear (que fallaba en jsVectorMap).
+    function ensureMap() {
         const box = document.getElementById('session-map');
-        if (!box || typeof jsVectorMap !== 'function') return;
-        located = true;
-        // Destruye el mapa anterior en su propio try: si falla, igual recreamos.
-        try { if (map && typeof map.destroy === 'function') map.destroy(); } catch (e) { /* noop */ }
-        map = null;
-        box.innerHTML = '';
+        if (!box || typeof jsVectorMap !== 'function') return null;
+        if (map) return map;
         try {
             map = new jsVectorMap({
                 selector: '#session-map',
@@ -563,7 +561,6 @@ function initLiveSession() {
                     initial: { fill: '#1b2236', stroke: '#05060a', strokeWidth: 0.4 },
                     hover: { fillOpacity: 0.85 },
                 },
-                markers: [{ name, coords: [lat, lon] }],
                 markerStyle: {
                     initial: { fill: '#ff3da6', stroke: '#ff9ad3', strokeWidth: 2, r: 7 },
                     hover: { fill: '#ff3da6' },
@@ -572,11 +569,18 @@ function initLiveSession() {
                     initial: { fontFamily: 'JetBrains Mono, monospace', fontSize: 12, fill: '#e8ecf6' },
                 },
             });
-            // Acerca la cámara al punto. Con un tick para que el mapa recién
-            // creado ya esté montado (importante al reconectar).
-            const m = map;
-            setTimeout(() => { try { m.setFocus?.({ coords: [lat, lon], scale: 4, animate: true }); } catch (e) { /* opcional */ } }, 80);
-        } catch (e) { /* si el mapa falla, quedan los datos de texto */ }
+        } catch (e) { map = null; }
+        return map;
+    }
+
+    function renderMarker(lat, lon, name) {
+        const m = ensureMap();
+        if (!m) return;
+        located = true;
+        try { m.removeMarkers(); } catch (e) { /* noop */ }
+        try { m.addMarkers([{ name, coords: [lat, lon] }]); } catch (e) { /* noop */ }
+        // Zoom al punto (con un tick por si el mapa se acaba de crear).
+        setTimeout(() => { try { m.setFocus({ coords: [lat, lon], scale: 4, animate: true }); } catch (e) { /* opcional */ } }, 60);
     }
 
     // Al desconectar: quita el marcador y hace zoom-out al máximo (mundo completo)
@@ -584,9 +588,7 @@ function initLiveSession() {
         located = false;
         coordsEl.textContent = '—';
         if (!map) return;
-        try { map.removeMarkers?.(); } catch (e) { /* noop */ }
-        // Zoom-out al máximo. La variante {coords, scale} es la que respeta esta versión
-        // (la de {x, y, scale} no aplica el zoom). Centramos el mundo a escala 1.
+        try { map.removeMarkers(); } catch (e) { /* noop */ }
         try {
             if (map.setFocus) map.setFocus({ coords: [0, 0], scale: 1, animate: true });
             else map.reset?.();
