@@ -509,7 +509,7 @@ body.nav-open { overflow: hidden; }
 /* ===========================================================
    Chat flotante con IA (Nemotron)
    =========================================================== */
-.chatw { position: fixed; right: 22px; bottom: 22px; z-index: 90; }
+.chatw { position: fixed; left: 22px; right: auto; bottom: 22px; z-index: 90; }
 
 .chatw__fab {
     width: 60px; height: 60px; border-radius: 50%; border: none; cursor: pointer;
@@ -524,7 +524,7 @@ body.nav-open { overflow: hidden; }
 .chatw.open .chatw__fab-close { display: block; }
 
 .chatw__panel {
-    position: absolute; right: 0; bottom: 76px;
+    position: absolute; left: 0; right: auto; bottom: 76px;
     width: 380px; max-width: calc(100vw - 44px);
     height: 560px; max-height: calc(100vh - 130px);
     background: var(--panel); border: 1px solid var(--panel-brd); border-radius: 18px;
@@ -584,7 +584,7 @@ body.nav-open { overflow: hidden; }
 /* Móvil: al abrir, ocupa toda la pantalla y sigue al viewport visible
    (así no se mueve ni se pierde cuando aparece el teclado). */
 @media (max-width: 560px) {
-    .chatw { right: 16px; bottom: 16px; }
+    .chatw { left: 16px; right: auto; bottom: 16px; }
     .chatw.open .chatw__panel {
         position: fixed; bottom: auto; right: auto;
         top: var(--vv-top, 0px);
