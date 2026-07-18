@@ -638,41 +638,64 @@ function initChat() {
     const idDot   = root.querySelector('.chat__id .dot');
     const toggles = root.querySelectorAll('[data-chat-toggle]');
 
+    // Safari iOS: nunca hacer zoom al enfocar el input. Bloqueamos el zoom
+    // (se restaura al salir para conservar el pinch-zoom del resto de la página).
+    const viewport = document.querySelector('meta[name="viewport"]');
+    const VP_DEFAULT = viewport ? viewport.getAttribute('content') : '';
+    const VP_LOCK = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no';
+
+    // Clava el panel sobre el área realmente visible (viewport visual).
+    // Con el teclado abierto en iOS, esto impide que se mueva o se pierda.
+    const vv = window.visualViewport;
+    const applyVV = () => {
+        if (!vv) return;
+        root.style.setProperty('--vvh', vv.height + 'px');
+        root.style.setProperty('--vv-top', (vv.offsetTop || 0) + 'px');
+        root.style.setProperty('--vv-left', (vv.offsetLeft || 0) + 'px');
+        root.style.setProperty('--vv-width', vv.width + 'px');
+        if (open) log.scrollTop = log.scrollHeight;
+    };
+    if (vv) {
+        vv.addEventListener('resize', applyVV);
+        vv.addEventListener('scroll', applyVV);
+    }
+
+    // Bloqueo del fondo (solo en móvil): fija el body conservando el scroll,
+    // así al escribir la página nunca se desplaza detrás del chat.
+    const isMobile = () => window.matchMedia('(max-width: 560px)').matches;
+    let savedScroll = 0, bgLocked = false;
+    const lockBg = () => {
+        if (bgLocked) return;
+        savedScroll = window.scrollY || window.pageYOffset || 0;
+        document.body.style.top = `-${savedScroll}px`;
+        document.body.classList.add('chat-open');
+        bgLocked = true;
+    };
+    const unlockBg = () => {
+        if (!bgLocked) return;
+        document.body.classList.remove('chat-open');
+        document.body.style.top = '';
+        window.scrollTo(0, savedScroll);
+        bgLocked = false;
+    };
+
     // Abrir / cerrar el widget flotante
     let open = false;
     const setOpen = (v) => {
         open = v;
         root.classList.toggle('open', v);
         toggles.forEach(t => t.setAttribute('aria-expanded', String(v)));
-        document.body.classList.toggle('chat-open', v);
-        if (v) setTimeout(() => input.focus(), 80);
+        if (v) {
+            if (viewport) viewport.setAttribute('content', VP_LOCK);
+            if (isMobile()) { lockBg(); applyVV(); }
+            setTimeout(() => { input.focus({ preventScroll: true }); applyVV(); }, 80);
+        } else {
+            unlockBg();
+            if (viewport) viewport.setAttribute('content', VP_DEFAULT);
+        }
     };
     toggles.forEach(t => t.addEventListener('click', () => setOpen(!open)));
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && open) setOpen(false); });
-
-    // Safari iOS: evita el zoom-al-enfocar el input (que descuadra el ancho).
-    // Bloqueamos el zoom solo mientras se escribe y lo restauramos al salir,
-    // para no perder el pinch-zoom en el resto de la página.
-    const viewport = document.querySelector('meta[name="viewport"]');
-    if (viewport) {
-        const VP_DEFAULT = viewport.getAttribute('content');
-        const VP_LOCK = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no';
-        input.addEventListener('focus', () => viewport.setAttribute('content', VP_LOCK));
-        input.addEventListener('blur',  () => viewport.setAttribute('content', VP_DEFAULT));
-    }
-
-    // Ajusta la altura al viewport visible: al abrirse el teclado en el móvil,
-    // el panel se encoge y el input queda siempre a la vista (nunca se sale).
-    if (window.visualViewport) {
-        const vv = window.visualViewport;
-        const applyVV = () => {
-            root.style.setProperty('--vvh', vv.height + 'px');
-            if (open) log.scrollTop = log.scrollHeight;
-        };
-        vv.addEventListener('resize', applyVV);
-        vv.addEventListener('scroll', applyVV);
-        applyVV();
-    }
 
     let streaming = false, connected = false;
     let bubble = null, raw = '';

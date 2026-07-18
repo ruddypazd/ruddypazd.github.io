@@ -581,17 +581,20 @@ body.nav-open { overflow: hidden; }
 .chat__send:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 0 16px var(--glow-cyan); }
 .chat__send:disabled { opacity: .45; cursor: not-allowed; }
 
-/* Móvil: al abrir, ocupa toda la pantalla */
+/* Móvil: al abrir, ocupa toda la pantalla y sigue al viewport visible
+   (así no se mueve ni se pierde cuando aparece el teclado). */
 @media (max-width: 560px) {
     .chatw { right: 16px; bottom: 16px; }
     .chatw.open .chatw__panel {
-        /* Anclado por bordes (nunca 100vw) para no exceder el ancho de pantalla.
-           La altura sigue al viewport visible para que el input quede sobre el teclado. */
-        position: fixed; top: 0; left: 0; right: 0; bottom: auto;
-        width: auto; max-width: 100%;
+        position: fixed; bottom: auto; right: auto;
+        top: var(--vv-top, 0px);
+        left: var(--vv-left, 0px);
+        width: var(--vv-width, 100%);
+        max-width: none;
         height: var(--vvh, 100dvh); max-height: none;
         border-radius: 0; border: none;
     }
     .chatw.open .chatw__fab { display: none; }
-    body.chat-open { overflow: hidden; }
 }
+/* Bloqueo del fondo mientras el chat está abierto (evita que la página haga scroll) */
+body.chat-open { position: fixed; width: 100%; overflow: hidden; }
