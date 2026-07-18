@@ -108,6 +108,11 @@ document.addEventListener('DOMContentLoaded', () => {
     /* ---- Contador de visitas (Cloudflare Worker + KV) ---- */
     initVisitCounter();
 
+    /* ---- Socket compartido: sesión en vivo + chat con IA ---- */
+    initLiveSession();
+    initChat();
+    rpSocket.start();   // una sola conexión para ambos
+
     /* ---- Fondo: red de partículas estilo cyber ---- */
     initParticles(reduceMotion);
 
@@ -364,6 +369,308 @@ function initInfraModal(wrap) {
      https://visit-counter.TU-USUARIO.workers.dev
    =========================================================== */
 const COUNTER_API = 'https://visitas.ruddypazd.com';
+
+/* ===========================================================
+   Sesión en vivo — IP pública + ubicación por WebSocket
+   ----------------------------------------------------------
+   Al entrar, abre wss://ws.ruddypazd.com/ws. El servidor envía
+   un primer mensaje {type:"session", ip, lat, lon, country, city}.
+   Mostramos la IP y ponemos un marcador en el mapa. Si lat/lon
+   vienen null (ipapi.co limitado), geolocalizamos como respaldo.
+   =========================================================== */
+const WS_URL = 'wss://ws.ruddypazd.com/ws';
+
+/* ----------------------------------------------------------
+   Socket compartido — una sola conexión para la sesión en vivo
+   y el chat con la IA. Con reconexión automática (backoff) y
+   suscriptores para mensajes y cambios de estado.
+   ---------------------------------------------------------- */
+const rpSocket = (() => {
+    let ws = null;
+    let delay = 2000, timer = null, dead = false;
+    const msgSubs = new Set();
+    const stateSubs = new Set();
+
+    const emitMsg = (m) => msgSubs.forEach(fn => { try { fn(m); } catch (e) {} });
+    const emitState = (s) => stateSubs.forEach(fn => { try { fn(s); } catch (e) {} });
+
+    function connect() {
+        if (dead) return;
+        emitState('connecting');
+        try {
+            ws = new WebSocket(WS_URL);
+        } catch (e) {
+            emitState('down');
+            schedule();
+            return;
+        }
+        ws.addEventListener('open', () => { delay = 2000; emitState('live'); });
+        ws.addEventListener('message', (ev) => {
+            let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+            if (m) emitMsg(m);
+        });
+        ws.addEventListener('close', () => { if (dead) return; emitState('down'); schedule(); });
+        ws.addEventListener('error', () => { try { ws.close(); } catch (e) {} });
+    }
+
+    function schedule() {
+        if (dead || timer) return;
+        timer = setTimeout(() => { timer = null; connect(); }, delay);
+        delay = Math.min(Math.round(delay * 1.6), 15000);   // backoff hasta 15s
+    }
+
+    const kick = () => {
+        if (!dead && (!ws || ws.readyState === WebSocket.CLOSED)) {
+            delay = 2000;
+            if (timer) { clearTimeout(timer); timer = null; }
+            connect();
+        }
+    };
+    window.addEventListener('online', kick);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) kick(); });
+    window.addEventListener('beforeunload', () => { dead = true; try { ws && ws.close(); } catch (e) {} });
+
+    return {
+        start: connect,
+        onMessage: (fn) => msgSubs.add(fn),
+        onState: (fn) => stateSubs.add(fn),
+        isOpen: () => !!ws && ws.readyState === WebSocket.OPEN,
+        send: (obj) => {
+            if (ws && ws.readyState === WebSocket.OPEN) { ws.send(JSON.stringify(obj)); return true; }
+            return false;
+        },
+    };
+})();
+
+/* Markdown mínimo y seguro (escapa HTML y aplica formato básico) */
+function renderMarkdown(src) {
+    let h = String(src)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    h = h.replace(/```([\s\S]*?)```/g, (m, c) => `<pre><code>${c.replace(/\n$/, '')}</code></pre>`);
+    h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+    h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    h = h.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+    h = h.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    h = h.replace(/\n/g, '<br>');
+    return h;
+}
+
+function initLiveSession() {
+    const section = document.getElementById('session');
+    if (!section) return;
+
+    const statusEl  = section.querySelector('[data-session-status]');
+    const statusTxt = section.querySelector('[data-status-text]');
+    const ipEl      = section.querySelector('[data-session-ip]');
+    const cityEl    = section.querySelector('[data-session-city]');
+    const countryEl = section.querySelector('[data-session-country]');
+    const coordsEl  = section.querySelector('[data-session-coords]');
+
+    // Muestra la sección y dispara su animación de entrada
+    section.hidden = false;
+    const reveal = section.querySelector('.reveal');
+    if (reveal) reveal.classList.add('in');
+
+    let map = null;
+    let filled = false;      // ya recibimos datos del socket
+    let located = false;     // ya pintamos el marcador
+
+    const heroDot = document.querySelector('.hero__eyebrow .dot');
+    const setStatus = (kind, text) => {
+        statusEl.className = 'session__status' + (kind ? ' ' + kind : '');
+        if (statusTxt) statusTxt.textContent = text;
+        // El punto del hero (CEO @ Servisofts) también refleja la conexión
+        if (heroDot) {
+            heroDot.classList.toggle('is-live', kind === 'live');
+            heroDot.classList.toggle('is-off', kind !== 'live');
+        }
+    };
+
+    function showLocation({ ip, lat, lon, country, city }) {
+        if (ip) ipEl.textContent = ip;
+        if (city) cityEl.textContent = city;
+        if (country) countryEl.textContent = country;
+        if (lat != null && lon != null) {
+            coordsEl.textContent = `${(+lat).toFixed(4)}, ${(+lon).toFixed(4)}`;
+            renderMarker(+lat, +lon, city || country || 'Tu ubicación');
+        }
+    }
+
+    function renderMarker(lat, lon, name) {
+        const box = document.getElementById('session-map');
+        if (!box || typeof jsVectorMap !== 'function') return;
+        located = true;
+        try {
+            if (map && typeof map.destroy === 'function') map.destroy();
+            box.innerHTML = '';
+            map = new jsVectorMap({
+                selector: '#session-map',
+                map: 'world',
+                zoomButtons: true,
+                zoomOnScroll: false,
+                backgroundColor: 'transparent',
+                regionsSelectable: false,
+                regionStyle: {
+                    initial: { fill: '#1b2236', stroke: '#05060a', strokeWidth: 0.4 },
+                    hover: { fillOpacity: 0.85 },
+                },
+                markers: [{ name, coords: [lat, lon] }],
+                markerStyle: {
+                    initial: { fill: '#ff3da6', stroke: '#ff9ad3', strokeWidth: 2, r: 7 },
+                    hover: { fill: '#ff3da6' },
+                },
+                markerLabelStyle: {
+                    initial: { fontFamily: 'JetBrains Mono, monospace', fontSize: 12, fill: '#e8ecf6' },
+                },
+            });
+            // Acerca la cámara al punto (si la versión lo soporta)
+            try { map.setFocus?.({ coords: [lat, lon], scale: 4, animate: true }); } catch (e) { /* opcional */ }
+        } catch (e) { /* si el mapa falla, quedan los datos de texto */ }
+    }
+
+    // Al desconectar: quita el marcador y hace zoom-out al máximo (mundo completo)
+    function clearMarker() {
+        located = false;
+        coordsEl.textContent = '—';
+        if (!map) return;
+        try { map.removeMarkers?.(); } catch (e) { /* noop */ }
+        // Zoom-out al máximo. La variante {coords, scale} es la que respeta esta versión
+        // (la de {x, y, scale} no aplica el zoom). Centramos el mundo a escala 1.
+        try {
+            if (map.setFocus) map.setFocus({ coords: [0, 0], scale: 1, animate: true });
+            else map.reset?.();
+        } catch (e) { /* noop */ }
+    }
+
+    // Respaldo: geolocaliza la IP desde el navegador si el socket no dio lat/lon
+    async function fallbackGeo() {
+        if (located) return;
+        try {
+            const r = await fetch('https://ipwho.is/');
+            const d = await r.json();
+            if (d && d.success !== false) {
+                showLocation({ ip: d.ip, lat: d.latitude, lon: d.longitude, country: d.country, city: d.city });
+            }
+        } catch (e) { /* sin respaldo disponible */ }
+    }
+
+    // El estado y los mensajes vienen del socket compartido (rpSocket).
+    rpSocket.onState((s) => {
+        if (s === 'live') setStatus('live', 'Conectado en vivo');
+        else if (s === 'connecting') setStatus('', 'Conectando…');
+        else { // 'down'
+            setStatus('err', 'Conexión perdida · reintentando…');
+            clearMarker();
+            if (!filled) fallbackGeo();
+        }
+    });
+
+    rpSocket.onMessage((msg) => {
+        if (msg.type !== 'session') return;   // el chat maneja start/token/end
+        filled = true;
+        setStatus('live', 'Conectado en vivo');
+        showLocation(msg);
+        if (msg.lat == null || msg.lon == null) fallbackGeo();
+    });
+}
+
+/* ===========================================================
+   Chat con la IA (Nemotron) sobre el socket compartido
+   ----------------------------------------------------------
+   Enviar:  {type:"stream_ia", message:"..."}
+   Recibir: {type:"start"} · {type:"token",content} · {type:"end"}
+   =========================================================== */
+function initChat() {
+    const root = document.getElementById('chat');
+    if (!root) return;
+
+    const log     = root.querySelector('[data-chat-log]');
+    const form    = root.querySelector('[data-chat-form]');
+    const input   = root.querySelector('[data-chat-input]');
+    const sendBtn = root.querySelector('[data-chat-send]');
+    const idDot   = root.querySelector('.chat__id .dot');
+    const toggles = root.querySelectorAll('[data-chat-toggle]');
+
+    // Abrir / cerrar el widget flotante
+    let open = false;
+    const setOpen = (v) => {
+        open = v;
+        root.classList.toggle('open', v);
+        toggles.forEach(t => t.setAttribute('aria-expanded', String(v)));
+        document.body.classList.toggle('chat-open', v);
+        if (v) setTimeout(() => input.focus(), 80);
+    };
+    toggles.forEach(t => t.addEventListener('click', () => setOpen(!open)));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && open) setOpen(false); });
+
+    let streaming = false, connected = false;
+    let bubble = null, raw = '';
+    const CURSOR = '<span class="chat__cursor">▋</span>';
+
+    const updateBtn = () => { sendBtn.disabled = streaming || !connected; };
+
+    function addMsg(role, content, asHTML) {
+        const el = document.createElement('div');
+        el.className = 'chat__msg chat__msg--' + role;
+        const b = document.createElement('div');
+        b.className = 'chat__bubble';
+        if (asHTML) b.innerHTML = content; else b.textContent = content;
+        el.appendChild(b);
+        log.appendChild(el);
+        log.scrollTop = log.scrollHeight;
+        return b;
+    }
+
+    rpSocket.onState((s) => {
+        connected = (s === 'live');
+        root.classList.toggle('is-off', !connected);
+        if (idDot) {
+            idDot.classList.toggle('is-live', connected);
+            idDot.classList.toggle('is-off', !connected);
+        }
+        if (!connected && streaming) {   // se cortó a mitad de respuesta
+            if (bubble) bubble.innerHTML = renderMarkdown(raw);
+            streaming = false; bubble = null; raw = '';
+        }
+        updateBtn();
+    });
+
+    rpSocket.onMessage((msg) => {
+        if (msg.type === 'start') {
+            streaming = true; raw = '';
+            bubble = addMsg('ai', CURSOR, true);
+            updateBtn();
+        } else if (msg.type === 'token') {
+            if (!bubble) bubble = addMsg('ai', '', true);
+            raw += (msg.content || '');
+            bubble.innerHTML = renderMarkdown(raw) + CURSOR;
+            log.scrollTop = log.scrollHeight;
+        } else if (msg.type === 'end') {
+            if (bubble) bubble.innerHTML = renderMarkdown(raw);
+            streaming = false; bubble = null; raw = '';
+            updateBtn();
+        }
+    });
+
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const text = input.value.trim();
+        if (!text || streaming || !connected) return;
+        addMsg('user', text);
+        rpSocket.send({ type: 'stream_ia', message: text });
+        input.value = '';
+        input.style.height = 'auto';
+    });
+
+    // Enter envía; Shift+Enter hace salto de línea. Autoexpande el textarea.
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+    });
+    input.addEventListener('input', () => {
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    });
+}
 
 function initVisitCounter() {
     const el = document.querySelector('[data-visits]');
