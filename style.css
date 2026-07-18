@@ -21,7 +21,7 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
 body {
     background: var(--bg);
@@ -559,6 +559,11 @@ body.nav-open { overflow: hidden; }
 .chat__bubble pre code { background: none; color: var(--text); padding: 0; }
 .chat__bubble strong { color: var(--cyan); }
 .chat__bubble a { color: var(--cyan); text-decoration: underline; }
+.chat__tablewrap { overflow-x: auto; max-width: 100%; margin: .5rem 0; border: 1px solid var(--panel-brd); border-radius: 10px; -webkit-overflow-scrolling: touch; }
+.chat__table { border-collapse: collapse; width: 100%; font-size: .82rem; }
+.chat__table th, .chat__table td { border: 1px solid var(--panel-brd); padding: .4rem .6rem; text-align: left; white-space: nowrap; }
+.chat__table thead th { background: rgba(0,229,255,.08); color: var(--cyan); font-weight: 600; }
+.chat__table tbody tr:nth-child(even) { background: rgba(120,160,255,.04); }
 .chat__cursor { display: inline-block; width: .5ch; color: var(--cyan); animation: blink 1s steps(2) infinite; }
 
 .chat__form { display: flex; gap: .5rem; padding: .7rem; border-top: 1px solid var(--panel-brd); }

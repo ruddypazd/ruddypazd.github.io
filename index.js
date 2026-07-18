@@ -442,17 +442,64 @@ const rpSocket = (() => {
     };
 })();
 
-/* Markdown mínimo y seguro (escapa HTML y aplica formato básico) */
+/* Markdown mínimo y seguro: escapa HTML y renderiza formato básico,
+   bloques de código y TABLAS. Pensado para tolerar streaming parcial. */
 function renderMarkdown(src) {
-    let h = String(src)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    h = h.replace(/```([\s\S]*?)```/g, (m, c) => `<pre><code>${c.replace(/\n$/, '')}</code></pre>`);
-    h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
-    h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    h = h.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
-    h = h.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-    h = h.replace(/\n/g, '<br>');
-    return h;
+    const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const inline = (s) => s
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>')
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+    const lines = esc(String(src)).split('\n');
+    const isRow = (l) => l.trim().startsWith('|') && l.includes('|');
+    const isSep = (l) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/.test(l);
+    const cells = (l) => {
+        let t = l.trim();
+        if (t.startsWith('|')) t = t.slice(1);
+        if (t.endsWith('|')) t = t.slice(0, -1);
+        return t.split('|').map((c) => c.trim());
+    };
+
+    const out = [];
+    let buf = [];
+    const flush = () => {
+        if (buf.length) { out.push(inline(buf.join('\n')).replace(/\n/g, '<br>')); buf = []; }
+    };
+
+    let i = 0;
+    while (i < lines.length) {
+        // Bloque de código ```
+        if (/^\s*```/.test(lines[i])) {
+            flush();
+            i++;
+            const code = [];
+            while (i < lines.length && !/^\s*```/.test(lines[i])) { code.push(lines[i]); i++; }
+            i++; // salta el cierre
+            out.push(`<pre><code>${code.join('\n')}</code></pre>`);
+            continue;
+        }
+        // Tabla | col | col |  +  |---|---|
+        if (isRow(lines[i]) && i + 1 < lines.length && isSep(lines[i + 1])) {
+            flush();
+            const header = cells(lines[i]);
+            i += 2;
+            const body = [];
+            while (i < lines.length && isRow(lines[i])) { body.push(cells(lines[i])); i++; }
+            let t = '<div class="chat__tablewrap"><table class="chat__table"><thead><tr>';
+            t += header.map((h) => `<th>${inline(h)}</th>`).join('');
+            t += '</tr></thead><tbody>';
+            t += body.map((r) => '<tr>' + header.map((_, ci) => `<td>${inline(r[ci] || '')}</td>`).join('') + '</tr>').join('');
+            t += '</tbody></table></div>';
+            out.push(t);
+            continue;
+        }
+        buf.push(lines[i]);
+        i++;
+    }
+    flush();
+    return out.join('');
 }
 
 function initLiveSession() {
@@ -602,6 +649,17 @@ function initChat() {
     };
     toggles.forEach(t => t.addEventListener('click', () => setOpen(!open)));
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && open) setOpen(false); });
+
+    // Safari iOS: evita el zoom-al-enfocar el input (que descuadra el ancho).
+    // Bloqueamos el zoom solo mientras se escribe y lo restauramos al salir,
+    // para no perder el pinch-zoom en el resto de la página.
+    const viewport = document.querySelector('meta[name="viewport"]');
+    if (viewport) {
+        const VP_DEFAULT = viewport.getAttribute('content');
+        const VP_LOCK = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no';
+        input.addEventListener('focus', () => viewport.setAttribute('content', VP_LOCK));
+        input.addEventListener('blur',  () => viewport.setAttribute('content', VP_DEFAULT));
+    }
 
     // Ajusta la altura al viewport visible: al abrirse el teclado en el móvil,
     // el panel se encoge y el input queda siempre a la vista (nunca se sale).
