@@ -642,7 +642,7 @@ function initChat() {
     const input   = root.querySelector('[data-chat-input]');
     const sendBtn = root.querySelector('[data-chat-send]');
     const idDot   = root.querySelector('.chat__id .dot');
-    const toggles = root.querySelectorAll('[data-chat-toggle]');
+    const toggles = document.querySelectorAll('[data-chat-toggle]');
 
     // Safari iOS: nunca hacer zoom al enfocar el input. Bloqueamos el zoom
     // (se restaura al salir para conservar el pinch-zoom del resto de la página).
@@ -685,7 +685,7 @@ function initChat() {
         bgLocked = false;
     };
 
-    // Abrir / cerrar el widget flotante
+    // Abrir / cerrar el popup (desde la sección «Habla con mi agente»)
     let open = false;
     const setOpen = (v) => {
         open = v;
