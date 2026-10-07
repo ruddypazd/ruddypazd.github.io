@@ -270,7 +270,7 @@ player.add(body);
 scene.add(player);
 
 let mixer = null;
-let actions = null;   // { idle, run, jump } si el GLB trae animaciones
+let actions = null;   // { idle, walk, run, jump } si el GLB trae animaciones
 let current = null;
 let jumping = false;
 let placeholder = null;
@@ -341,10 +341,12 @@ new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(
             mixer = new THREE.AnimationMixer(model);
             const clip = (re) => gltf.animations.find((a) => re.test(a.name));
             const idle = clip(/idle/i) || gltf.animations[0];
-            const run = clip(/run|walk/i);
+            const walk = clip(/walk/i);
+            const run = clip(/run/i);
             const jump = clip(/jump/i);
             actions = {
                 idle: mixer.clipAction(idle),
+                walk: walk && mixer.clipAction(walk),
                 run: run && mixer.clipAction(run),
                 jump: jump && mixer.clipAction(jump),
             };
@@ -429,6 +431,42 @@ function jump() {
 }
 jumpBtn.addEventListener('click', jump);
 
+// Correr: Shift en teclado o el botón en pantalla (alterna caminar / correr).
+const runBtn = document.querySelector('[data-run]');
+let runToggle = false;
+runBtn.addEventListener('click', () => {
+    runToggle = !runToggle;
+    runBtn.setAttribute('aria-pressed', String(runToggle));
+    runBtn.textContent = runToggle ? 'Caminar' : 'Correr';
+});
+
+// Música de fondo: el navegador solo permite sonar tras un gesto del usuario.
+const music = new Audio('audio/musica.mp3');
+music.loop = true;
+music.volume = 0.45;
+const musicBtn = document.querySelector('[data-music]');
+let musicOn = true;
+function syncMusicBtn() {
+    musicBtn.textContent = musicOn ? '🔊' : '🔇';
+    musicBtn.setAttribute('aria-label', musicOn ? 'Silenciar música' : 'Activar música');
+    musicBtn.setAttribute('aria-pressed', String(musicOn));
+}
+function startMusic() {
+    if (musicOn && music.paused) music.play().catch(() => {});
+}
+musicBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    musicOn = !musicOn;
+    if (musicOn) startMusic(); else music.pause();
+    syncMusicBtn();
+});
+syncMusicBtn();
+window.addEventListener('pointerdown', startMusic);
+window.addEventListener('keydown', startMusic);
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) music.pause(); else startMusic();
+});
+
 const KEYMAP = {
     KeyW: [0, 1], ArrowUp: [0, 1], KeyS: [0, -1], ArrowDown: [0, -1],
     KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0],
@@ -451,13 +489,15 @@ function readInput() {
 // ---------- Movimiento ----------
 const WALK_SPEED = 2.6;
 const RUN_SPEED = 5;
-const RUN_CLIP_SPEED = 4.2;  // velocidad a la que la animación de correr no patina
+const RUN_CLIP_SPEED = 4.2;   // velocidad a la que la animación de correr no patina
+const WALK_CLIP_SPEED = 1.7;  // ídem para caminar
 const forward = new THREE.Vector3();
 const right = new THREE.Vector3();
 const move = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 let walkPhase = 0;
 let moving = 0;  // 0..1, suaviza el balanceo
+let running = false;
 
 function updatePlayer(dt) {
     readInput();
@@ -473,7 +513,7 @@ function updatePlayer(dt) {
     if (amount > 0.05) {
         controls.autoRotate = false;
         move.normalize();
-        const running = keys.has('ShiftLeft') || keys.has('ShiftRight');
+        running = runToggle || keys.has('ShiftLeft') || keys.has('ShiftRight');
         const speed = (running ? RUN_SPEED : WALK_SPEED) * amount;
         const prev = player.position.clone();
         player.position.addScaledVector(move, speed * dt);
@@ -504,9 +544,13 @@ function updatePlayer(dt) {
 
         walkPhase += dt * speed * 3.2;
         if (actions?.run) actions.run.timeScale = THREE.MathUtils.clamp(speed / RUN_CLIP_SPEED, 0.6, 1.3);
+        if (actions?.walk) actions.walk.timeScale = THREE.MathUtils.clamp(speed / WALK_CLIP_SPEED, 0.6, 1.5);
     }
 
-    if (actions && !jumping) fadeTo(amount > 0.05 && actions.run ? actions.run : actions.idle, 0.25);
+    if (actions && !jumping) {
+        const gait = running ? actions.run || actions.walk : actions.walk || actions.run;
+        fadeTo(amount > 0.05 && gait ? gait : actions.idle, 0.25);
+    }
 
     moving += ((amount > 0.05 ? 1 : 0) - moving) * Math.min(1, dt * 8);
 
