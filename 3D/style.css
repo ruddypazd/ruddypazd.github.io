@@ -60,7 +60,7 @@ body {
 /* ---------- Joystick ---------- */
 .joystick {
     position: fixed; z-index: 3;
-    left: max(1.2rem, env(safe-area-inset-left)); bottom: calc(3.6rem + env(safe-area-inset-bottom));
+    right: max(1.2rem, env(safe-area-inset-right)); bottom: calc(3.6rem + env(safe-area-inset-bottom));
     width: 120px; height: 120px; border-radius: 50%;
     border: 1px solid var(--panel-brd); background: var(--panel); backdrop-filter: blur(10px);
     box-shadow: inset 0 0 24px rgba(0, 229, 255, .12);
@@ -78,7 +78,7 @@ body {
 /* ---------- Botón de salto ---------- */
 .jump-btn {
     position: fixed; z-index: 3;
-    right: max(1.2rem, env(safe-area-inset-right)); bottom: calc(4.6rem + env(safe-area-inset-bottom));
+    left: max(1.2rem, env(safe-area-inset-left)); bottom: calc(4.6rem + env(safe-area-inset-bottom));
     width: 84px; height: 84px; border-radius: 50%;
     border: 1px solid var(--panel-brd); background: var(--panel); backdrop-filter: blur(10px);
     color: var(--text); font-family: var(--mono); font-size: .85rem; cursor: pointer;
@@ -89,5 +89,29 @@ body {
 .jump-btn:active { transform: scale(.94); }
 .jump-btn[hidden] { display: none; }
 
+/* ---------- Botón de correr (sobre el de salto) ---------- */
+.run-btn {
+    position: fixed; z-index: 3;
+    left: max(1.2rem, env(safe-area-inset-left)); bottom: calc(10.6rem + env(safe-area-inset-bottom));
+    width: 84px; height: 40px; border-radius: 999px;
+    border: 1px solid var(--panel-brd); background: var(--panel); backdrop-filter: blur(10px);
+    color: var(--text); font-family: var(--mono); font-size: .8rem; cursor: pointer;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    transition: border-color .2s, box-shadow .2s, background .2s;
+}
+.run-btn:hover, .run-btn[aria-pressed="true"] { border-color: var(--cyan); box-shadow: 0 0 16px rgba(0, 229, 255, .45); }
+.run-btn[aria-pressed="true"] { color: var(--cyan); }
+
+/* ---------- Música ---------- */
+.hud__music {
+    width: 42px; height: 42px; border-radius: 50%; font-size: 1.1rem; cursor: pointer;
+    border: 1px solid var(--panel-brd); background: var(--panel); backdrop-filter: blur(10px);
+    color: var(--text); transition: border-color .2s, box-shadow .2s;
+}
+.hud__music:hover { border-color: var(--cyan); box-shadow: 0 0 16px rgba(0, 229, 255, .45); }
+
 /* ---------- Aviso de enlace al pasar sobre un cartel ---------- */
 .hud__link { color: var(--cyan); font-size: .9rem; margin-bottom: .35rem; }
+
+/* En móvil los controles se explican solos: el texto de ayuda no tapa el joystick. */
+@media (max-width: 600px) { .hud__hint { display: none; } }

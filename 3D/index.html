@@ -25,6 +25,7 @@
     <header class="hud hud--top">
         <a href="../" class="hud__back">← Portafolio</a>
         <span class="hud__title">Mundo&nbsp;<span class="grad">3D</span></span>
+        <button class="hud__music" type="button" data-music aria-label="Silenciar música">🔊</button>
     </header>
 
     <div class="hud hud--loader" data-loader>
@@ -37,11 +38,12 @@
     </div>
 
     <button class="jump-btn" type="button" data-jump aria-label="Saltar" hidden>Saltar</button>
+    <button class="run-btn" type="button" data-run aria-pressed="false">Correr</button>
 
     <footer class="hud hud--bottom">
         <p data-model-note hidden>Modelo provisional: el avatar real de Ruddy llegará pronto.</p>
         <p class="hud__link" data-link-hint hidden></p>
-        <p class="hud__hint">Joystick o WASD para moverte · Espacio salta · Toca un cartel para abrir la cotización</p>
+        <p class="hud__hint">Joystick o WASD para moverte · Shift o «Correr» para correr · Espacio salta · Toca un cartel para abrir la cotización</p>
     </footer>
 
     <script type="module" src="world.js"></script>
