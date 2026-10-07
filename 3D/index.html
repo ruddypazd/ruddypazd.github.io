@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Mundo 3D de Roy Ruddy Paz: explora a Ruddy en 3D.">
+    <title>Mundo 3D · Roy Ruddy Paz</title>
+    <link rel="icon" type="image/jpeg" href="../images/perfil.jpeg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+<body>
+    <canvas id="world" aria-label="Escena 3D con Ruddy"></canvas>
+
+    <header class="hud hud--top">
+        <a href="../" class="hud__back">← Portafolio</a>
+        <span class="hud__title">Mundo&nbsp;<span class="grad">3D</span></span>
+    </header>
+
+    <div class="hud hud--loader" data-loader>
+        <span class="hud__spinner" aria-hidden="true"></span>
+        <span data-loader-text>Cargando a Ruddy…</span>
+    </div>
+
+    <footer class="hud hud--bottom">
+        <p data-model-note hidden>Modelo provisional: el avatar real de Ruddy llegará pronto.</p>
+        <p class="hud__hint">Arrastra para girar · Rueda o pellizca para acercar</p>
+    </footer>
+
+    <script type="module" src="world.js"></script>
+</body>
+</html>
