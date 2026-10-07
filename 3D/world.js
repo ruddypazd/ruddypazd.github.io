@@ -353,15 +353,9 @@ new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(
             if (actions.jump) {
                 actions.jump.setLoop(THREE.LoopOnce, 1);
                 actions.jump.clampWhenFinished = true;
-                // El clip de Mixamo termina en el aire: se reproduce al revés para aterrizar.
+                // Running Jump de Mixamo: despega y aterriza en el mismo clip.
                 mixer.addEventListener('finished', (e) => {
-                    if (e.action !== actions.jump) return;
-                    if (e.direction > 0) {
-                        actions.jump.paused = false;
-                        actions.jump.timeScale = -1.3;
-                    } else {
-                        jumping = false;
-                    }
+                    if (e.action === actions.jump) jumping = false;
                 });
             }
             current = actions.idle;
