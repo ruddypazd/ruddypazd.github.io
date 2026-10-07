@@ -129,13 +129,19 @@ player.add(body);
 scene.add(player);
 
 let mixer = null;
+let actions = null;   // { idle, run, jump } si el GLB trae animaciones
+let current = null;
+let jumping = false;
 let placeholder = null;
 
+// precise: mide los vértices ya deformados por el esqueleto (modelos de Mixamo).
 function fitToHeight(object, height) {
-    const box = new THREE.Box3().setFromObject(object);
+    object.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(object, true);
     const size = box.getSize(new THREE.Vector3());
     if (size.y > 0) object.scale.multiplyScalar(height / size.y);
-    box.setFromObject(object);
+    object.updateMatrixWorld(true);
+    box.setFromObject(object, true);
     const center = box.getCenter(new THREE.Vector3());
     object.position.x -= center.x;
     object.position.z -= center.z;
@@ -178,14 +184,39 @@ new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(
     (gltf) => {
         const model = gltf.scene;
         model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-        fitToHeight(model, 1.8);
         body.add(model);
 
         if (gltf.animations.length) {
             mixer = new THREE.AnimationMixer(model);
-            const idle = gltf.animations.find((a) => /idle/i.test(a.name)) || gltf.animations[0];
-            mixer.clipAction(idle).play();
+            const clip = (re) => gltf.animations.find((a) => re.test(a.name));
+            const idle = clip(/idle/i) || gltf.animations[0];
+            const run = clip(/run|walk/i);
+            const jump = clip(/jump/i);
+            actions = {
+                idle: mixer.clipAction(idle),
+                run: run && mixer.clipAction(run),
+                jump: jump && mixer.clipAction(jump),
+            };
+            if (actions.jump) {
+                actions.jump.setLoop(THREE.LoopOnce, 1);
+                actions.jump.clampWhenFinished = true;
+                // El clip de Mixamo termina en el aire: se reproduce al revés para aterrizar.
+                mixer.addEventListener('finished', (e) => {
+                    if (e.action !== actions.jump) return;
+                    if (e.direction > 0) {
+                        actions.jump.paused = false;
+                        actions.jump.timeScale = -1.3;
+                    } else {
+                        jumping = false;
+                    }
+                });
+            }
+            current = actions.idle;
+            current.play();
+            mixer.update(0);  // medir con la pose de idle, no con la de enlace
+            jumpBtn.hidden = !actions.jump;
         }
+        fitToHeight(model, 1.8);
         done(false);
     },
     (e) => {
@@ -236,11 +267,23 @@ joy.addEventListener('pointermove', (e) => { if (e.pointerId === joyPointer) mov
 joy.addEventListener('pointerup', releaseKnob);
 joy.addEventListener('pointercancel', releaseKnob);
 
+// Salto: barra espaciadora o el botón en pantalla.
+const jumpBtn = document.querySelector('[data-jump]');
+function jump() {
+    if (!actions?.jump || jumping) return;
+    jumping = true;
+    actions.jump.reset();
+    actions.jump.timeScale = 1;
+    fadeTo(actions.jump, 0.15);
+}
+jumpBtn.addEventListener('click', jump);
+
 const KEYMAP = {
     KeyW: [0, 1], ArrowUp: [0, 1], KeyS: [0, -1], ArrowDown: [0, -1],
     KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0],
 };
 window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) jump(); return; }
     if (KEYMAP[e.code] || e.code.startsWith('Shift')) { keys.add(e.code); e.preventDefault(); }
 });
 window.addEventListener('keyup', (e) => keys.delete(e.code));
@@ -257,6 +300,7 @@ function readInput() {
 // ---------- Movimiento ----------
 const WALK_SPEED = 2.6;
 const RUN_SPEED = 5;
+const RUN_CLIP_SPEED = 4.2;  // velocidad a la que la animación de correr no patina
 const forward = new THREE.Vector3();
 const right = new THREE.Vector3();
 const move = new THREE.Vector3();
@@ -308,14 +352,29 @@ function updatePlayer(dt) {
         controls.target.add(delta);
 
         walkPhase += dt * speed * 3.2;
+        if (actions?.run) actions.run.timeScale = THREE.MathUtils.clamp(speed / RUN_CLIP_SPEED, 0.6, 1.3);
     }
 
+    if (actions && !jumping) fadeTo(amount > 0.05 && actions.run ? actions.run : actions.idle, 0.25);
+
     moving += ((amount > 0.05 ? 1 : 0) - moving) * Math.min(1, dt * 8);
+
+    // Con animaciones reales no hace falta simular el paso.
+    if (actions) return;
 
     // Sin esqueleto: simula el paso con rebote, inclinación y vaivén.
     body.position.y = Math.abs(Math.sin(walkPhase)) * 0.06 * moving;
     body.rotation.x = 0.08 * moving;
     body.rotation.z = Math.sin(walkPhase) * 0.05 * moving;
+}
+
+function fadeTo(action, duration) {
+    if (action === current) return;
+    action.enabled = true;
+    action.setEffectiveWeight(1);
+    action.play();
+    current.crossFadeTo(action, duration, false);
+    current = action;
 }
 
 // ---------- Bucle ----------
