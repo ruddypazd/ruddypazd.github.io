@@ -121,6 +121,82 @@ const cubes = NEON.map((color, i) => {
     return cube;
 });
 
+// ---------- Gigantografías luminosas ----------
+// Para cambiar una imagen, reemplaza el archivo con el mismo nombre en 3D/images/.
+// El cartel se adapta a la proporción de la imagen (ancho máximo 8 m).
+const BILLBOARDS = [
+    'images/gigantografia-1.jpg',
+    'images/gigantografia-2.jpg',
+    'images/gigantografia-3.jpg',
+    'images/gigantografia-4.jpg',
+    'images/gigantografia-5.jpg',
+];
+const BILLBOARD_RADIUS = 15;
+const BILLBOARD_HEIGHT = 3.4;   // alto de la imagen, en metros
+const BILLBOARD_BOTTOM = 1.6;   // altura del borde inferior
+const textureLoader = new THREE.TextureLoader();
+const poleMat = new THREE.MeshStandardMaterial({ color: 0x141a2e, roughness: 0.4, metalness: 0.6 });
+
+function buildBillboard(texture, color) {
+    const aspect = texture.image.width / texture.image.height || 16 / 9;
+    let h = BILLBOARD_HEIGHT;
+    let w = h * aspect;
+    if (w > 8) { w = 8; h = w / aspect; }
+    const centerY = BILLBOARD_BOTTOM + h / 2;
+    const group = new THREE.Group();
+
+    // Marco luminoso detrás de la imagen.
+    const frame = new THREE.Mesh(
+        new THREE.BoxGeometry(w + 0.3, h + 0.3, 0.12),
+        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2.2, fog: false })
+    );
+    frame.position.y = centerY;
+    group.add(frame);
+
+    // La imagen no recibe luz: brilla con sus propios colores.
+    const image = new THREE.Mesh(
+        new THREE.PlaneGeometry(w, h),
+        new THREE.MeshBasicMaterial({ map: texture, toneMapped: false, fog: false })
+    );
+    image.position.set(0, centerY, 0.07);
+    group.add(image);
+
+    for (const side of [-1, 1]) {
+        const pole = new THREE.Mesh(new THREE.BoxGeometry(0.22, BILLBOARD_BOTTOM + 0.2, 0.22), poleMat);
+        pole.position.set(side * (w / 2 - 0.5), (BILLBOARD_BOTTOM + 0.2) / 2, -0.12);
+        pole.castShadow = true;
+        group.add(pole);
+    }
+
+    // Ilumina el piso frente al cartel.
+    const glow = new THREE.PointLight(color, 22, 11);
+    glow.position.set(0, centerY - h / 2, 2.2);
+    group.add(glow);
+
+    return { group, width: w };
+}
+
+BILLBOARDS.forEach((url, i) => {
+    textureLoader.load(url, (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        const { group, width } = buildBillboard(texture, NEON[i % NEON.length]);
+
+        const angle = (i / BILLBOARDS.length) * Math.PI * 2 + Math.PI / 2;
+        group.position.set(Math.cos(angle) * BILLBOARD_RADIUS, 0, Math.sin(angle) * BILLBOARD_RADIUS);
+        group.lookAt(0, 0, 0);
+        scene.add(group);
+
+        // Ruddy choca con el cartel a lo largo de su ancho.
+        group.updateMatrixWorld(true);
+        const p = new THREE.Vector3();
+        for (let x = -width / 2; x <= width / 2 + 0.01; x += 0.6) {
+            group.localToWorld(p.set(x, 0, 0));
+            obstacles.push({ x: p.x, z: p.z, r: 0.5 });
+        }
+    });
+});
+
 // ---------- Ruddy ----------
 // player se mueve y gira; body lleva el balanceo al caminar.
 const player = new THREE.Group();
