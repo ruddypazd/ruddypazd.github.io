@@ -129,11 +129,13 @@ const BILLBOARDS = [
     {
         title: 'ROR Logístico',
         url: 'https://s-r-o-r.github.io/cotizaciones/',
+        image: 'https://s-r-o-r.github.io/assets/og/og-cotizaciones.jpg',
         fallback: 'images/cotizacion-ror.jpg',
     },
     {
         title: 'Sofía Ltda.',
         url: 'https://s-s-sofia.github.io/',
+        image: 'https://s-s-sofia.github.io/image/og-image.jpg?v=20261007',
         fallback: 'images/cotizacion-sofia.jpg',
     },
     {
