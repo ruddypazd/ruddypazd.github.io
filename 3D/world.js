@@ -322,7 +322,17 @@ new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(
     MODEL_URL,
     (gltf) => {
         const model = gltf.scene;
-        model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        model.traverse((o) => {
+            if (!o.isMesh) return;
+            o.castShadow = true;
+            o.receiveShadow = true;
+            // El material de Mixamo viene metálico y pulido (metal 0.4, rugosidad 0.27):
+            // se deja mate para que las luces no lo hagan brillar tanto.
+            for (const m of [].concat(o.material)) {
+                if (m.metalness !== undefined) m.metalness = 0;
+                if (m.roughness !== undefined) m.roughness = 0.9;
+            }
+        });
         body.add(model);
 
         if (gltf.animations.length) {
