@@ -88,3 +88,6 @@ body {
 .jump-btn:hover { border-color: var(--cyan); box-shadow: 0 0 16px rgba(0, 229, 255, .45); }
 .jump-btn:active { transform: scale(.94); }
 .jump-btn[hidden] { display: none; }
+
+/* ---------- Aviso de enlace al pasar sobre un cartel ---------- */
+.hud__link { color: var(--cyan); font-size: .9rem; margin-bottom: .35rem; }

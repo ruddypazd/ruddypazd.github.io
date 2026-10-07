@@ -121,6 +121,145 @@ const cubes = NEON.map((color, i) => {
     return cube;
 });
 
+// ---------- Gigantografías luminosas: una por cotización ----------
+// image: la og:image de la cotización (si la tiene). fallback: imagen local por si
+// la externa no carga o no existe. Al hacer clic o tocar el cartel se abre url.
+// El cartel se adapta a la proporción de la imagen (ancho máximo 8 m).
+const BILLBOARDS = [
+    {
+        title: 'ROR Logístico',
+        url: 'https://s-r-o-r.github.io/cotizaciones/',
+        fallback: 'images/cotizacion-ror.jpg',
+    },
+    {
+        title: 'Sofía Ltda.',
+        url: 'https://s-s-sofia.github.io/',
+        fallback: 'images/cotizacion-sofia.jpg',
+    },
+    {
+        title: 'Medical Center',
+        url: 'https://medicalcenterbo.github.io/',
+        image: 'https://medicalcenterbo.github.io/assets/og-image.jpg',
+        fallback: 'images/cotizacion-medical.jpg',
+    },
+    {
+        title: 'Calistenia Bolivia',
+        url: 'https://calisteniabolivia-srl.github.io/',
+        image: 'https://calisteniabolivia-srl.github.io/images/og/og-home.jpg',
+        fallback: 'images/cotizacion-calistenia.jpg',
+    },
+    {
+        title: 'Arma tu cotización',
+        url: '../cotizaciones/',
+        fallback: 'images/cotizacion-cotizaciones.jpg',
+    },
+];
+const clickable = [];   // imágenes de los carteles, para el clic
+const BILLBOARD_RADIUS = 15;
+const BILLBOARD_HEIGHT = 3.4;   // alto de la imagen, en metros
+const BILLBOARD_BOTTOM = 1.6;   // altura del borde inferior
+const textureLoader = new THREE.TextureLoader().setCrossOrigin('anonymous');
+const poleMat = new THREE.MeshStandardMaterial({ color: 0x141a2e, roughness: 0.4, metalness: 0.6 });
+
+function buildBillboard(texture, color) {
+    const aspect = texture.image.width / texture.image.height || 16 / 9;
+    let h = BILLBOARD_HEIGHT;
+    let w = h * aspect;
+    if (w > 8) { w = 8; h = w / aspect; }
+    const centerY = BILLBOARD_BOTTOM + h / 2;
+    const group = new THREE.Group();
+
+    // Marco luminoso detrás de la imagen.
+    const frame = new THREE.Mesh(
+        new THREE.BoxGeometry(w + 0.3, h + 0.3, 0.12),
+        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2.2, fog: false })
+    );
+    frame.position.y = centerY;
+    group.add(frame);
+
+    // La imagen no recibe luz: brilla con sus propios colores.
+    const image = new THREE.Mesh(
+        new THREE.PlaneGeometry(w, h),
+        new THREE.MeshBasicMaterial({ map: texture, toneMapped: false, fog: false })
+    );
+    image.position.set(0, centerY, 0.07);
+    group.add(image);
+    clickable.push(image);
+
+    for (const side of [-1, 1]) {
+        const pole = new THREE.Mesh(new THREE.BoxGeometry(0.22, BILLBOARD_BOTTOM + 0.2, 0.22), poleMat);
+        pole.position.set(side * (w / 2 - 0.5), (BILLBOARD_BOTTOM + 0.2) / 2, -0.12);
+        pole.castShadow = true;
+        group.add(pole);
+    }
+
+    // Ilumina el piso frente al cartel.
+    const glow = new THREE.PointLight(color, 22, 11);
+    glow.position.set(0, centerY - h / 2, 2.2);
+    group.add(glow);
+
+    return { group, width: w, image };
+}
+
+// Intenta la og:image y, si falla, usa la imagen local.
+function loadBillboardTexture(item, onLoad) {
+    const local = () => textureLoader.load(item.fallback, onLoad);
+    if (item.image) textureLoader.load(item.image, onLoad, undefined, local);
+    else local();
+}
+
+BILLBOARDS.forEach((item, i) => {
+    loadBillboardTexture(item, (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        const { group, width, image } = buildBillboard(texture, NEON[i % NEON.length]);
+        image.userData = { title: item.title, url: item.url };
+
+        const angle = (i / BILLBOARDS.length) * Math.PI * 2 + Math.PI / 2;
+        group.position.set(Math.cos(angle) * BILLBOARD_RADIUS, 0, Math.sin(angle) * BILLBOARD_RADIUS);
+        group.lookAt(0, 0, 0);
+        scene.add(group);
+
+        // Ruddy choca con el cartel a lo largo de su ancho.
+        group.updateMatrixWorld(true);
+        const p = new THREE.Vector3();
+        for (let x = -width / 2; x <= width / 2 + 0.01; x += 0.6) {
+            group.localToWorld(p.set(x, 0, 0));
+            obstacles.push({ x: p.x, z: p.z, r: 0.5 });
+        }
+    });
+});
+
+// Clic o toque (sin arrastrar) sobre un cartel: abre su cotización.
+const raycaster = new THREE.Raycaster();
+const pointerNdc = new THREE.Vector2();
+const linkHint = document.querySelector('[data-link-hint]');
+let pressAt = null;
+
+function billboardAt(e) {
+    pointerNdc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+    raycaster.setFromCamera(pointerNdc, camera);
+    return raycaster.intersectObjects(clickable, false)[0]?.object ?? null;
+}
+
+canvas.addEventListener('pointerdown', (e) => { pressAt = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+canvas.addEventListener('pointerup', (e) => {
+    if (!pressAt) return;
+    const moved = Math.hypot(e.clientX - pressAt.x, e.clientY - pressAt.y);
+    const quick = performance.now() - pressAt.t < 500;
+    pressAt = null;
+    if (moved > 8 || !quick) return;  // fue un arrastre de cámara
+    const hit = billboardAt(e);
+    if (hit) window.open(hit.userData.url, '_blank', 'noopener');
+});
+canvas.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse' || e.buttons) return;
+    const hit = billboardAt(e);
+    canvas.style.cursor = hit ? 'pointer' : '';
+    linkHint.hidden = !hit;
+    if (hit) linkHint.textContent = `Abrir cotización: ${hit.userData.title} ↗`;
+});
+
 // ---------- Ruddy ----------
 // player se mueve y gira; body lleva el balanceo al caminar.
 const player = new THREE.Group();
