@@ -44,6 +44,7 @@
         <a href="#hero" class="nav__logo">RP<span>_</span></a>
         <nav class="nav__links">
             <a href="#about">Sobre&nbsp;mí</a>
+            <a href="#agent">Mi&nbsp;agente</a>
             <a href="#contributions">GitHub</a>
             <a href="#skills">Skills</a>
             <a href="#experience">Experiencia</a>
@@ -82,10 +83,39 @@
             <a href="#about" class="hero__scroll" aria-label="Bajar">↓</a>
         </section>
 
+        <!-- HABLA CON MI AGENTE -->
+        <section id="agent" class="section section--agent">
+            <div class="section__head reveal">
+                <span class="section__index">01</span>
+                <h2 class="section__title">Habla con mi agente</h2>
+            </div>
+            <p class="agent__lead reveal">Mi agente de IA conoce mi trabajo, mis proyectos y cómo contactarme. Elige cómo quieres hablar con él.</p>
+            <div class="agent reveal">
+                <button type="button" class="agent__card agent__card--voice" data-phone-toggle aria-haspopup="dialog">
+                    <span class="agent__icon" aria-hidden="true">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>
+                    </span>
+                    <span class="agent__kicker">Por voz</span>
+                    <span class="agent__title">Llámalo</span>
+                    <span class="agent__text">Una llamada desde el navegador. Habla con tu micrófono y ve la conversación transcrita en vivo.</span>
+                    <span class="agent__go">Iniciar llamada →</span>
+                </button>
+                <button type="button" class="agent__card agent__card--text" data-chat-toggle aria-haspopup="dialog">
+                    <span class="agent__icon" aria-hidden="true">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01"/></svg>
+                    </span>
+                    <span class="agent__kicker">Por texto</span>
+                    <span class="agent__title">Escríbele</span>
+                    <span class="agent__text">Un chat con respuestas en tiempo real. Pregúntale lo que quieras sobre mí y mis proyectos.</span>
+                    <span class="agent__go">Abrir chat →</span>
+                </button>
+            </div>
+        </section>
+
         <!-- SESIÓN EN VIVO · IP PÚBLICA + UBICACIÓN -->
         <section id="session" class="section section--session" hidden>
             <div class="section__head reveal">
-                <span class="section__index">01</span>
+                <span class="section__index">02</span>
                 <h2 class="section__title">Tu conexión ahora</h2>
             </div>
             <div class="session reveal">
@@ -111,7 +141,7 @@
         <!-- CONTRIBUCIONES -->
         <section id="contributions" class="section">
             <div class="section__head reveal">
-                <span class="section__index">02</span>
+                <span class="section__index">03</span>
                 <h2 class="section__title">Contribuciones</h2>
             </div>
             <div class="contrib reveal">
@@ -127,7 +157,7 @@
         <!-- SOBRE MÍ -->
         <section id="about" class="section">
             <div class="section__head reveal">
-                <span class="section__index">03</span>
+                <span class="section__index">04</span>
                 <h2 class="section__title">Sobre mí</h2>
             </div>
             <div class="about reveal">
@@ -176,7 +206,7 @@
         <!-- SKILLS · DIAGRAMA DE INFRAESTRUCTURA -->
         <section id="skills" class="section section--infra">
             <div class="section__head reveal">
-                <span class="section__index">04</span>
+                <span class="section__index">05</span>
                 <h2 class="section__title">Conocimientos &amp; Skills</h2>
             </div>
             <p class="infra__intro reveal">
@@ -368,7 +398,7 @@
         <!-- EXPERIENCIA -->
         <section id="experience" class="section">
             <div class="section__head reveal">
-                <span class="section__index">05</span>
+                <span class="section__index">06</span>
                 <h2 class="section__title">Experiencia</h2>
             </div>
             <div class="timeline">
@@ -429,7 +459,7 @@
         <!-- CONTACTO -->
         <section id="contact" class="section section--contact">
             <div class="contact reveal">
-                <span class="section__index">06</span>
+                <span class="section__index">07</span>
                 <h2 class="contact__title">Construyamos algo <span class="grad">inteligente</span></h2>
                 <p class="contact__sub">¿Tienes un proyecto de IA o una oportunidad? Escríbeme.</p>
                 <div class="contact__actions">
@@ -452,7 +482,7 @@
         <!-- MAPA DE VISITAS -->
         <section id="visitmap" class="section section--map" hidden>
             <div class="section__head reveal">
-                <span class="section__index">07</span>
+                <span class="section__index">08</span>
                 <h2 class="section__title">De dónde me visitan</h2>
             </div>
             <div class="visitmap reveal">
@@ -462,12 +492,9 @@
         </section>
     </main>
 
-    <!-- CHAT FLOTANTE CON IA (Pitufa vía WebSocket) -->
+    <!-- POPUP DE CHAT CON IA (Pitufa vía WebSocket) -->
     <div id="chat" class="chatw">
-        <button class="chatw__fab" data-chat-toggle aria-label="Abrir chat" aria-expanded="false">
-            <span class="chatw__fab-open" aria-hidden="true">💬</span>
-            <span class="chatw__fab-close" aria-hidden="true">✕</span>
-        </button>
+        <div class="chatw__backdrop" data-chat-toggle aria-hidden="true"></div>
         <div class="chatw__panel" role="dialog" aria-label="Chat con Pitufa">
             <div class="chat__bar">
                 <span class="chat__id"><span class="dot"></span> Pitufa</span>
@@ -487,10 +514,7 @@
 
     <!-- TELÉFONO: llamada de voz con el agente IA (ElevenLabs, sin widget) -->
     <div id="phone" class="phonew" data-agent-id="agent_7001kxsnr66mej8tctnrrcrwtd6c">
-        <button class="phonew__fab" data-phone-toggle aria-label="Abrir teléfono" aria-expanded="false">
-            <svg class="phonew__fab-open" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>
-            <span class="phonew__fab-close" aria-hidden="true">✕</span>
-        </button>
+        <div class="phonew__backdrop" data-phone-toggle aria-hidden="true"></div>
         <div class="phone" role="dialog" aria-label="Llamar al agente IA de Roy">
             <span class="phone__notch" aria-hidden="true"></span>
             <div class="phone__screen">

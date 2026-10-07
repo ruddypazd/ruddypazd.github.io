@@ -15,7 +15,7 @@ if (root) {
     const tr = $('[data-phone-transcript]');
     const btnCall = $('[data-phone-call]');
     const btnEnd = $('[data-phone-end]');
-    const fab = $('.phonew__fab');
+    const openers = document.querySelectorAll('[data-phone-toggle]');
 
     const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const mmss = (t) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
@@ -110,10 +110,10 @@ if (root) {
 
     const toggle = (open = !root.classList.contains('open')) => {
         root.classList.toggle('open', open);
-        fab.setAttribute('aria-expanded', open);
+        openers.forEach((b) => b.setAttribute('aria-expanded', open));
         if (!open && (session || live)) hangUp();
     };
-    root.querySelectorAll('[data-phone-toggle]').forEach((b) => b.addEventListener('click', () => toggle()));
+    openers.forEach((b) => b.addEventListener('click', () => toggle()));
     document.addEventListener('keydown', (e) => e.key === 'Escape' && root.classList.contains('open') && toggle(false));
     window.addEventListener('pagehide', () => session && hangUp());
 

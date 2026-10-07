@@ -507,24 +507,18 @@ body.nav-open { overflow: hidden; }
 }
 
 /* ===========================================================
-   Chat flotante con IA (Nemotron)
+   Popup de chat con IA (Nemotron)
    =========================================================== */
-.chatw { position: fixed; left: 22px; right: auto; bottom: 30px; z-index: 90; }
-
-.chatw__fab {
-    width: 55px; height: 55px; border-radius: 50%; border: none; cursor: pointer;
-    background: var(--grad); color: #05060a; display: grid; place-items: center;
-    font-size: 1.6rem; line-height: 1;
-    box-shadow: 0 8px 24px rgba(0,0,0,.35), 0 0 18px var(--glow-cyan);
-    transition: transform .2s, box-shadow .2s;
+.chatw { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; pointer-events: none; }
+.chatw__backdrop, .phonew__backdrop {
+    position: absolute; inset: 0; background: rgba(3,4,8,.72); backdrop-filter: blur(4px);
+    opacity: 0; transition: opacity .22s ease;
 }
-.chatw__fab:hover { transform: translateY(-2px) scale(1.05); box-shadow: 0 12px 34px rgba(0,0,0,.5), 0 0 24px var(--glow-cyan); }
-.chatw__fab-close { display: none; }
-.chatw.open .chatw__fab-open { display: none; }
-.chatw.open .chatw__fab-close { display: block; }
+.chatw.open, .phonew.open { pointer-events: auto; }
+.chatw.open .chatw__backdrop, .phonew.open .phonew__backdrop { opacity: 1; }
 
 .chatw__panel {
-    position: absolute; left: 0; right: auto; bottom: 76px;
+    position: relative;
     width: 380px; max-width: calc(100vw - 44px);
     height: 560px; max-height: calc(100vh - 130px);
     background: var(--panel); border: 1px solid var(--panel-brd); border-radius: 18px;
@@ -584,7 +578,6 @@ body.nav-open { overflow: hidden; }
 /* Móvil: al abrir, ocupa toda la pantalla y sigue al viewport visible
    (así no se mueve ni se pierde cuando aparece el teclado). */
 @media (max-width: 560px) {
-    .chatw { left: 16px; right: auto; bottom: 16px; }
     .chatw.open .chatw__panel {
         position: fixed; bottom: auto; right: auto;
         top: var(--vv-top, 0px);
@@ -594,7 +587,6 @@ body.nav-open { overflow: hidden; }
         height: var(--vvh, 100dvh); max-height: none;
         border-radius: 0; border: none;
     }
-    .chatw.open .chatw__fab { display: none; }
 }
 /* Bloqueo del fondo mientras el chat está abierto (evita que la página haga scroll) */
 body.chat-open { position: fixed; width: 100%; overflow: hidden; }
@@ -602,23 +594,11 @@ body.chat-open { position: fixed; width: 100%; overflow: hidden; }
 /* ===========================================================
    Teléfono: llamada de voz con el agente IA
    =========================================================== */
-.phonew { position: fixed; right: 22px; bottom: 30px; z-index: 91; }
-
-.phonew__fab {
-    width: 55px; height: 55px; border-radius: 50%; border: none; cursor: pointer;
-    background: #1fae5b; color: #fff; display: grid; place-items: center; font-size: 1.3rem; line-height: 1;
-    box-shadow: 0 8px 24px rgba(0,0,0,.35), 0 0 18px rgba(31,174,91,.55);
-    transition: transform .2s, box-shadow .2s;
-}
-.phonew__fab:hover { transform: translateY(-2px) scale(1.05); }
-.phonew__fab-close { display: none; }
-.phonew.open .phonew__fab-open { display: none; }
-.phonew.open .phonew__fab-close { display: block; }
-.phonew.open .phonew__fab { background: var(--bg-soft); box-shadow: 0 8px 24px rgba(0,0,0,.35); border: 1px solid var(--panel-brd); }
+.phonew { position: fixed; inset: 0; z-index: 91; display: grid; place-items: center; pointer-events: none; }
 
 .phone {
-    position: absolute; right: 0; bottom: 76px;
-    width: 300px; height: 600px; max-height: calc(100vh - 130px);
+    position: relative;
+    width: 300px; height: 600px; max-height: calc(100dvh - 40px);
     padding: 12px; border-radius: 44px;
     background: linear-gradient(160deg, #1b2030, #07080d);
     border: 1px solid rgba(255,255,255,.12);
@@ -711,6 +691,40 @@ body.chat-open { position: fixed; width: 100%; overflow: hidden; }
 .phone__btn:disabled { opacity: .3; cursor: default; box-shadow: none; }
 
 @media (max-width: 560px) {
-    .phonew { right: 16px; bottom: 16px; }
-    .phone { width: min(300px, calc(100vw - 32px)); height: min(600px, calc(100dvh - 100px)); }
+    .phone { width: min(300px, calc(100vw - 32px)); height: min(600px, calc(100dvh - 32px)); }
+}
+
+/* ===========================================================
+   Sección: Habla con mi agente (voz / texto)
+   =========================================================== */
+.agent__lead { max-width: 60ch; color: var(--muted); margin: -1.6rem 0 2rem; }
+.agent { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.4rem; }
+.agent__card {
+    position: relative; overflow: hidden; text-align: left; cursor: pointer;
+    display: flex; flex-direction: column; gap: .5rem; padding: 2rem;
+    font: inherit; color: var(--text);
+    background: var(--panel); border: 1px solid var(--panel-brd); border-radius: 20px;
+    backdrop-filter: blur(10px);
+    transition: transform .2s, border-color .2s, box-shadow .2s;
+}
+.agent__card::before {
+    content: ""; position: absolute; inset: auto -30% -60% auto; width: 70%; aspect-ratio: 1; border-radius: 50%;
+    background: radial-gradient(circle, var(--accent-glow), transparent 70%); opacity: .5; transition: opacity .2s;
+    pointer-events: none;
+}
+.agent__card--voice { --accent: #1fae5b; --accent-glow: rgba(31,174,91,.45); }
+.agent__card--text  { --accent: var(--cyan); --accent-glow: rgba(0,229,255,.4); }
+.agent__card:hover, .agent__card:focus-visible { transform: translateY(-4px); border-color: var(--accent); box-shadow: 0 0 28px var(--accent-glow); outline: none; }
+.agent__card:hover::before { opacity: .9; }
+.agent__icon {
+    width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center; margin-bottom: .6rem;
+    color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.agent__kicker { font-family: var(--mono); font-size: .8rem; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+.agent__title { font-size: 1.7rem; font-weight: 700; line-height: 1.15; }
+.agent__text { color: var(--muted); }
+.agent__go { margin-top: .8rem; font-family: var(--mono); font-size: .9rem; color: var(--accent); }
+@media (max-width: 720px) {
+    .agent { grid-template-columns: 1fr; }
+    .agent__card { padding: 1.5rem; }
 }
