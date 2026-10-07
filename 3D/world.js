@@ -1,4 +1,4 @@
-// Mundo 3D: carga a Ruddy (GLB) con three.js.
+// Mundo 3D: carga a Ruddy (GLB) con three.js y lo mueve con joystick o teclado.
 // Si models/ruddy.glb aún no existe, muestra un avatar provisional.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -22,7 +22,7 @@ renderer.shadowMap.enabled = true;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05060a);
-scene.fog = new THREE.Fog(0x05060a, 8, 22);
+scene.fog = new THREE.Fog(0x05060a, 10, 32);
 
 const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
 camera.position.set(0, 1.6, 4.2);
@@ -41,30 +41,33 @@ controls.addEventListener('start', () => { controls.autoRotate = false; });
 // ---------- Luces (tema neón del portafolio) ----------
 scene.add(new THREE.HemisphereLight(0xbcd4ff, 0x0a0d16, 1.1));
 
+// La luz principal y su sombra siguen a Ruddy (ver bucle).
+const KEY_OFFSET = new THREE.Vector3(3, 5, 4);
 const key = new THREE.DirectionalLight(0xffffff, 2.2);
-key.position.set(3, 5, 4);
+key.position.copy(KEY_OFFSET);
 key.castShadow = true;
 key.shadow.mapSize.set(1024, 1024);
-scene.add(key);
+scene.add(key, key.target);
 
 const rimCyan = new THREE.PointLight(0x00e5ff, 18, 10);
 rimCyan.position.set(-2.5, 2, -2);
-scene.add(rimCyan);
-
 const rimPink = new THREE.PointLight(0xff3da6, 14, 10);
 rimPink.position.set(2.5, 1.5, -2);
-scene.add(rimPink);
+const rims = new THREE.Group();
+rims.add(rimCyan, rimPink);
+scene.add(rims);
 
 // ---------- Piso ----------
+const WORLD_RADIUS = 26;
 const floor = new THREE.Mesh(
-    new THREE.CircleGeometry(12, 64),
+    new THREE.CircleGeometry(WORLD_RADIUS + 4, 96),
     new THREE.MeshStandardMaterial({ color: 0x0a0d16, roughness: 0.9 })
 );
 floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
 scene.add(floor);
 
-const grid = new THREE.GridHelper(24, 48, 0x00e5ff, 0x1a2140);
+const grid = new THREE.GridHelper(60, 120, 0x00e5ff, 0x1a2140);
 grid.material.transparent = true;
 grid.material.opacity = 0.35;
 grid.position.y = 0.002;
@@ -78,7 +81,53 @@ ring.rotation.x = -Math.PI / 2;
 ring.position.y = 0.005;
 scene.add(ring);
 
+// ---------- Escenario: pilares y cubos neón para orientarse ----------
+const NEON = [0x00e5ff, 0xa060ff, 0xff3da6];
+const pillarGeo = new THREE.BoxGeometry(0.5, 1, 0.5);
+const pillarMat = new THREE.MeshStandardMaterial({ color: 0x141a2e, roughness: 0.4, metalness: 0.5 });
+const obstacles = [];
+
+for (let i = 0; i < 18; i++) {
+    const angle = (i / 18) * Math.PI * 2 + (i % 2) * 0.17;
+    const dist = 7 + (i % 3) * 5.5;
+    const h = 1.5 + ((i * 7) % 5) * 0.6;
+    const color = NEON[i % 3];
+
+    const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+    pillar.scale.y = h;
+    pillar.position.set(Math.cos(angle) * dist, h / 2, Math.sin(angle) * dist);
+    pillar.castShadow = true;
+    pillar.receiveShadow = true;
+    scene.add(pillar);
+
+    const cap = new THREE.Mesh(
+        new THREE.BoxGeometry(0.54, 0.08, 0.54),
+        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.6 })
+    );
+    cap.position.set(pillar.position.x, h + 0.04, pillar.position.z);
+    scene.add(cap);
+
+    obstacles.push({ x: pillar.position.x, z: pillar.position.z, r: 0.65 });
+}
+
+const cubes = NEON.map((color, i) => {
+    const cube = new THREE.Mesh(
+        new THREE.BoxGeometry(0.6, 0.6, 0.6),
+        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.9, transparent: true, opacity: 0.85 })
+    );
+    const angle = (i / 3) * Math.PI * 2 + 0.5;
+    cube.position.set(Math.cos(angle) * 4.5, 1.2, Math.sin(angle) * 4.5);
+    scene.add(cube);
+    return cube;
+});
+
 // ---------- Ruddy ----------
+// player se mueve y gira; body lleva el balanceo al caminar.
+const player = new THREE.Group();
+const body = new THREE.Group();
+player.add(body);
+scene.add(player);
+
 let mixer = null;
 let placeholder = null;
 
@@ -130,7 +179,7 @@ new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(
         const model = gltf.scene;
         model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
         fitToHeight(model, 1.8);
-        scene.add(model);
+        body.add(model);
 
         if (gltf.animations.length) {
             mixer = new THREE.AnimationMixer(model);
@@ -144,20 +193,154 @@ new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(
     },
     () => {
         placeholder = buildPlaceholder();
-        scene.add(placeholder);
+        body.add(placeholder);
         done(true);
     }
 );
+
+// ---------- Controles: joystick virtual + teclado ----------
+const input = { x: 0, y: 0 };      // x: derecha, y: adelante, en [-1, 1]
+const stick = { x: 0, y: 0 };
+const keys = new Set();
+
+const joy = document.querySelector('[data-joystick]');
+const knob = document.querySelector('[data-joystick-knob]');
+let joyPointer = null;
+
+function moveKnob(e) {
+    const rect = joy.getBoundingClientRect();
+    const radius = rect.width / 2;
+    let dx = e.clientX - (rect.left + radius);
+    let dy = e.clientY - (rect.top + radius);
+    const len = Math.hypot(dx, dy);
+    if (len > radius) { dx *= radius / len; dy *= radius / len; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    stick.x = dx / radius;
+    stick.y = -dy / radius;
+}
+
+function releaseKnob() {
+    joyPointer = null;
+    stick.x = stick.y = 0;
+    knob.style.transform = '';
+    joy.classList.remove('active');
+}
+
+joy.addEventListener('pointerdown', (e) => {
+    joyPointer = e.pointerId;
+    joy.setPointerCapture(e.pointerId);
+    joy.classList.add('active');
+    moveKnob(e);
+});
+joy.addEventListener('pointermove', (e) => { if (e.pointerId === joyPointer) moveKnob(e); });
+joy.addEventListener('pointerup', releaseKnob);
+joy.addEventListener('pointercancel', releaseKnob);
+
+const KEYMAP = {
+    KeyW: [0, 1], ArrowUp: [0, 1], KeyS: [0, -1], ArrowDown: [0, -1],
+    KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0],
+};
+window.addEventListener('keydown', (e) => {
+    if (KEYMAP[e.code] || e.code.startsWith('Shift')) { keys.add(e.code); e.preventDefault(); }
+});
+window.addEventListener('keyup', (e) => keys.delete(e.code));
+window.addEventListener('blur', () => keys.clear());
+
+function readInput() {
+    let kx = 0, ky = 0;
+    for (const code of keys) if (KEYMAP[code]) { kx += KEYMAP[code][0]; ky += KEYMAP[code][1]; }
+    const klen = Math.hypot(kx, ky) || 1;
+    input.x = stick.x || kx / klen;
+    input.y = stick.y || ky / klen;
+}
+
+// ---------- Movimiento ----------
+const WALK_SPEED = 2.6;
+const RUN_SPEED = 5;
+const forward = new THREE.Vector3();
+const right = new THREE.Vector3();
+const move = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0);
+let walkPhase = 0;
+let moving = 0;  // 0..1, suaviza el balanceo
+
+function updatePlayer(dt) {
+    readInput();
+    const amount = Math.min(1, Math.hypot(input.x, input.y));
+
+    // Dirección relativa a la cámara, sobre el piso.
+    camera.getWorldDirection(forward);
+    forward.y = 0;
+    forward.normalize();
+    right.crossVectors(forward, UP);
+    move.copy(forward).multiplyScalar(input.y).addScaledVector(right, input.x);
+
+    if (amount > 0.05) {
+        controls.autoRotate = false;
+        move.normalize();
+        const running = keys.has('ShiftLeft') || keys.has('ShiftRight');
+        const speed = (running ? RUN_SPEED : WALK_SPEED) * amount;
+        const prev = player.position.clone();
+        player.position.addScaledVector(move, speed * dt);
+
+        // Límites del mundo y choques con los pilares.
+        const r = Math.hypot(player.position.x, player.position.z);
+        if (r > WORLD_RADIUS) player.position.multiplyScalar(WORLD_RADIUS / r);
+        for (const o of obstacles) {
+            const dx = player.position.x - o.x;
+            const dz = player.position.z - o.z;
+            const d = Math.hypot(dx, dz);
+            if (d < o.r && d > 0) {
+                player.position.x = o.x + (dx / d) * o.r;
+                player.position.z = o.z + (dz / d) * o.r;
+            }
+        }
+
+        // Gira suave hacia donde camina.
+        const targetYaw = Math.atan2(move.x, move.z);
+        let diff = targetYaw - player.rotation.y;
+        diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+        player.rotation.y += diff * Math.min(1, dt * 10);
+
+        // La cámara acompaña a Ruddy.
+        const delta = player.position.clone().sub(prev);
+        camera.position.add(delta);
+        controls.target.add(delta);
+
+        walkPhase += dt * speed * 3.2;
+    }
+
+    moving += ((amount > 0.05 ? 1 : 0) - moving) * Math.min(1, dt * 8);
+
+    // Sin esqueleto: simula el paso con rebote, inclinación y vaivén.
+    body.position.y = Math.abs(Math.sin(walkPhase)) * 0.06 * moving;
+    body.rotation.x = 0.08 * moving;
+    body.rotation.z = Math.sin(walkPhase) * 0.05 * moving;
+}
 
 // ---------- Bucle ----------
 const clock = new THREE.Clock();
 
 renderer.setAnimationLoop(() => {
-    const dt = clock.getDelta();
+    const dt = Math.min(clock.getDelta(), 0.05);
     const t = clock.elapsedTime;
     if (mixer) mixer.update(dt);
     if (placeholder) placeholder.position.y = Math.sin(t * 1.6) * 0.03;
+
+    updatePlayer(dt);
+
+    ring.position.x = player.position.x;
+    ring.position.z = player.position.z;
     ring.material.opacity = 0.45 + Math.sin(t * 2) * 0.25;
+    rims.position.copy(player.position);
+    key.position.copy(player.position).add(KEY_OFFSET);
+    key.target.position.copy(player.position);
+    cubes.forEach((c, i) => {
+        c.rotation.x = t * 0.6 + i;
+        c.rotation.y = t * 0.8 + i;
+        c.position.y = 1.2 + Math.sin(t * 1.5 + i * 2) * 0.25;
+    });
+
     controls.update();
     renderer.render(scene, camera);
 });
