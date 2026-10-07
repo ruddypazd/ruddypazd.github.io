@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 const MODEL_URL = 'models/ruddy.glb';
 
@@ -123,7 +124,7 @@ function done(isPlaceholder) {
     loader.classList.add('done');
 }
 
-new GLTFLoader().load(
+new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(
     MODEL_URL,
     (gltf) => {
         const model = gltf.scene;
