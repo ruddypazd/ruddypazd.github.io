@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Cotiza tu proyecto de software con Roy Ruddy Paz: web, apps móviles, ERP/CRM, agentes de IA e infraestructura.">
+    <title>Cotizaciones · Roy Ruddy Paz</title>
+
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://ruddypazd.com/cotizaciones/">
+    <meta property="og:title" content="Cotizaciones · Roy Ruddy Paz">
+    <meta property="og:description" content="Arma tu proyecto y obtén una estimación referencial al instante.">
+    <meta property="og:image" content="https://ruddypazd.com/images/perfil.jpeg">
+    <meta property="og:locale" content="es_ES">
+
+    <link rel="icon" type="image/jpeg" href="../images/perfil.jpeg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="grid-overlay" aria-hidden="true"></div>
+    <div class="scanline" aria-hidden="true"></div>
+
+    <!-- Navegación -->
+    <header class="nav">
+        <a href="../" class="nav__logo">RP<span>_</span></a>
+        <nav class="nav__links">
+            <a href="../#about">Sobre&nbsp;mí</a>
+            <a href="../#skills">Skills</a>
+            <a href="../#experience">Experiencia</a>
+            <a href="./" class="is-active">Cotizaciones</a>
+            <a href="../#contact" class="nav__cta">Contacto</a>
+        </nav>
+        <button class="nav__burger" aria-label="Abrir menú"><span></span><span></span><span></span></button>
+    </header>
+    <div class="nav__overlay" aria-hidden="true"></div>
+
+    <main>
+        <section class="q-hero">
+            <span class="q-eyebrow">// cotizador</span>
+            <h1 class="q-title">Cotiza tu <span class="grad">proyecto</span></h1>
+            <p class="q-sub">Elige el tipo de solución, los módulos que necesitas y el plazo. Obtienes una estimación referencial al instante y me la envías por WhatsApp o correo para afinarla juntos.</p>
+        </section>
+
+        <section class="q-list">
+            <h2 class="q-list__title"><span class="q-num">//</span> Cotizaciones</h2>
+            <div class="q-list__grid">
+                <a class="q-link" href="https://s-r-o-r.github.io/cotizaciones/" target="_blank" rel="noopener">
+                    <span class="q-link__name">Ror</span>
+                    <span class="q-link__url">s-r-o-r.github.io/cotizaciones</span>
+                    <span class="q-link__arrow" aria-hidden="true">↗</span>
+                </a>
+                <a class="q-link" href="https://s-s-sofia.github.io/" target="_blank" rel="noopener">
+                    <span class="q-link__name">Sofia</span>
+                    <span class="q-link__url">s-s-sofia.github.io</span>
+                    <span class="q-link__arrow" aria-hidden="true">↗</span>
+                </a>
+                <a class="q-link" href="https://medicalcenterbo.github.io/" target="_blank" rel="noopener">
+                    <span class="q-link__name">Medical Center</span>
+                    <span class="q-link__url">medicalcenterbo.github.io</span>
+                    <span class="q-link__arrow" aria-hidden="true">↗</span>
+                </a>
+                <a class="q-link" href="https://calisteniabolivia-srl.github.io/" target="_blank" rel="noopener">
+                    <span class="q-link__name">Calistenia Bolivia</span>
+                    <span class="q-link__url">calisteniabolivia-srl.github.io</span>
+                    <span class="q-link__arrow" aria-hidden="true">↗</span>
+                </a>
+            </div>
+        </section>
+
+        <section class="q-layout">
+            <form id="quote" class="q-form" novalidate>
+
+                <!-- 1. Servicio -->
+                <fieldset class="q-step">
+                    <legend><span class="q-num">01</span> ¿Qué necesitas?</legend>
+                    <div class="q-grid" id="services"></div>
+                </fieldset>
+
+                <!-- 2. Módulos -->
+                <fieldset class="q-step">
+                    <legend><span class="q-num">02</span> Módulos y extras</legend>
+                    <div class="q-grid q-grid--sm" id="extras"></div>
+                </fieldset>
+
+                <!-- 3. Plazo -->
+                <fieldset class="q-step">
+                    <legend><span class="q-num">03</span> Plazo de entrega</legend>
+                    <div class="q-seg" id="timeline"></div>
+                </fieldset>
+
+                <!-- 4. Datos -->
+                <fieldset class="q-step">
+                    <legend><span class="q-num">04</span> Tus datos</legend>
+                    <div class="q-fields">
+                        <label>Nombre *
+                            <input type="text" name="name" required autocomplete="name" placeholder="Tu nombre">
+                        </label>
+                        <label>Empresa
+                            <input type="text" name="company" autocomplete="organization" placeholder="Opcional">
+                        </label>
+                        <label>Correo
+                            <input type="email" name="email" autocomplete="email" placeholder="tucorreo@empresa.com">
+                        </label>
+                        <label>WhatsApp
+                            <input type="tel" name="phone" autocomplete="tel" placeholder="+591 ...">
+                        </label>
+                        <label class="q-full">Cuéntame del proyecto
+                            <textarea name="details" rows="4" placeholder="Objetivo, usuarios, integraciones, referencias..."></textarea>
+                        </label>
+                    </div>
+                </fieldset>
+            </form>
+
+            <!-- Resumen -->
+            <aside class="q-summary" aria-live="polite">
+                <div class="q-summary__inner">
+                    <span class="q-eyebrow">// estimación</span>
+                    <div class="q-price" id="price">—</div>
+                    <div class="q-price-bs" id="price-bs"></div>
+                    <div class="q-weeks" id="weeks">Selecciona un servicio</div>
+                    <ul class="q-lines" id="lines"></ul>
+                    <p class="q-note">Valores referenciales en USD (Bs al tipo de cambio 6,96). El precio final se define tras una reunión de levantamiento de requerimientos.</p>
+                    <p class="q-error" id="error" hidden></p>
+                    <div class="q-actions">
+                        <button type="button" class="btn btn--whatsapp" id="send-wa">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.82 11.82 0 018.413 3.488 11.82 11.82 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.51 5.26l-.999 3.648 3.488-.92z"/></svg>
+                            Enviar por WhatsApp
+                        </button>
+                        <button type="button" class="btn btn--ghost" id="send-mail">Enviar por correo</button>
+                    </div>
+                </div>
+            </aside>
+        </section>
+    </main>
+
+    <footer class="q-footer">
+        <a href="../">← Volver al portafolio</a>
+        <span>© <span id="year"></span> Roy Ruddy Paz</span>
+    </footer>
+
+    <script src="cotizaciones.js"></script>
+</body>
+</html>
