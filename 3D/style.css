@@ -74,3 +74,17 @@ body {
     background: var(--grad); box-shadow: 0 0 18px rgba(0, 229, 255, .5);
 }
 .joystick:not(.active) .joystick__knob { transition: transform .15s ease-out; }
+
+/* ---------- Botón de salto ---------- */
+.jump-btn {
+    position: fixed; z-index: 3;
+    right: max(1.2rem, env(safe-area-inset-right)); bottom: calc(4.6rem + env(safe-area-inset-bottom));
+    width: 84px; height: 84px; border-radius: 50%;
+    border: 1px solid var(--panel-brd); background: var(--panel); backdrop-filter: blur(10px);
+    color: var(--text); font-family: var(--mono); font-size: .85rem; cursor: pointer;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    transition: border-color .2s, box-shadow .2s, transform .1s;
+}
+.jump-btn:hover { border-color: var(--cyan); box-shadow: 0 0 16px rgba(0, 229, 255, .45); }
+.jump-btn:active { transform: scale(.94); }
+.jump-btn[hidden] { display: none; }
