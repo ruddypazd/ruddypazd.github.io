@@ -102,16 +102,53 @@ body {
 .run-btn:hover, .run-btn[aria-pressed="true"] { border-color: var(--cyan); box-shadow: 0 0 16px rgba(0, 229, 255, .45); }
 .run-btn[aria-pressed="true"] { color: var(--cyan); }
 
-/* ---------- Música ---------- */
-.hud__music {
+/* ---------- Botones de la esquina: mensaje y música ---------- */
+.hud__actions { display: flex; gap: .5rem; }
+.hud__icon {
     width: 42px; height: 42px; border-radius: 50%; font-size: 1.1rem; cursor: pointer;
     border: 1px solid var(--panel-brd); background: var(--panel); backdrop-filter: blur(10px);
     color: var(--text); transition: border-color .2s, box-shadow .2s;
 }
-.hud__music:hover { border-color: var(--cyan); box-shadow: 0 0 16px rgba(0, 229, 255, .45); }
+.hud__icon:hover, .hud__icon[aria-expanded="true"] { border-color: var(--cyan); box-shadow: 0 0 16px rgba(0, 229, 255, .45); }
 
 /* ---------- Aviso de enlace al pasar sobre un cartel ---------- */
 .hud__link { color: var(--cyan); font-size: .9rem; margin-bottom: .35rem; }
 
 /* En móvil los controles se explican solos: el texto de ayuda no tapa el joystick. */
 @media (max-width: 600px) { .hud__hint { display: none; } }
+
+/* ---------- Escribir un mensaje ---------- */
+.chat {
+    position: fixed; z-index: 4; left: 50%; transform: translateX(-50%);
+    top: calc(4.6rem + env(safe-area-inset-top)); width: min(30rem, calc(100% - 2rem));
+    display: flex; gap: .5rem; padding: .4rem;
+    border: 1px solid var(--panel-brd); border-radius: 999px;
+    background: var(--panel); backdrop-filter: blur(10px);
+    box-shadow: 0 0 18px rgba(0, 229, 255, .25);
+}
+.chat[hidden] { display: none; }
+.chat__input {
+    flex: 1; min-width: 0; padding: .55rem .9rem; border: 0; outline: 0; background: transparent;
+    color: var(--text); font-family: var(--mono); font-size: 16px;  /* 16px evita el zoom de iOS */
+}
+.chat__input::placeholder { color: var(--muted); }
+.chat__send {
+    padding: .55rem 1.1rem; border: 0; border-radius: 999px; cursor: pointer;
+    background: var(--grad); color: #fff; font-family: var(--mono); font-size: .85rem; font-weight: 500;
+}
+
+/* ---------- Globo de texto sobre Ruddy ---------- */
+.bubble {
+    position: fixed; z-index: 2; left: 0; top: 0; pointer-events: none;
+    max-width: min(16rem, 70vw); padding: .6rem .9rem; border-radius: 14px;
+    background: rgba(255, 255, 255, .95); color: #111; text-align: center;
+    font-family: var(--mono); font-size: .9rem; line-height: 1.35; overflow-wrap: anywhere;
+    box-shadow: 0 0 18px rgba(0, 229, 255, .45);
+    transition: opacity .25s;
+}
+.bubble::after {
+    content: ''; position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%);
+    border: 8px solid transparent; border-bottom: 0; border-top-color: rgba(255, 255, 255, .95);
+}
+.bubble[hidden] { display: none; }
+.bubble.fade { opacity: 0; }

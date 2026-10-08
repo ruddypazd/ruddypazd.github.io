@@ -25,8 +25,18 @@
     <header class="hud hud--top">
         <a href="../" class="hud__back">← Portafolio</a>
         <span class="hud__title">Mundo&nbsp;<span class="grad">3D</span></span>
-        <button class="hud__music" type="button" data-music aria-label="Silenciar música">🔊</button>
+        <span class="hud__actions">
+            <button class="hud__icon" type="button" data-chat-open aria-label="Escribir un mensaje sobre Ruddy" aria-expanded="false">💬</button>
+            <button class="hud__icon" type="button" data-music aria-label="Silenciar música">🔊</button>
+        </span>
     </header>
+
+    <form class="chat" data-chat hidden autocomplete="off">
+        <input class="chat__input" type="text" name="msg" maxlength="120" placeholder="Escribe algo para que Ruddy lo diga…" aria-label="Mensaje" enterkeyhint="send">
+        <button class="chat__send" type="submit">Enviar</button>
+    </form>
+
+    <div class="bubble" data-bubble hidden aria-live="polite"></div>
 
     <div class="hud hud--loader" data-loader>
         <span class="hud__spinner" aria-hidden="true"></span>
@@ -43,7 +53,7 @@
     <footer class="hud hud--bottom">
         <p data-model-note hidden>Modelo provisional: el avatar real de Ruddy llegará pronto.</p>
         <p class="hud__link" data-link-hint hidden></p>
-        <p class="hud__hint">Joystick o WASD para moverte · R, Shift o «Correr» para correr · Espacio salta · Toca un cartel para abrir la cotización</p>
+        <p class="hud__hint">Joystick o WASD para moverte · R, Shift o «Correr» para correr · Espacio salta · Enter escribe un mensaje · Toca un cartel para abrir la cotización</p>
     </footer>
 
     <script type="module" src="world.js"></script>

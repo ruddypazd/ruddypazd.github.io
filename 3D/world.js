@@ -473,6 +473,8 @@ const KEYMAP = {
     KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0],
 };
 window.addEventListener('keydown', (e) => {
+    if (e.target === chatInput) return;  // escribiendo: las teclas son del mensaje
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') { e.preventDefault(); openChat(); return; }
     if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) jump(); return; }
     // R alterna correr sin mantener Shift: muchos teclados no registran
     // Shift + flecha/WASD + Espacio a la vez y el salto se pierde.
@@ -577,6 +579,56 @@ function fadeTo(action, duration) {
 }
 
 // ---------- Bucle ----------
+// ---------- Mensaje sobre Ruddy ----------
+const chatForm = document.querySelector('[data-chat]');
+const chatInput = chatForm.querySelector('input');
+const chatOpenBtn = document.querySelector('[data-chat-open]');
+const bubble = document.querySelector('[data-bubble]');
+const HEAD = new THREE.Vector3();
+let bubbleUntil = 0;
+
+function openChat() {
+    keys.clear();  // que no siga caminando con una tecla que quedó presionada
+    chatForm.hidden = false;
+    chatOpenBtn.setAttribute('aria-expanded', 'true');
+    chatInput.focus();
+}
+function closeChat() {
+    chatForm.hidden = true;
+    chatOpenBtn.setAttribute('aria-expanded', 'false');
+    chatInput.blur();
+}
+chatOpenBtn.addEventListener('click', () => (chatForm.hidden ? openChat() : closeChat()));
+chatInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeChat(); });
+chatForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = chatInput.value.trim();
+    chatInput.value = '';
+    closeChat();
+    if (!text) return;
+    bubble.textContent = text;
+    bubble.hidden = false;
+    bubble.classList.remove('fade');
+    bubbleUntil = performance.now() + Math.min(12000, 4000 + text.length * 60);
+});
+
+function updateBubble() {
+    if (bubble.hidden) return;
+    const now = performance.now();
+    if (now > bubbleUntil) {
+        if (!bubble.classList.contains('fade')) bubble.classList.add('fade');
+        if (now > bubbleUntil + 300) bubble.hidden = true;
+    }
+    HEAD.copy(player.position);
+    HEAD.y += 1.9;
+    HEAD.project(camera);
+    if (HEAD.z > 1) { bubble.style.visibility = 'hidden'; return; }  // detrás de la cámara
+    bubble.style.visibility = '';
+    const x = (HEAD.x + 1) / 2 * window.innerWidth;
+    const y = (1 - HEAD.y) / 2 * window.innerHeight;
+    bubble.style.transform = `translate(${x}px, ${y}px) translate(-50%, calc(-100% - 6px))`;
+}
+
 const clock = new THREE.Clock();
 
 renderer.setAnimationLoop(() => {
@@ -601,6 +653,7 @@ renderer.setAnimationLoop(() => {
 
     controls.update();
     renderer.render(scene, camera);
+    updateBubble();
 });
 
 window.addEventListener('resize', () => {
