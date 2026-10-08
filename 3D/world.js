@@ -434,11 +434,12 @@ onPress(jumpBtn, jump);
 // Correr: Shift en teclado o el botón en pantalla (alterna caminar / correr).
 const runBtn = document.querySelector('[data-run]');
 let runToggle = false;
-onPress(runBtn, () => {
+function toggleRun() {
     runToggle = !runToggle;
     runBtn.setAttribute('aria-pressed', String(runToggle));
     runBtn.textContent = runToggle ? 'Caminar' : 'Correr';
-});
+}
+onPress(runBtn, toggleRun);
 
 // Música de fondo: el navegador solo permite sonar tras un gesto del usuario.
 const music = new Audio('audio/musica.mp3');
@@ -473,6 +474,9 @@ const KEYMAP = {
 };
 window.addEventListener('keydown', (e) => {
     if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) jump(); return; }
+    // R alterna correr sin mantener Shift: muchos teclados no registran
+    // Shift + flecha/WASD + Espacio a la vez y el salto se pierde.
+    if (e.code === 'KeyR' && !e.repeat) { toggleRun(); return; }
     if (KEYMAP[e.code] || e.code.startsWith('Shift')) { keys.add(e.code); e.preventDefault(); }
 });
 window.addEventListener('keyup', (e) => keys.delete(e.code));
