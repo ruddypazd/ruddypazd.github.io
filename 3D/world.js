@@ -423,12 +423,18 @@ function jump() {
     actions.jump.timeScale = 1;
     fadeTo(actions.jump, 0.15);
 }
-jumpBtn.addEventListener('click', jump);
+// En iOS un toque no genera 'click' si otro dedo ya está en pantalla (el joystick),
+// así que los botones responden en pointerdown. 'click' queda solo para el teclado.
+function onPress(btn, fn) {
+    btn.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); });
+    btn.addEventListener('click', (e) => { if (e.detail === 0) fn(); });
+}
+onPress(jumpBtn, jump);
 
 // Correr: Shift en teclado o el botón en pantalla (alterna caminar / correr).
 const runBtn = document.querySelector('[data-run]');
 let runToggle = false;
-runBtn.addEventListener('click', () => {
+onPress(runBtn, () => {
     runToggle = !runToggle;
     runBtn.setAttribute('aria-pressed', String(runToggle));
     runBtn.textContent = runToggle ? 'Caminar' : 'Correr';

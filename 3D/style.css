@@ -82,7 +82,7 @@ body {
     width: 84px; height: 84px; border-radius: 50%;
     border: 1px solid var(--panel-brd); background: var(--panel); backdrop-filter: blur(10px);
     color: var(--text); font-family: var(--mono); font-size: .85rem; cursor: pointer;
-    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
     transition: border-color .2s, box-shadow .2s, transform .1s;
 }
 .jump-btn:hover { border-color: var(--cyan); box-shadow: 0 0 16px rgba(0, 229, 255, .45); }
@@ -96,7 +96,7 @@ body {
     width: 84px; height: 40px; border-radius: 999px;
     border: 1px solid var(--panel-brd); background: var(--panel); backdrop-filter: blur(10px);
     color: var(--text); font-family: var(--mono); font-size: .8rem; cursor: pointer;
-    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
     transition: border-color .2s, box-shadow .2s, background .2s;
 }
 .run-btn:hover, .run-btn[aria-pressed="true"] { border-color: var(--cyan); box-shadow: 0 0 16px rgba(0, 229, 255, .45); }
