@@ -611,11 +611,10 @@ chatForm.addEventListener('submit', (e) => {
     showBubble(text);
 });
 
-function showBubble(text, voice = false) {
+function showBubble(text) {
     bubble.textContent = text;
     bubble.hidden = false;
     bubble.classList.remove('fade');
-    bubble.classList.toggle('is-voice', voice);
     bubbleUntil = performance.now() + Math.min(12000, 4000 + text.length * 60);
 }
 
@@ -638,7 +637,7 @@ function updateBubble() {
 
 // ---------- Hablar con Ruddy por voz (agente conversacional de ElevenLabs) ----------
 // Reutiliza el mismo agente que el teléfono del portafolio. Lo que dice el agente
-// aparece en la burbuja y Ruddy mueve la cabeza al ritmo del volumen de su voz.
+// aparece como subtítulos de película y Ruddy mueve la cabeza al ritmo del volumen de su voz.
 const SDK = 'https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.26.0/+esm';
 const talkBtn = document.querySelector('[data-talk]');
 const talkStatus = document.querySelector('[data-talk-status]');
@@ -662,6 +661,7 @@ function endTalk(text) {
     talkSession = null;
     speaking = false;
     s?.endSession().catch(() => {});
+    clearSubs();
     setTalk('idle', text);
     if (text) setTimeout(() => talkState === 'idle' && setTalk('idle'), 3500);
     if (musicWasOn) { musicOn = true; startMusic(); syncMusicBtn(); }
@@ -683,10 +683,11 @@ async function startTalk() {
             onMessage: (m) => {
                 const text = (m.message || '').trim();
                 const user = m.source === 'user' || m.role === 'user';
-                if (text && !user) showBubble(text, true);
+                if (text && !user) showSubs(text);
             },
             onModeChange: ({ mode }) => {
                 speaking = mode === 'speaking';
+                subsHideAt = speaking ? 0 : performance.now() + 1500;
                 talkStatus.classList.toggle('is-speaking', speaking);
                 if (talkState === 'live') talkStatus.textContent = speaking ? 'Ruddy está hablando…' : 'Te escucho · 📞 para colgar';
             },
@@ -700,6 +701,71 @@ async function startTalk() {
         endTalk(/permission|notallowed/i.test(String(err))
             ? 'Se necesita el micrófono para hablar con Ruddy'
             : 'No se pudo conectar con Ruddy');
+    }
+}
+
+// Subtítulos como en el doblaje de una película: la respuesta del agente se parte en
+// frases cortas que avanzan mientras suena la voz (no hay marcas de tiempo por palabra,
+// así que se estima el ritmo por caracteres).
+const subs = document.querySelector('[data-subs]');
+const subsText = subs.firstElementChild;
+const SUB_MAX = 84;    // caracteres por subtítulo (unas dos líneas)
+const SUB_CPS = 15;    // caracteres por segundo de la voz, aproximado
+let subChunks = [];
+let subIndex = 0;
+let subElapsed = 0;
+let subsHideAt = 0;
+
+function splitSubs(text) {
+    const sentences = text.match(/[^.!?…]+[.!?…]+["”»)]*\s*|[^.!?…]+$/g) || [text];
+    const chunks = [];
+    for (const sentence of sentences) {
+        let line = '';
+        for (const word of sentence.trim().split(/\s+/)) {
+            if (line && (line + ' ' + word).length > SUB_MAX) { chunks.push(line); line = word; }
+            else line = line ? `${line} ${word}` : word;
+        }
+        if (line) chunks.push(line);
+    }
+    // Frases cortas seguidas ("¡Hola! Soy Ruddy.") comparten subtítulo si caben.
+    return chunks.reduce((out, c) => {
+        const prev = out[out.length - 1];
+        if (prev && /[.!?…]["”»)]*$/.test(prev) && (prev + ' ' + c).length <= SUB_MAX) out[out.length - 1] = `${prev} ${c}`;
+        else out.push(c);
+        return out;
+    }, []);
+}
+
+function showSubs(text) {
+    subChunks = splitSubs(text);
+    subIndex = 0;
+    subElapsed = 0;
+    subsHideAt = 0;
+    subsText.textContent = subChunks[0];
+    subs.hidden = false;
+}
+
+function clearSubs() {
+    subChunks = [];
+    subs.hidden = true;
+}
+
+// Usa el reloj real y no el dt del bucle (limitado a 0.05 s) para no atrasarse
+// de la voz cuando el celular dibuja pocos cuadros por segundo.
+let subsLast = 0;
+function updateSubs() {
+    const now = performance.now();
+    const dt = (now - subsLast) / 1000;
+    subsLast = now;
+    if (!subChunks.length) return;
+    if (subsHideAt && now > subsHideAt) return clearSubs();
+    if (!speaking) return;
+    subElapsed += dt;
+    const duration = Math.max(1.2, subChunks[subIndex].length / SUB_CPS);
+    if (subElapsed > duration && subIndex < subChunks.length - 1) {
+        subIndex++;
+        subElapsed = 0;
+        subsText.textContent = subChunks[subIndex];
     }
 }
 
@@ -746,6 +812,7 @@ renderer.setAnimationLoop(() => {
 
     updatePlayer(dt);
     updateTalking(t, dt);
+    updateSubs();
     faceCamera(dt);
 
     ring.position.x = player.position.x;

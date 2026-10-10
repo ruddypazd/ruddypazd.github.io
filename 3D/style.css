@@ -164,4 +164,19 @@ body {
 }
 .talk[hidden] { display: none; }
 .talk.is-speaking { border-color: var(--cyan); box-shadow: 0 0 14px rgba(0, 229, 255, .45); }
-.bubble.is-voice { max-width: min(20rem, 80vw); font-size: .82rem; }
+
+/* Subtítulos estilo película mientras Ruddy habla por voz */
+.subs {
+    position: fixed; z-index: 3; left: 50%; transform: translateX(-50%);
+    bottom: calc(4.2rem + env(safe-area-inset-bottom)); width: min(42rem, calc(100% - 2 * (120px + 2rem)));  /* entre los botones y el joystick */
+    margin: 0; text-align: center; pointer-events: none;
+    font-size: clamp(1rem, 2.4vw, 1.3rem); font-weight: 500; line-height: 1.5; color: #fff;
+}
+.subs span {
+    padding: .15em .5em; border-radius: 4px; background: rgba(0, 0, 0, .7);
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+    text-shadow: 0 1px 2px #000;
+}
+.subs[hidden] { display: none; }
+/* En móvil, por encima del botón «Correr» y el joystick. */
+@media (max-width: 600px) { .subs { bottom: calc(14rem + env(safe-area-inset-bottom)); width: calc(100% - 2rem); } }
