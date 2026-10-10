@@ -26,6 +26,7 @@
         <a href="../" class="hud__back">← Portafolio</a>
         <span class="hud__title">Mundo&nbsp;<span class="grad">3D</span></span>
         <span class="hud__actions">
+            <button class="hud__icon" type="button" data-talk data-agent-id="agent_7001kxsnr66mej8tctnrrcrwtd6c" aria-label="Hablar con Ruddy por voz" aria-pressed="false">📞</button>
             <button class="hud__icon" type="button" data-chat-open aria-label="Escribir un mensaje sobre Ruddy" aria-expanded="false">💬</button>
             <button class="hud__icon" type="button" data-music aria-label="Silenciar música">🔊</button>
         </span>
@@ -37,6 +38,8 @@
     </form>
 
     <div class="bubble" data-bubble hidden aria-live="polite"></div>
+
+    <p class="talk" data-talk-status hidden aria-live="polite"></p>
 
     <div class="hud hud--loader" data-loader>
         <span class="hud__spinner" aria-hidden="true"></span>
@@ -53,7 +56,7 @@
     <footer class="hud hud--bottom">
         <p data-model-note hidden>Modelo provisional: el avatar real de Ruddy llegará pronto.</p>
         <p class="hud__link" data-link-hint hidden></p>
-        <p class="hud__hint">Joystick o WASD para moverte · R, Shift o «Correr» para correr · Espacio salta · Enter escribe un mensaje · Toca un cartel para abrir la cotización</p>
+        <p class="hud__hint">Joystick o WASD para moverte · R, Shift o «Correr» para correr · Espacio salta · Enter escribe un mensaje · 📞 habla con Ruddy · Toca un cartel para abrir la cotización</p>
     </footer>
 
     <script type="module" src="world.js"></script>

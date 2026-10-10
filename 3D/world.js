@@ -274,6 +274,7 @@ let actions = null;   // { idle, walk, run, jump } si el GLB trae animaciones
 let current = null;
 let jumping = false;
 let placeholder = null;
+let headBone = null;  // la cabeza asiente mientras Ruddy habla por voz
 
 // precise: mide los vértices ya deformados por el esqueleto (modelos de Mixamo).
 function fitToHeight(object, height) {
@@ -336,6 +337,7 @@ new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(
             }
         });
         body.add(model);
+        model.traverse((o) => { if (o.isBone && /head$/i.test(o.name)) headBone ??= o; });
 
         if (gltf.animations.length) {
             mixer = new THREE.AnimationMixer(model);
@@ -606,11 +608,16 @@ chatForm.addEventListener('submit', (e) => {
     chatInput.value = '';
     closeChat();
     if (!text) return;
+    showBubble(text);
+});
+
+function showBubble(text, voice = false) {
     bubble.textContent = text;
     bubble.hidden = false;
     bubble.classList.remove('fade');
+    bubble.classList.toggle('is-voice', voice);
     bubbleUntil = performance.now() + Math.min(12000, 4000 + text.length * 60);
-});
+}
 
 function updateBubble() {
     if (bubble.hidden) return;
@@ -629,6 +636,106 @@ function updateBubble() {
     bubble.style.transform = `translate(${x}px, ${y}px) translate(-50%, calc(-100% - 6px))`;
 }
 
+// ---------- Hablar con Ruddy por voz (agente conversacional de ElevenLabs) ----------
+// Reutiliza el mismo agente que el teléfono del portafolio. Lo que dice el agente
+// aparece en la burbuja y Ruddy mueve la cabeza al ritmo del volumen de su voz.
+const SDK = 'https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.26.0/+esm';
+const talkBtn = document.querySelector('[data-talk]');
+const talkStatus = document.querySelector('[data-talk-status]');
+let talkSession = null;
+let talkState = 'idle';   // idle | connecting | live
+let speaking = false;
+let voiceLevel = 0;       // volumen suavizado de la voz del agente, 0..1
+let musicWasOn = false;
+
+function setTalk(state, text) {
+    talkState = state;
+    talkBtn.setAttribute('aria-pressed', String(state !== 'idle'));
+    talkBtn.setAttribute('aria-label', state === 'idle' ? 'Hablar con Ruddy por voz' : 'Colgar');
+    talkStatus.hidden = !text;
+    talkStatus.textContent = text || '';
+    talkStatus.classList.toggle('is-speaking', speaking);
+}
+
+function endTalk(text) {
+    const s = talkSession;
+    talkSession = null;
+    speaking = false;
+    s?.endSession().catch(() => {});
+    setTalk('idle', text);
+    if (text) setTimeout(() => talkState === 'idle' && setTalk('idle'), 3500);
+    if (musicWasOn) { musicOn = true; startMusic(); syncMusicBtn(); }
+    musicWasOn = false;
+}
+
+async function startTalk() {
+    // La música taparía la voz: se pausa durante la conversación.
+    musicWasOn = musicOn;
+    if (musicOn) { musicOn = false; music.pause(); syncMusicBtn(); }
+    setTalk('connecting', 'Llamando a Ruddy… permite el micrófono');
+    try {
+        const { Conversation } = await import(SDK);
+        if (talkState !== 'connecting') return;  // colgó mientras cargaba
+        talkSession = await Conversation.startSession({
+            agentId: talkBtn.dataset.agentId,
+            connectionType: 'webrtc',
+            onConnect: () => talkState === 'connecting' && setTalk('live', 'En llamada con Ruddy · 📞 para colgar'),
+            onMessage: (m) => {
+                const text = (m.message || '').trim();
+                const user = m.source === 'user' || m.role === 'user';
+                if (text && !user) showBubble(text, true);
+            },
+            onModeChange: ({ mode }) => {
+                speaking = mode === 'speaking';
+                talkStatus.classList.toggle('is-speaking', speaking);
+                if (talkState === 'live') talkStatus.textContent = speaking ? 'Ruddy está hablando…' : 'Te escucho · 📞 para colgar';
+            },
+            onDisconnect: () => { if (talkSession) endTalk('Llamada finalizada'); },
+            onError: (msg) => console.warn('ElevenLabs:', msg),
+        });
+        if (talkState !== 'connecting' && talkState !== 'live') endTalk();
+    } catch (err) {
+        console.warn(err);
+        talkSession = null;
+        endTalk(/permission|notallowed/i.test(String(err))
+            ? 'Se necesita el micrófono para hablar con Ruddy'
+            : 'No se pudo conectar con Ruddy');
+    }
+}
+
+talkBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (talkState === 'idle') startTalk(); else endTalk('Llamada finalizada');
+});
+window.addEventListener('pagehide', () => talkSession && endTalk());
+
+// Se llama después de mixer.update: suma un gesto encima de la animación actual.
+function updateTalking(t, dt) {
+    let target = 0;
+    if (speaking) {
+        let v = 0;
+        try { v = talkSession?.getOutputVolume() ?? 0; } catch { /* sin analizador */ }
+        // Si el navegador no expone el volumen, se simula un ritmo de habla.
+        target = v > 0.001 ? Math.min(1, v * 3) : 0.35 + 0.35 * Math.abs(Math.sin(t * 9) * Math.sin(t * 3.1));
+    }
+    voiceLevel += (target - voiceLevel) * Math.min(1, dt * 14);
+    if (talkState !== 'idle' && headBone) {
+        headBone.rotation.x += voiceLevel * 0.18 + Math.sin(t * 1.7) * 0.03 * (speaking ? 1 : 0);
+        headBone.rotation.y += Math.sin(t * 1.1) * 0.08 * voiceLevel;
+        headBone.rotation.z += Math.sin(t * 0.8) * 0.05 * voiceLevel;
+    }
+    if (placeholder) placeholder.scale.y = 1 + voiceLevel * 0.03;
+}
+
+// Quieto y en llamada: Ruddy se gira hacia la cámara para hablarte de frente.
+function faceCamera(dt) {
+    if (talkState !== 'live' || moving > 0.05) return;
+    const yaw = Math.atan2(camera.position.x - player.position.x, camera.position.z - player.position.z);
+    let diff = yaw - player.rotation.y;
+    diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+    player.rotation.y += diff * Math.min(1, dt * 3);
+}
+
 const clock = new THREE.Clock();
 
 renderer.setAnimationLoop(() => {
@@ -638,10 +745,12 @@ renderer.setAnimationLoop(() => {
     if (placeholder) placeholder.position.y = Math.sin(t * 1.6) * 0.03;
 
     updatePlayer(dt);
+    updateTalking(t, dt);
+    faceCamera(dt);
 
     ring.position.x = player.position.x;
     ring.position.z = player.position.z;
-    ring.material.opacity = 0.45 + Math.sin(t * 2) * 0.25;
+    ring.material.opacity = 0.45 + Math.sin(t * 2) * 0.25 + voiceLevel * 0.3;
     rims.position.copy(player.position);
     key.position.copy(player.position).add(KEY_OFFSET);
     key.target.position.copy(player.position);
