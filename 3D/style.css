@@ -152,3 +152,16 @@ body {
 }
 .bubble[hidden] { display: none; }
 .bubble.fade { opacity: 0; }
+
+/* ---------- Hablar con Ruddy (agente de voz ElevenLabs) ---------- */
+.hud__icon[aria-pressed="true"][data-talk] { border-color: var(--pink); box-shadow: 0 0 16px rgba(255, 61, 166, .55); }
+.talk {
+    position: fixed; z-index: 3; left: 50%; transform: translateX(-50%);
+    top: calc(4.6rem + env(safe-area-inset-top)); margin: 0;
+    padding: .4rem .9rem; border-radius: 999px; white-space: nowrap;
+    border: 1px solid var(--panel-brd); background: var(--panel); backdrop-filter: blur(10px);
+    color: var(--text); font-family: var(--mono); font-size: .8rem;
+}
+.talk[hidden] { display: none; }
+.talk.is-speaking { border-color: var(--cyan); box-shadow: 0 0 14px rgba(0, 229, 255, .45); }
+.bubble.is-voice { max-width: min(20rem, 80vw); font-size: .82rem; }
