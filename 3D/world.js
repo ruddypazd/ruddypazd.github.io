@@ -260,8 +260,24 @@ ytFrame.src = `https://www.youtube.com/embed/${VIDEO_ID}?enablejsapi=1${IS_IOS ?
     + `&origin=${encodeURIComponent(location.origin)}`;
 ytFrame.title = 'Video de fondo del Mundo 3D';
 ytFrame.allow = 'autoplay; encrypted-media';
-ytFrame.style.cssText = `width:${VIDEO_PX}px;height:${VIDEO_PX * 9 / 16}px;border:0;background:#000`;
-const videoObject = new CSS3DObject(ytFrame);
+ytFrame.style.cssText = IS_IOS ? 'width:100%;aspect-ratio:16/9;border:0;background:#000;display:block'
+    : `width:${VIDEO_PX}px;height:${VIDEO_PX * 9 / 16}px;border:0;background:#000`;
+// En iPhone el play de YouTube hay que tocarlo dentro del iframe, y Safari no siempre
+// entrega el toque a un iframe con transformaciones 3D. Ahí el reproductor vive en una
+// tarjeta 2D que se abre al tocar el cartel y se oculta en cuanto suena; el cartel muestra
+// el póster del video.
+const ytCard = document.createElement('div');
+ytCard.className = 'yt-card';
+ytCard.innerHTML = '<p class="yt-card__text">Toca ▶ para empezar la música</p>';
+const ytCardClose = document.createElement('button');
+ytCardClose.type = 'button';
+ytCardClose.className = 'yt-card__close';
+ytCardClose.textContent = 'Cerrar';
+if (IS_IOS) {
+    ytCard.append(ytFrame, ytCardClose);
+    document.body.append(ytCard);
+}
+const videoObject = new CSS3DObject(IS_IOS ? document.createElement('div') : ytFrame);
 videoObject.scale.setScalar(VIDEO_W / VIDEO_PX);
 
 const videoBoard = new THREE.Group();
@@ -291,7 +307,7 @@ scene.add(videoBoard);
 videoBoard.updateMatrixWorld(true);
 videoHole.getWorldPosition(videoObject.position);
 videoObject.quaternion.copy(videoBoard.quaternion);
-cssScene.add(videoObject);
+if (!IS_IOS) cssScene.add(videoObject);
 {
     const p = new THREE.Vector3();
     for (let x = -VIDEO_W / 2; x <= VIDEO_W / 2 + 0.01; x += 0.6) {
@@ -309,13 +325,76 @@ function ytCommand(func, args = []) {
 ytFrame.addEventListener('load', () => {
     ytFrame.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 'mundo3d' }), '*');
 });
-// Mientras el video no se reproduce, su capa pasa delante del canvas para que el botón
-// play de YouTube reciba el toque (el canvas lo tapaba). Al reproducirse vuelve atrás.
+// La capa del video vive detrás del canvas. Solo si hace falta tocar el play de YouTube
+// (iPhone, o si el navegador bloqueó el autoplay) pasa delante hasta que se reproduce.
 let ytPlaying = null;
 function setVideoWaiting(waiting) {
-    cssRenderer.domElement.classList.toggle('is-waiting', waiting);
+    if (IS_IOS) ytCard.classList.toggle('is-open', waiting);
+    else cssRenderer.domElement.classList.toggle('is-waiting', waiting);
 }
-setVideoWaiting(true);
+ytCardClose.addEventListener('click', () => setVideoWaiting(false));
+
+// Mientras el video no se reproduce, un póster luminoso tapa el hueco: así el cartel no
+// queda oscuro y avisa que se toca para escuchar la música.
+function drawPoster(ctx, w, h, thumb, playing = false) {
+    const g = ctx.createLinearGradient(0, 0, w, h);
+    g.addColorStop(0, '#1a0f2e'); g.addColorStop(0.55, '#3a1240'); g.addColorStop(1, '#0b2a3a');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    if (thumb) {
+        ctx.globalAlpha = 0.75; ctx.drawImage(thumb, 0, 0, w, h); ctx.globalAlpha = 1;
+        ctx.fillStyle = 'rgba(5, 6, 10, .25)'; ctx.fillRect(0, 0, w, h);
+    }
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+    if (playing) {
+        ctx.font = 'bold 64px "Space Grotesk", sans-serif';
+        ctx.fillText('♪ Sonando ahora', w / 2, h / 2 + 150);
+    } else {
+        ctx.beginPath(); ctx.arc(w / 2, h / 2 - 40, 110, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 61, 166, .92)'; ctx.fill();
+        ctx.beginPath(); ctx.moveTo(w / 2 - 35, h / 2 - 105); ctx.lineTo(w / 2 + 65, h / 2 - 40); ctx.lineTo(w / 2 - 35, h / 2 + 25);
+        ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill();
+        ctx.font = 'bold 64px "Space Grotesk", sans-serif';
+        ctx.fillText('Toca para escuchar la música', w / 2, h / 2 + 150);
+    }
+    ctx.font = '36px "JetBrains Mono", monospace'; ctx.fillStyle = 'rgba(255,255,255,.8)';
+    ctx.fillText('Midnight Chicago Blues & Smooth Jazz', w / 2, h / 2 + 215);
+}
+const posterCanvas = document.createElement('canvas');
+posterCanvas.width = 1280; posterCanvas.height = 720;
+const posterCtx = posterCanvas.getContext('2d');
+let posterThumb = null;
+drawPoster(posterCtx, 1280, 720);
+const posterTex = new THREE.CanvasTexture(posterCanvas);
+posterTex.colorSpace = THREE.SRGBColorSpace;
+{
+    const thumb = new Image();
+    thumb.crossOrigin = 'anonymous';
+    thumb.onload = () => { posterThumb = thumb; drawPoster(posterCtx, 1280, 720, thumb, !!ytPlaying); posterTex.needsUpdate = true; };
+    thumb.src = `https://i.ytimg.com/vi/${VIDEO_ID}/hqdefault.jpg`;
+}
+const videoPoster = new THREE.Mesh(
+    new THREE.PlaneGeometry(VIDEO_W, VIDEO_H),
+    new THREE.MeshBasicMaterial({ map: posterTex, toneMapped: false, fog: false })
+);
+videoPoster.position.set(0, videoCenterY, 0.1);
+videoBoard.add(videoPoster);
+clickable.push(videoPoster);
+let waitTimer = 0;
+videoPoster.userData = {
+    hint: 'Toca para escuchar la música ▶',
+    action() {
+        startMusic();
+        ytCommand('playVideo');
+        clearTimeout(waitTimer);
+        // iPhone solo arranca si se toca el play del propio video.
+        waitTimer = setTimeout(() => {
+            if (ytPlaying) return;
+            if (!IS_IOS) videoPoster.visible = false;
+            setVideoWaiting(true);
+            if (!IS_IOS) flashHint('Toca ▶ en el video para empezar la música');
+        }, IS_IOS ? 0 : 1200);
+    },
+};
 window.addEventListener('message', (e) => {
     if (e.source !== ytFrame.contentWindow) return;
     if (!ytReady) { ytReady = true; music.sync(); }
@@ -326,7 +405,11 @@ window.addEventListener('message', (e) => {
     const playing = state === 1 || state === 3;  // reproduciendo o cargando
     if (playing === ytPlaying) return;
     ytPlaying = playing;
-    setVideoWaiting(!playing);
+    if (IS_IOS) {
+        drawPoster(posterCtx, 1280, 720, posterThumb, playing);
+        posterTex.needsUpdate = true;
+    } else videoPoster.visible = !playing;
+    if (playing) setVideoWaiting(false);
     if (playing) { if (musicOn) startMusic(); else music.sync(); }
 });
 
@@ -350,15 +433,80 @@ canvas.addEventListener('pointerup', (e) => {
     pressAt = null;
     if (moved > 8 || !quick) return;  // fue un arrastre de cámara
     const hit = billboardAt(e);
-    if (hit) window.open(hit.userData.url, '_blank', 'noopener');
+    if (!hit) return;
+    if (hit.userData.action) hit.userData.action();
+    else window.open(hit.userData.url, '_blank', 'noopener');
 });
 canvas.addEventListener('pointermove', (e) => {
     if (e.pointerType !== 'mouse' || e.buttons) return;
     const hit = billboardAt(e);
     canvas.style.cursor = hit ? 'pointer' : '';
     linkHint.hidden = !hit;
-    if (hit) linkHint.textContent = `Abrir cotización: ${hit.userData.title} ↗`;
+    if (hit) linkHint.textContent = hit.userData.hint ?? `Abrir cotización: ${hit.userData.title} ↗`;
 });
+
+// Aviso breve en el pie (por ejemplo, cómo iniciar la música en iPhone).
+let hintTimer = 0;
+function flashHint(text) {
+    linkHint.textContent = text;
+    linkHint.hidden = false;
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => { linkHint.hidden = true; }, 5000);
+}
+
+// ---------- Tótem táctil: Medical Center (el sistema se conecta más adelante) ----------
+const TOTEM_ANGLE = (2 / BILLBOARDS.length) * Math.PI * 2 + Math.PI / 2;  // frente al cartel de Medical Center
+const TOTEM_RADIUS = 16;
+const totemPanel = document.querySelector('[data-totem-panel]');
+const totemScreenCanvas = document.createElement('canvas');
+totemScreenCanvas.width = 512; totemScreenCanvas.height = 860;
+{
+    const c = totemScreenCanvas.getContext('2d');
+    const g = c.createLinearGradient(0, 0, 0, 860);
+    g.addColorStop(0, '#062a36'); g.addColorStop(1, '#0a0d16');
+    c.fillStyle = g; c.fillRect(0, 0, 512, 860);
+    c.strokeStyle = '#00e5ff'; c.lineWidth = 6; c.strokeRect(14, 14, 484, 832);
+    c.fillStyle = '#00e5ff';
+    c.fillRect(216, 150, 80, 220); c.fillRect(146, 220, 220, 80);   // cruz médica
+    c.fillStyle = '#fff'; c.textAlign = 'center';
+    c.font = 'bold 54px "Space Grotesk", sans-serif';
+    c.fillText('MEDICAL', 256, 480); c.fillText('CENTER', 256, 540);
+    c.font = '30px "JetBrains Mono", monospace'; c.fillStyle = 'rgba(255,255,255,.8)';
+    c.fillText('Sistema próximamente', 256, 630);
+    c.fillStyle = '#ff3da6'; c.font = 'bold 34px "JetBrains Mono", monospace';
+    c.fillText('☝ Toca la pantalla', 256, 750);
+}
+const totemTex = new THREE.CanvasTexture(totemScreenCanvas);
+totemTex.colorSpace = THREE.SRGBColorSpace;
+const totem = new THREE.Group();
+totem.position.set(Math.cos(TOTEM_ANGLE) * TOTEM_RADIUS, 0, Math.sin(TOTEM_ANGLE) * TOTEM_RADIUS);
+totem.lookAt(0, 0, 0);
+{
+    const base = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.16, 0.7), poleMat);
+    base.position.y = 0.08;
+    const column = new THREE.Mesh(new THREE.BoxGeometry(0.8, 2.1, 0.35), poleMat);
+    column.position.y = 1.2;
+    column.castShadow = true;
+    const edge = new THREE.Mesh(
+        new THREE.BoxGeometry(0.84, 2.14, 0.3),
+        new THREE.MeshStandardMaterial({ color: 0x00e5ff, emissive: 0x00e5ff, emissiveIntensity: 1.8 })
+    );
+    edge.position.set(0, 1.2, -0.04);
+    const screen = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.62, 1.04),
+        new THREE.MeshBasicMaterial({ map: totemTex, toneMapped: false })
+    );
+    screen.position.set(0, 1.45, 0.18);
+    screen.userData = { hint: 'Tótem Medical Center: toca la pantalla', action: () => { totemPanel.hidden = false; } };
+    clickable.push(screen);
+    const light = new THREE.PointLight(0x00e5ff, 6, 5);
+    light.position.set(0, 1.4, 0.8);
+    totem.add(base, column, edge, screen, light);
+}
+scene.add(totem);
+obstacles.push({ x: totem.position.x, z: totem.position.z, r: 0.75 });
+document.querySelector('[data-totem-close]').addEventListener('click', () => { totemPanel.hidden = true; });
+totemPanel.addEventListener('click', (e) => { if (e.target === totemPanel) totemPanel.hidden = true; });
 
 // ---------- Ruddy ----------
 // player se mueve y gira; body lleva el balanceo al caminar.
@@ -556,7 +704,7 @@ const music = {
 const musicBtn = document.querySelector('[data-music]');
 let musicOn = true;
 function syncMusicBtn() {
-    musicBtn.textContent = musicOn ? '🔊' : '🔇';
+    musicBtn.textContent = musicOn ? '🔊 Música: activada' : '🔇 Música: apagada';
     musicBtn.setAttribute('aria-label', musicOn ? 'Silenciar música' : 'Activar música');
     musicBtn.setAttribute('aria-pressed', String(musicOn));
 }
@@ -575,6 +723,55 @@ window.addEventListener('keydown', startMusic);
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) music.pause(); else startMusic();
 });
+
+// ---------- Ajustes ----------
+const settingsBox = document.querySelector('[data-settings]');
+const settingsBtn = settingsBox.querySelector('[data-settings-open]');
+const settingsPanel = settingsBox.querySelector('[data-settings-panel]');
+function setSettings(open) {
+    settingsPanel.hidden = !open;
+    settingsBtn.setAttribute('aria-expanded', String(open));
+}
+settingsBtn.addEventListener('click', () => setSettings(settingsPanel.hidden));
+// Captura: el botón de música detiene la propagación.
+settingsPanel.addEventListener('click', () => setSettings(false), true);
+document.addEventListener('pointerdown', (e) => {
+    if (!settingsBox.contains(e.target)) setSettings(false);
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setSettings(false); });
+
+// ---------- Primera persona ----------
+const fpBtn = document.querySelector('[data-fp]');
+const EYE_HEIGHT = 1.65;
+let firstPerson = false;
+function setFirstPerson(on) {
+    firstPerson = on;
+    body.visible = !on;
+    ring.visible = !on;
+    controls.autoRotate = false;
+    const yaw = player.rotation.y;
+    const dir = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+    if (on) {
+        const eye = player.position.clone().setY(EYE_HEIGHT);
+        controls.minDistance = controls.maxDistance = 0.1;
+        controls.minPolarAngle = 0.15;
+        controls.maxPolarAngle = Math.PI * 0.85;
+        controls.target.copy(eye).addScaledVector(dir, 0.1);
+        camera.position.copy(eye);
+    } else {
+        controls.minDistance = 1.5;
+        controls.maxDistance = 9;
+        controls.minPolarAngle = 0;
+        controls.maxPolarAngle = Math.PI * 0.495;
+        controls.target.copy(player.position).setY(1);
+        camera.position.copy(controls.target).addScaledVector(dir, -4.2);
+        camera.position.y += 0.6;
+    }
+    controls.update();
+    fpBtn.setAttribute('aria-pressed', String(on));
+    fpBtn.textContent = on ? '🎥 Volver a tercera persona' : '👁 Vista en primera persona';
+}
+fpBtn.addEventListener('click', () => setFirstPerson(!firstPerson));
 
 const KEYMAP = {
     KeyW: [0, 1], ArrowUp: [0, 1], KeyS: [0, -1], ArrowDown: [0, -1],
@@ -757,6 +954,8 @@ function setTalk(state, text) {
     talkState = state;
     talkBtn.setAttribute('aria-pressed', String(state !== 'idle'));
     talkBtn.setAttribute('aria-label', state === 'idle' ? 'Hablar con Ruddy por voz' : 'Colgar');
+    talkBtn.textContent = state === 'idle' ? '📞 Hablar con Ruddy' : '📞 Colgar';
+    settingsBox.classList.toggle('is-live', state !== 'idle');
     talkStatus.hidden = !text;
     talkStatus.textContent = text || '';
     talkStatus.classList.toggle('is-speaking', speaking);

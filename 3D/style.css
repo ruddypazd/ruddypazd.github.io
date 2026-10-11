@@ -25,9 +25,20 @@ body {
 #world { position: fixed; inset: 0; z-index: 1; width: 100%; height: 100%; display: block; touch-action: none; }
 /* Capa del video de YouTube, detrás del canvas (se ve por el hueco del letrero). */
 .video-layer { position: fixed !important; inset: 0; z-index: 0; pointer-events: none; }
-/* Antes de reproducirse, el video va delante para poder tocar su botón play. */
+/* Si el navegador bloquea el autoplay, tras tocar el cartel el video pasa delante para tocar su play. */
 .video-layer.is-waiting { z-index: 2; }
 .video-layer.is-waiting iframe { pointer-events: auto; }
+/* iPhone: reproductor 2D. Oculto (pero cargado) hasta que se toca el cartel del video. */
+.yt-card { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; z-index: 7; }
+.yt-card.is-open {
+    left: 50%; top: 50%; bottom: auto; transform: translate(-50%, -50%);
+    width: min(92vw, 30rem); height: auto; opacity: 1; pointer-events: auto;
+    display: grid; gap: .8rem; padding: 1rem; border-radius: 1.2rem;
+    background: rgba(10, 13, 22, .92); border: 1px solid rgba(255, 61, 166, .6);
+    box-shadow: 0 0 32px rgba(255, 61, 166, .35);
+}
+.yt-card__text { margin: 0; text-align: center; font-family: "JetBrains Mono", monospace; color: #fff; }
+.yt-card__close { justify-self: center; padding: .5rem 1.2rem; border-radius: 999px; border: 1px solid rgba(255,255,255,.25); background: transparent; color: #fff; font: inherit; }
 
 .grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
@@ -159,7 +170,7 @@ body {
 .bubble.fade { opacity: 0; }
 
 /* ---------- Hablar con Ruddy (agente de voz ElevenLabs) ---------- */
-.hud__icon[aria-pressed="true"][data-talk] { border-color: var(--pink); box-shadow: 0 0 16px rgba(255, 61, 166, .55); }
+.settings__item[aria-pressed="true"][data-talk], .settings.is-live > .hud__icon { border-color: var(--pink); box-shadow: 0 0 16px rgba(255, 61, 166, .55); }
 .talk {
     position: fixed; z-index: 3; left: 50%; transform: translateX(-50%);
     top: calc(4.6rem + env(safe-area-inset-top)); margin: 0;
@@ -185,3 +196,36 @@ body {
 .subs[hidden] { display: none; }
 /* En móvil, por encima del botón «Correr» y el joystick. */
 @media (max-width: 600px) { .subs { bottom: calc(14rem + env(safe-area-inset-bottom)); width: calc(100% - 2rem); } }
+
+/* ---------- Ajustes: agrupa portafolio, hablar, mensaje, música y primera persona ---------- */
+.settings { position: relative; pointer-events: auto; }
+.settings__panel {
+    position: absolute; right: 0; top: calc(100% + .5rem); z-index: 5;
+    display: flex; flex-direction: column; gap: .35rem; min-width: 15rem; padding: .5rem;
+    border: 1px solid var(--panel-brd); border-radius: 16px;
+    background: var(--panel); backdrop-filter: blur(14px);
+    box-shadow: 0 0 22px rgba(0, 229, 255, .22);
+}
+.settings__panel[hidden] { display: none; }
+.settings__item {
+    display: block; width: 100%; padding: .65rem .85rem; border: 1px solid transparent; border-radius: 10px;
+    background: transparent; color: var(--text); text-align: left; text-decoration: none; cursor: pointer;
+    font-family: var(--mono); font-size: .85rem;
+}
+.settings__item:hover, .settings__item:focus-visible { border-color: var(--cyan); outline: 0; background: rgba(0, 229, 255, .06); }
+.settings__item[aria-pressed="true"] { color: var(--cyan); }
+
+/* ---------- Tótem táctil (Medical Center) ---------- */
+.totem-panel {
+    position: fixed; inset: 0; z-index: 6; display: grid; place-items: center; padding: 1rem;
+    background: rgba(5, 6, 10, .6); backdrop-filter: blur(4px);
+}
+.totem-panel[hidden] { display: none; }
+.totem-panel__card {
+    width: min(26rem, 100%); padding: 1.4rem; border-radius: 18px; text-align: center;
+    border: 1px solid var(--cyan); background: var(--panel); backdrop-filter: blur(14px);
+    box-shadow: 0 0 26px rgba(0, 229, 255, .35); font-family: var(--mono);
+}
+.totem-panel__card h2 { margin: .2rem 0 .6rem; font-family: var(--font); font-size: 1.5rem; }
+.totem-panel__card p { color: var(--muted); margin: 0 0 1rem; }
+.totem-panel__tag { color: var(--cyan) !important; font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 0 !important; }

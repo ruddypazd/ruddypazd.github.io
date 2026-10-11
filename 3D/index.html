@@ -23,14 +23,27 @@
     <canvas id="world" aria-label="Escena 3D con Ruddy"></canvas>
 
     <header class="hud hud--top">
-        <a href="../" class="hud__back">← Portafolio</a>
         <span class="hud__title">Mundo&nbsp;<span class="grad">3D</span></span>
-        <span class="hud__actions">
-            <button class="hud__icon" type="button" data-talk data-agent-id="agent_7001kxsnr66mej8tctnrrcrwtd6c" aria-label="Hablar con Ruddy por voz" aria-pressed="false">📞</button>
-            <button class="hud__icon" type="button" data-chat-open aria-label="Escribir un mensaje sobre Ruddy" aria-expanded="false">💬</button>
-            <button class="hud__icon" type="button" data-music aria-label="Silenciar música">🔊</button>
-        </span>
+        <div class="settings" data-settings>
+            <button class="hud__icon" type="button" data-settings-open aria-label="Ajustes" aria-expanded="false" aria-controls="settings-panel">⚙️</button>
+            <div class="settings__panel" id="settings-panel" data-settings-panel hidden>
+                <a href="../" class="settings__item">← Volver al portafolio</a>
+                <button class="settings__item" type="button" data-talk data-agent-id="agent_7001kxsnr66mej8tctnrrcrwtd6c" aria-label="Hablar con Ruddy por voz" aria-pressed="false">📞 Hablar con Ruddy</button>
+                <button class="settings__item" type="button" data-chat-open aria-expanded="false">💬 Escribir un mensaje</button>
+                <button class="settings__item" type="button" data-music>🔊 Música: activada</button>
+                <button class="settings__item" type="button" data-fp aria-pressed="false">👁 Vista en primera persona</button>
+            </div>
+        </div>
     </header>
+
+    <div class="totem-panel" data-totem-panel hidden role="dialog" aria-modal="true" aria-labelledby="totem-title">
+        <div class="totem-panel__card">
+            <p class="totem-panel__tag">Tótem táctil</p>
+            <h2 id="totem-title">Medical Center</h2>
+            <p>Aquí estará el sistema de Medical Center. Próximamente.</p>
+            <button class="chat__send" type="button" data-totem-close>Cerrar</button>
+        </div>
+    </div>
 
     <form class="chat" data-chat hidden autocomplete="off">
         <input class="chat__input" type="text" name="msg" maxlength="120" placeholder="Escribe algo para que Ruddy lo diga…" aria-label="Mensaje" enterkeyhint="send">
@@ -58,7 +71,7 @@
     <footer class="hud hud--bottom">
         <p data-model-note hidden>Modelo provisional: el avatar real de Ruddy llegará pronto.</p>
         <p class="hud__link" data-link-hint hidden></p>
-        <p class="hud__hint">Joystick o WASD para moverte · R, Shift o «Correr» para correr · Espacio salta · Enter escribe un mensaje · 📞 habla con Ruddy · Toca un cartel para abrir la cotización</p>
+        <p class="hud__hint">Joystick o WASD para moverte · R, Shift o «Correr» para correr · Espacio salta · Enter escribe un mensaje · ⚙️ ajustes: hablar, música, primera persona · Toca un cartel para abrir la cotización</p>
     </footer>
 
     <script type="module" src="world.js"></script>
