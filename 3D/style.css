@@ -22,7 +22,9 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
-#world { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+#world { position: fixed; inset: 0; z-index: 1; width: 100%; height: 100%; display: block; touch-action: none; }
+/* Capa del video de YouTube, detrás del canvas (se ve por el hueco del letrero). */
+.video-layer { position: fixed !important; inset: 0; z-index: 0; pointer-events: none; }
 
 .grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
