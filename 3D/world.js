@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 
 const MODEL_URL = 'models/ruddy.glb';
 
@@ -13,7 +14,8 @@ const loaderText = document.querySelector('[data-loader-text]');
 const modelNote = document.querySelector('[data-model-note]');
 
 // ---------- Renderer, escena y cámara ----------
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+// alpha: el letrero de video abre un hueco transparente para ver el iframe que está detrás.
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -232,6 +234,83 @@ BILLBOARDS.forEach((item, i) => {
     });
 });
 
+// ---------- Letrero de video (YouTube) a lo lejos: su audio es la música de fondo ----------
+// Un iframe no puede ser textura de WebGL. Se dibuja con CSS3DRenderer detrás del canvas y
+// un plano "agujero" en la escena deja ver el video, así Ruddy y los pilares lo tapan bien.
+const VIDEO_ID = '22y0yNXSbQI';
+const VIDEO_W = 12;                    // ancho en metros (16:9)
+const VIDEO_H = VIDEO_W * 9 / 16;
+const VIDEO_PX = 1280;                 // ancho del iframe en píxeles CSS
+const VIDEO_BOTTOM = 2;
+const VIDEO_POS = new THREE.Vector3(0, 0, -22);
+
+const cssRenderer = new CSS3DRenderer();
+cssRenderer.setSize(window.innerWidth, window.innerHeight);
+cssRenderer.domElement.className = 'video-layer';
+document.body.prepend(cssRenderer.domElement);
+const cssScene = new THREE.Scene();
+
+const ytFrame = document.createElement('iframe');
+ytFrame.src = `https://www.youtube.com/embed/${VIDEO_ID}?enablejsapi=1&autoplay=1&mute=1&loop=1`
+    + `&playlist=${VIDEO_ID}&controls=0&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3`
+    + `&origin=${encodeURIComponent(location.origin)}`;
+ytFrame.title = 'Video de fondo del Mundo 3D';
+ytFrame.allow = 'autoplay; encrypted-media';
+ytFrame.style.cssText = `width:${VIDEO_PX}px;height:${VIDEO_PX * 9 / 16}px;border:0;background:#000`;
+const videoObject = new CSS3DObject(ytFrame);
+videoObject.scale.setScalar(VIDEO_W / VIDEO_PX);
+
+const videoBoard = new THREE.Group();
+videoBoard.position.copy(VIDEO_POS);
+videoBoard.lookAt(0, 0, 0);
+const videoCenterY = VIDEO_BOTTOM + VIDEO_H / 2;
+const videoFrame = new THREE.Mesh(
+    new THREE.BoxGeometry(VIDEO_W + 0.4, VIDEO_H + 0.4, 0.14),
+    new THREE.MeshStandardMaterial({ color: 0xff3da6, emissive: 0xff3da6, emissiveIntensity: 2.2, fog: false })
+);
+videoFrame.position.y = videoCenterY;
+const videoHole = new THREE.Mesh(
+    new THREE.PlaneGeometry(VIDEO_W, VIDEO_H),
+    new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 0, blending: THREE.NoBlending, fog: false, toneMapped: false })
+);
+videoHole.position.set(0, videoCenterY, 0.08);
+videoBoard.add(videoFrame, videoHole);
+for (const side of [-1, 1]) {
+    const pole = new THREE.Mesh(new THREE.BoxGeometry(0.3, VIDEO_BOTTOM + 0.2, 0.3), poleMat);
+    pole.position.set(side * (VIDEO_W / 2 - 1), (VIDEO_BOTTOM + 0.2) / 2, -0.14);
+    videoBoard.add(pole);
+}
+const videoGlow = new THREE.PointLight(0xff3da6, 30, 14);
+videoGlow.position.set(0, VIDEO_BOTTOM, 2.5);
+videoBoard.add(videoGlow);
+scene.add(videoBoard);
+videoBoard.updateMatrixWorld(true);
+videoHole.getWorldPosition(videoObject.position);
+videoObject.quaternion.copy(videoBoard.quaternion);
+cssScene.add(videoObject);
+{
+    const p = new THREE.Vector3();
+    for (let x = -VIDEO_W / 2; x <= VIDEO_W / 2 + 0.01; x += 0.6) {
+        videoBoard.localToWorld(p.set(x, 0, 0));
+        obstacles.push({ x: p.x, z: p.z, r: 0.5 });
+    }
+}
+
+// El video arranca mudo (el navegador lo permite) y se le activa el sonido con el primer
+// gesto. Se controla con la API de mensajes del reproductor de YouTube.
+let ytReady = false;
+function ytCommand(func, args = []) {
+    ytFrame.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), '*');
+}
+ytFrame.addEventListener('load', () => {
+    ytFrame.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 'mundo3d' }), '*');
+});
+window.addEventListener('message', (e) => {
+    if (e.source !== ytFrame.contentWindow || ytReady) return;
+    ytReady = true;
+    music.sync();
+});
+
 // Clic o toque (sin arrastrar) sobre un cartel: abre su cotización.
 const raycaster = new THREE.Raycaster();
 const pointerNdc = new THREE.Vector2();
@@ -443,10 +522,18 @@ function toggleRun() {
 }
 onPress(runBtn, toggleRun);
 
-// Música de fondo: el navegador solo permite sonar tras un gesto del usuario.
-const music = new Audio('audio/musica.mp3');
-music.loop = true;
-music.volume = 0.45;
+// Música de fondo: el audio del video de YouTube. "Pausar" la silencia sin detener el video.
+const music = {
+    paused: true,
+    play() { this.paused = false; this.sync(); return Promise.resolve(); },
+    pause() { this.paused = true; this.sync(); },
+    sync() {
+        if (!ytReady) return;
+        ytCommand('playVideo');
+        if (this.paused) ytCommand('mute');
+        else { ytCommand('unMute'); ytCommand('setVolume', [45]); }
+    },
+};
 const musicBtn = document.querySelector('[data-music]');
 let musicOn = true;
 function syncMusicBtn() {
@@ -829,6 +916,7 @@ renderer.setAnimationLoop(() => {
 
     controls.update();
     renderer.render(scene, camera);
+    cssRenderer.render(cssScene, camera);
     updateBubble();
 });
 
@@ -836,4 +924,5 @@ window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    cssRenderer.setSize(window.innerWidth, window.innerHeight);
 });
