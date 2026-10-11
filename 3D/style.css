@@ -25,6 +25,9 @@ body {
 #world { position: fixed; inset: 0; z-index: 1; width: 100%; height: 100%; display: block; touch-action: none; }
 /* Capa del video de YouTube, detrás del canvas (se ve por el hueco del letrero). */
 .video-layer { position: fixed !important; inset: 0; z-index: 0; pointer-events: none; }
+/* Antes de reproducirse, el video va delante para poder tocar su botón play. */
+.video-layer.is-waiting { z-index: 2; }
+.video-layer.is-waiting iframe { pointer-events: auto; }
 
 .grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
 

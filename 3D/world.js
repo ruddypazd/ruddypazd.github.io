@@ -250,8 +250,12 @@ cssRenderer.domElement.className = 'video-layer';
 document.body.prepend(cssRenderer.domElement);
 const cssScene = new THREE.Scene();
 
+// iOS no reproduce solo un iframe de YouTube (ni mudo), así que ahí arranca con sonido
+// cuando se toca su botón play; en el resto arranca mudo y suena con el primer gesto.
+const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const ytFrame = document.createElement('iframe');
-ytFrame.src = `https://www.youtube.com/embed/${VIDEO_ID}?enablejsapi=1&autoplay=1&mute=1&loop=1`
+ytFrame.src = `https://www.youtube.com/embed/${VIDEO_ID}?enablejsapi=1${IS_IOS ? '' : '&autoplay=1&mute=1'}&loop=1`
     + `&playlist=${VIDEO_ID}&controls=0&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3`
     + `&origin=${encodeURIComponent(location.origin)}`;
 ytFrame.title = 'Video de fondo del Mundo 3D';
@@ -305,10 +309,25 @@ function ytCommand(func, args = []) {
 ytFrame.addEventListener('load', () => {
     ytFrame.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 'mundo3d' }), '*');
 });
+// Mientras el video no se reproduce, su capa pasa delante del canvas para que el botón
+// play de YouTube reciba el toque (el canvas lo tapaba). Al reproducirse vuelve atrás.
+let ytPlaying = null;
+function setVideoWaiting(waiting) {
+    cssRenderer.domElement.classList.toggle('is-waiting', waiting);
+}
+setVideoWaiting(true);
 window.addEventListener('message', (e) => {
-    if (e.source !== ytFrame.contentWindow || ytReady) return;
-    ytReady = true;
-    music.sync();
+    if (e.source !== ytFrame.contentWindow) return;
+    if (!ytReady) { ytReady = true; music.sync(); }
+    let data;
+    try { data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch { return; }
+    const state = data?.info?.playerState ?? (data?.event === 'onStateChange' ? data.info : undefined);
+    if (typeof state !== 'number') return;
+    const playing = state === 1 || state === 3;  // reproduciendo o cargando
+    if (playing === ytPlaying) return;
+    ytPlaying = playing;
+    setVideoWaiting(!playing);
+    if (playing) { if (musicOn) startMusic(); else music.sync(); }
 });
 
 // Clic o toque (sin arrastrar) sobre un cartel: abre su cotización.
