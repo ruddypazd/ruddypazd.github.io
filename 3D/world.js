@@ -24,7 +24,7 @@ renderer.shadowMap.enabled = true;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05060a);
-scene.fog = new THREE.Fog(0x05060a, 10, 32);
+scene.fog = new THREE.Fog(0x05060a, 14, 70);
 
 const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
 camera.position.set(0, 1.6, 4.2);
@@ -60,7 +60,7 @@ rims.add(rimCyan, rimPink);
 scene.add(rims);
 
 // ---------- Piso ----------
-const WORLD_RADIUS = 26;
+const WORLD_RADIUS = 52;   // amplio, con espacio libre entre letreros para sumar más cosas
 const floor = new THREE.Mesh(
     new THREE.CircleGeometry(WORLD_RADIUS + 4, 96),
     new THREE.MeshStandardMaterial({ color: 0x0a0d16, roughness: 0.9 })
@@ -69,7 +69,7 @@ floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
 scene.add(floor);
 
-const grid = new THREE.GridHelper(60, 120, 0x00e5ff, 0x1a2140);
+const grid = new THREE.GridHelper((WORLD_RADIUS + 4) * 2, (WORLD_RADIUS + 4) * 4, 0x00e5ff, 0x1a2140);
 grid.material.transparent = true;
 grid.material.opacity = 0.35;
 grid.position.y = 0.002;
@@ -159,7 +159,7 @@ const BILLBOARDS = [
     },
 ];
 const clickable = [];   // imágenes de los carteles, para el clic
-const BILLBOARD_RADIUS = 15;
+const BILLBOARD_RADIUS = 28;
 const BILLBOARD_HEIGHT = 3.4;   // alto de la imagen, en metros
 const BILLBOARD_BOTTOM = 1.6;   // altura del borde inferior
 const textureLoader = new THREE.TextureLoader().setCrossOrigin('anonymous');
@@ -238,11 +238,11 @@ BILLBOARDS.forEach((item, i) => {
 // Un iframe no puede ser textura de WebGL. Se dibuja con CSS3DRenderer detrás del canvas y
 // un plano "agujero" en la escena deja ver el video, así Ruddy y los pilares lo tapan bien.
 const VIDEO_ID = '22y0yNXSbQI';
-const VIDEO_W = 12;                    // ancho en metros (16:9)
+const VIDEO_W = 16;                    // ancho en metros (16:9); grande porque está lejos
 const VIDEO_H = VIDEO_W * 9 / 16;
 const VIDEO_PX = 1280;                 // ancho del iframe en píxeles CSS
 const VIDEO_BOTTOM = 2;
-const VIDEO_POS = new THREE.Vector3(0, 0, -22);
+const VIDEO_POS = new THREE.Vector3(0, 0, -48);
 
 const cssRenderer = new CSS3DRenderer();
 cssRenderer.setSize(window.innerWidth, window.innerHeight);
@@ -250,8 +250,12 @@ cssRenderer.domElement.className = 'video-layer';
 document.body.prepend(cssRenderer.domElement);
 const cssScene = new THREE.Scene();
 
+// iOS no reproduce solo un iframe de YouTube (ni mudo), así que ahí arranca con sonido
+// cuando se toca su botón play; en el resto arranca mudo y suena con el primer gesto.
+const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const ytFrame = document.createElement('iframe');
-ytFrame.src = `https://www.youtube.com/embed/${VIDEO_ID}?enablejsapi=1&autoplay=1&mute=1&loop=1`
+ytFrame.src = `https://www.youtube.com/embed/${VIDEO_ID}?enablejsapi=1${IS_IOS ? '' : '&autoplay=1&mute=1'}&loop=1`
     + `&playlist=${VIDEO_ID}&controls=0&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3`
     + `&origin=${encodeURIComponent(location.origin)}`;
 ytFrame.title = 'Video de fondo del Mundo 3D';
@@ -280,7 +284,7 @@ for (const side of [-1, 1]) {
     pole.position.set(side * (VIDEO_W / 2 - 1), (VIDEO_BOTTOM + 0.2) / 2, -0.14);
     videoBoard.add(pole);
 }
-const videoGlow = new THREE.PointLight(0xff3da6, 30, 14);
+const videoGlow = new THREE.PointLight(0xff3da6, 45, 20);
 videoGlow.position.set(0, VIDEO_BOTTOM, 2.5);
 videoBoard.add(videoGlow);
 scene.add(videoBoard);
@@ -305,10 +309,25 @@ function ytCommand(func, args = []) {
 ytFrame.addEventListener('load', () => {
     ytFrame.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 'mundo3d' }), '*');
 });
+// Mientras el video no se reproduce, su capa pasa delante del canvas para que el botón
+// play de YouTube reciba el toque (el canvas lo tapaba). Al reproducirse vuelve atrás.
+let ytPlaying = null;
+function setVideoWaiting(waiting) {
+    cssRenderer.domElement.classList.toggle('is-waiting', waiting);
+}
+setVideoWaiting(true);
 window.addEventListener('message', (e) => {
-    if (e.source !== ytFrame.contentWindow || ytReady) return;
-    ytReady = true;
-    music.sync();
+    if (e.source !== ytFrame.contentWindow) return;
+    if (!ytReady) { ytReady = true; music.sync(); }
+    let data;
+    try { data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch { return; }
+    const state = data?.info?.playerState ?? (data?.event === 'onStateChange' ? data.info : undefined);
+    if (typeof state !== 'number') return;
+    const playing = state === 1 || state === 3;  // reproduciendo o cargando
+    if (playing === ytPlaying) return;
+    ytPlaying = playing;
+    setVideoWaiting(!playing);
+    if (playing) { if (musicOn) startMusic(); else music.sync(); }
 });
 
 // Clic o toque (sin arrastrar) sobre un cartel: abre su cotización.
