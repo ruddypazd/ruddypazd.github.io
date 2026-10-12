@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=23">
+    <link rel="stylesheet" href="style.css?v=24">
     <script type="importmap">
     {
         "imports": {
@@ -74,6 +74,42 @@
         <p class="hud__hint">Joystick o WASD para moverte · R, Shift o «Correr» para correr · Espacio salta · Enter escribe un mensaje · ⚙️ ajustes: hablar, música, primera persona · Toca un cuadro para abrirlo</p>
     </footer>
 
-    <script type="module" src="world.js?v=23"></script>
+    <div class="login" data-login role="dialog" aria-modal="true" aria-labelledby="login-title">
+        <form class="login__card" data-login-form>
+            <p class="totem-panel__tag">Acceso privado</p>
+            <h2 id="login-title">Mundo <span class="grad">3D</span></h2>
+            <label>Usuario<input name="user" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+            <label>Contraseña<input name="pass" type="password" autocomplete="current-password" required></label>
+            <p class="login__error" data-login-error hidden>Usuario o contraseña incorrectos.</p>
+            <button class="chat__send" type="submit">Entrar</button>
+            <a class="login__back" href="../">← Volver al portafolio</a>
+        </form>
+    </div>
+
+    <script type="module">
+        // Acceso con usuario y contraseña. El sitio es estático, así que se compara un
+        // hash SHA-256 en el navegador: aparta curiosos, no es seguridad real.
+        const ACCESS_HASH = '7ee71ba33447810c5602cc3df4f802f0632f63efe3b93b0612143b3b8cd7ed1c';
+        const KEY = 'mundo3d-acceso';
+        const login = document.querySelector('[data-login]');
+        const form = document.querySelector('[data-login-form]');
+        const error = document.querySelector('[data-login-error]');
+        const enter = () => { login.remove(); import('./world.js?v=24'); };
+        async function sha256(text) {
+            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+            return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+        }
+        let saved = null;
+        try { saved = sessionStorage.getItem(KEY); } catch {}
+        if (saved === ACCESS_HASH) enter();
+        else form.user.focus();
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const hash = await sha256(`mundo3d|${form.user.value.trim()}|${form.pass.value}`);
+            if (hash !== ACCESS_HASH) { error.hidden = false; form.pass.select(); return; }
+            try { sessionStorage.setItem(KEY, hash); } catch {}
+            enter();
+        });
+    </script>
 </body>
 </html>
