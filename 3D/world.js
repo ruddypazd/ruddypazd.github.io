@@ -171,15 +171,6 @@ const GALLERY = [
         colors: ['#3a1206', '#8a3412'],
     },
     {
-        title: 'Arma tu cotización',
-        subtitle: 'Cotizador',
-        text: 'Elige los módulos que necesitas y arma tu propia cotización.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: '../cotizaciones/',
-        fallback: 'images/cotizacion-cotizaciones.jpg',
-        colors: ['#1a1030', '#43207a'],
-    },
-    {
         title: 'Condominio Santa María',
         subtitle: 'Portal de copropietarios',
         text: 'Portal de la comunidad del Condominio Santa María 1 en Santa Cruz: planos, censo, finanzas, reuniones y solicitudes.',
@@ -212,10 +203,44 @@ const GALLERY = [
         url: 'https://ct.rorlogistico.com',
         colors: ['#3d2a0a', '#c27a12'],
     },
+    {
+        title: 'iCompany',
+        subtitle: 'ERP para broker de seguros',
+        text: 'Sistema ERP para el broker de seguros del Banco Mercantil.',
+        devs: 'Roy Ruddy Paz · Strasol SRL',
+        url: 'https://icompany.segurosmsc.com',
+        colors: ['#06321f', '#0f7a45'],
+    },
+    {
+        title: 'UpLabs AI',
+        subtitle: 'CRM con IA',
+        text: 'CRM completo y multitenant con agentes de IA para llamadas y WhatsApp.',
+        devs: 'Roy Ruddy Paz · UpLabs AI',
+        url: 'https://app.uplabsai.com',
+        colors: ['#0b1440', '#5b2bd6'],
+    },
+    {
+        title: 'App Kolping',
+        subtitle: 'Gestión empresarial',
+        text: 'Sistema de gestión empresarial de Kolping.',
+        devs: 'Roy Ruddy Paz · Servisofts',
+        url: 'https://kolping.servisofts.com',
+        colors: ['#2a0b0b', '#8f1f1f'],
+    },
+    {
+        title: 'Staff Pro USA',
+        subtitle: 'Sistema web',
+        text: 'Sistema web de Staff Pro USA.',
+        devs: 'Roy Ruddy Paz · Servisofts',
+        url: 'https://staffprousa.servisofts.com/',
+        colors: ['#0a1e3a', '#b0242f'],
+    },
 ];
-const GALLERY_Z = 40;               // la pared mira al centro del mundo
 const PAINT_W = 5.6, PAINT_H = 3.15, PAINT_GAP = 1.2, PAINT_BOTTOM = 2.5;
 const galleryWidth = GALLERY.length * PAINT_W + (GALLERY.length - 1) * PAINT_GAP;
+// La pared mira al centro del mundo. Cuantos más cuadros, más ancha: se acerca al
+// centro lo justo para que sus extremos sigan dentro del mundo.
+const GALLERY_Z = Math.min(40, Math.sqrt((WORLD_RADIUS - 1) ** 2 - (galleryWidth / 2 + 2) ** 2));
 const gallery = new THREE.Group();
 gallery.position.set(0, 0, GALLERY_Z);
 gallery.rotation.y = Math.PI;       // los cuadros miran hacia -z
