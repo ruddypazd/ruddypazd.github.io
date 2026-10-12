@@ -234,6 +234,178 @@ BILLBOARDS.forEach((item, i) => {
     });
 });
 
+// ---------- Galería estilo museo: sistemas como cuadros, con su ficha abajo ----------
+// Pared al fondo, detrás del cartel de ROR. Cada cuadro abre su sistema al tocarlo.
+const GALLERY = [
+    {
+        title: 'Condominio Santa María',
+        subtitle: 'Portal de copropietarios',
+        text: 'Portal de la comunidad del Condominio Santa María 1 en Santa Cruz: planos, censo, finanzas, reuniones y solicitudes.',
+        devs: 'Roy Ruddy Paz · Servisofts',
+        url: 'https://condominio-santa-maria.github.io',
+        image: 'https://condominio-santa-maria.github.io/images/og-image.png',
+        colors: ['#0f3d3a', '#1f6f5c'],
+    },
+    {
+        title: 'iFacturación',
+        subtitle: 'Facturación electrónica',
+        text: 'Sistema de facturación electrónica en línea de iBrokers: emisión de facturas, registro y gestión de cuentas.',
+        devs: 'Roy Ruddy Paz · Strasol SRL',
+        url: 'https://facturacion.ibrokers.cloud',
+        colors: ['#10264f', '#2f5fb3'],
+    },
+    {
+        title: 'SERP',
+        subtitle: 'ERP empresarial',
+        text: 'Sistema de planificación de recursos empresariales de Servisofts: ventas, inventario, finanzas y operación en un solo lugar.',
+        devs: 'Roy Ruddy Paz · Servisofts',
+        url: 'https://serp.servisofts.com',
+        colors: ['#3a0f2e', '#a3246f'],
+    },
+    {
+        title: 'R.O.R Control Tower',
+        subtitle: 'Torre de control logística',
+        text: 'Torre de control de R.O.R Logístico para seguir envíos, operaciones y estados en tiempo real.',
+        devs: 'Roy Ruddy Paz · Servisofts',
+        url: 'https://ct.rorlogistico.com',
+        colors: ['#3d2a0a', '#c27a12'],
+    },
+];
+const GALLERY_Z = 42;               // la pared mira al centro del mundo
+const PAINT_W = 6, PAINT_H = 3.4, PAINT_GAP = 3.2, PAINT_BOTTOM = 2.5;
+const galleryWidth = GALLERY.length * PAINT_W + (GALLERY.length - 1) * PAINT_GAP;
+const gallery = new THREE.Group();
+gallery.position.set(0, 0, GALLERY_Z);
+gallery.rotation.y = Math.PI;       // los cuadros miran hacia -z
+scene.add(gallery);
+{
+    const wall = new THREE.Mesh(
+        new THREE.BoxGeometry(galleryWidth + 4, 7.5, 0.4),
+        new THREE.MeshStandardMaterial({ color: 0x1c1a24, roughness: 0.9 })
+    );
+    wall.position.set(0, 3.75, -0.3);
+    wall.receiveShadow = true;
+    gallery.add(wall);
+    const sign = makeLabelTexture(1024, 128, (c, w, h) => {
+        c.fillStyle = '#e9dcc0'; c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.font = '600 64px "Space Grotesk", serif';
+        c.fillText('GALERÍA DE SISTEMAS', w / 2, h / 2);
+    });
+    const signMesh = new THREE.Mesh(new THREE.PlaneGeometry(8, 1), new THREE.MeshBasicMaterial({ map: sign, transparent: true, toneMapped: false }));
+    signMesh.position.set(0, 6.6, -0.09);
+    gallery.add(signMesh);
+    gallery.updateMatrixWorld(true);
+    const p = new THREE.Vector3();
+    for (let x = -galleryWidth / 2 - 2; x <= galleryWidth / 2 + 2.01; x += 0.6) {
+        gallery.localToWorld(p.set(x, 0, -0.3));
+        obstacles.push({ x: p.x, z: p.z, r: 0.6 });
+    }
+}
+
+function makeLabelTexture(w, h, draw) {
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    draw(cv.getContext('2d'), w, h);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return tex;
+}
+
+function wrapText(c, text, x, y, maxW, lineH) {
+    let line = '';
+    for (const word of text.split(' ')) {
+        const test = line ? `${line} ${word}` : word;
+        if (c.measureText(test).width > maxW && line) { c.fillText(line, x, y); line = word; y += lineH; }
+        else line = test;
+    }
+    if (line) c.fillText(line, x, y);
+}
+
+// Lienzo del cuadro: degradado con el nombre del sistema; si hay imagen, va encima.
+function drawPainting(c, w, h, item, img) {
+    const g = c.createLinearGradient(0, 0, w, h);
+    g.addColorStop(0, item.colors[0]); g.addColorStop(1, item.colors[1]);
+    c.fillStyle = g; c.fillRect(0, 0, w, h);
+    if (img) {
+        const s = Math.max(w / img.width, h / img.height);
+        c.drawImage(img, (w - img.width * s) / 2, (h - img.height * s) / 2, img.width * s, img.height * s);
+        return;
+    }
+    // Trazos abstractos, como pinceladas.
+    c.globalAlpha = 0.18;
+    for (let i = 0; i < 9; i++) {
+        c.beginPath();
+        c.arc(w * ((i * 37) % 100) / 100, h * ((i * 61) % 100) / 100, 60 + (i * 47) % 160, 0, Math.PI * 2);
+        c.fillStyle = i % 2 ? '#ffffff' : '#000000'; c.fill();
+    }
+    c.globalAlpha = 1;
+    c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.font = 'bold 120px "Space Grotesk", sans-serif';
+    c.fillText(item.title, w / 2, h / 2 - 40, w - 120);
+    c.font = '44px "JetBrains Mono", monospace'; c.fillStyle = 'rgba(255,255,255,.85)';
+    c.fillText(item.subtitle, w / 2, h / 2 + 70, w - 120);
+}
+
+const frameMat = new THREE.MeshStandardMaterial({ color: 0xc9a24a, metalness: 0.85, roughness: 0.35 });
+const matMat = new THREE.MeshStandardMaterial({ color: 0xf1ead8, roughness: 0.95 });
+GALLERY.forEach((item, i) => {
+    const x = -galleryWidth / 2 + PAINT_W / 2 + i * (PAINT_W + PAINT_GAP);
+    const cy = PAINT_BOTTOM + PAINT_H / 2;
+    const piece = new THREE.Group();
+    piece.position.x = x;
+    gallery.add(piece);
+
+    // Marco dorado y paspartú.
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(PAINT_W + 0.9, PAINT_H + 0.9, 0.16), frameMat);
+    frame.position.set(0, cy, 0);
+    frame.castShadow = true;
+    const mat = new THREE.Mesh(new THREE.PlaneGeometry(PAINT_W + 0.5, PAINT_H + 0.5), matMat);
+    mat.position.set(0, cy, 0.085);
+    piece.add(frame, mat);
+
+    const tex = makeLabelTexture(1200, 680, (c, w, h) => drawPainting(c, w, h, item));
+    const canvasMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(PAINT_W, PAINT_H),
+        new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })
+    );
+    canvasMesh.position.set(0, cy, 0.09);
+    canvasMesh.userData = { title: item.title, url: item.url, hint: `Visitar ${item.title} ↗` };
+    piece.add(canvasMesh);
+    clickable.push(canvasMesh);
+    if (item.image) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => { drawPainting(tex.image.getContext('2d'), 1200, 680, item, img); tex.needsUpdate = true; };
+        img.src = item.image;
+    }
+
+    // Ficha del museo, abajo del cuadro.
+    const plaque = makeLabelTexture(900, 360, (c, w, h) => {
+        c.fillStyle = '#efe6cf'; c.fillRect(0, 0, w, h);
+        c.strokeStyle = '#b08d3e'; c.lineWidth = 6; c.strokeRect(10, 10, w - 20, h - 20);
+        c.fillStyle = '#1c1a24'; c.textAlign = 'left';
+        c.font = 'bold 50px "Space Grotesk", serif'; c.fillText(item.title, 44, 82);
+        c.font = 'italic 30px Georgia, serif'; c.fillStyle = '#5a4a2a'; c.fillText(item.subtitle, 44, 126);
+        c.font = '27px Georgia, serif'; c.fillStyle = '#2a2630';
+        wrapText(c, item.text, 44, 176, w - 88, 36);
+        c.font = 'bold 26px "JetBrains Mono", monospace'; c.fillStyle = '#7a5a12';
+        c.fillText(`Desarrollo: ${item.devs}`, 44, h - 40);
+    });
+    const plaqueMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(3.4, 1.36),
+        new THREE.MeshStandardMaterial({ map: plaque, roughness: 0.7 })
+    );
+    plaqueMesh.position.set(0, 1.15, 0.02);
+    piece.add(plaqueMesh);
+
+    // Foco de museo sobre el cuadro y la ficha.
+    const spot = new THREE.SpotLight(0xfff1d6, 60, 12, Math.PI / 5, 0.5, 1.2);
+    spot.position.set(0, PAINT_BOTTOM + PAINT_H + 1.8, 2.4);
+    spot.target.position.set(0, cy - 0.8, 0);
+    piece.add(spot, spot.target);
+});
+
 // ---------- Letrero de video (YouTube) a lo lejos: su audio es la música de fondo ----------
 // Un iframe no puede ser textura de WebGL. Se dibuja con CSS3DRenderer detrás del canvas y
 // un plano "agujero" en la escena deja ver el video, así Ruddy y los pilares lo tapan bien.
