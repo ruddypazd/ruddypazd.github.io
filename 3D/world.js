@@ -34,7 +34,7 @@ controls.target.set(0, 1, 0);
 controls.enableDamping = true;
 controls.enablePan = false;
 controls.minDistance = 1.5;
-controls.maxDistance = 9;
+controls.maxDistance = 14;
 controls.maxPolarAngle = Math.PI * 0.495;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.8;
@@ -123,120 +123,62 @@ const cubes = NEON.map((color, i) => {
     return cube;
 });
 
-// ---------- Gigantografías luminosas: una por cotización ----------
-// image: la og:image de la cotización (si la tiene). fallback: imagen local por si
-// la externa no carga o no existe. Al hacer clic o tocar el cartel se abre url.
-// El cartel se adapta a la proporción de la imagen (ancho máximo 8 m).
-const BILLBOARDS = [
+const clickable = [];   // cuadros, póster del video y tótem, para el clic
+const poleMat = new THREE.MeshStandardMaterial({ color: 0x141a2e, roughness: 0.4, metalness: 0.6 });
+
+// ---------- Galería estilo museo: cotizaciones y sistemas como cuadros, con su ficha ----------
+// Todos en una misma pared al fondo. Cada cuadro abre su página al tocarlo.
+// image: og:image del sitio (si la tiene); fallback: imagen local si la externa no carga.
+const GALLERY = [
     {
         title: 'ROR Logístico',
+        subtitle: 'Cotización',
+        text: 'Propuesta y cotización de los sistemas de R.O.R Logístico: torre de control, operaciones y seguimiento de envíos.',
+        devs: 'Roy Ruddy Paz · Servisofts',
         url: 'https://s-r-o-r.github.io/cotizaciones/',
         image: 'https://s-r-o-r.github.io/assets/og/og-cotizaciones.jpg',
         fallback: 'images/cotizacion-ror.jpg',
+        colors: ['#06262e', '#0b5363'],
     },
     {
         title: 'Sofía Ltda.',
+        subtitle: 'Cotización',
+        text: 'Propuesta y cotización del sistema para Sofía Ltda.',
+        devs: 'Roy Ruddy Paz · Servisofts',
         url: 'https://s-s-sofia.github.io/',
         image: 'https://s-s-sofia.github.io/image/og-image.jpg?v=20261007',
         fallback: 'images/cotizacion-sofia.jpg',
+        colors: ['#24123d', '#5a2d91'],
     },
     {
         title: 'Medical Center',
+        subtitle: 'Cotización',
+        text: 'Portal de autogestión de la Clínica Medical Center: citas, pagos QR, resultados y atención por WhatsApp.',
+        devs: 'Roy Ruddy Paz · Servisofts',
         url: 'https://medicalcenterbo.github.io/',
         image: 'https://medicalcenterbo.github.io/assets/og-image.jpg',
         fallback: 'images/cotizacion-medical.jpg',
+        colors: ['#0b2e22', '#1d6b4f'],
     },
     {
         title: 'Calistenia Bolivia',
+        subtitle: 'Cotización',
+        text: 'Propuesta y cotización del sitio y sistema de Calistenia Bolivia SRL.',
+        devs: 'Roy Ruddy Paz · Servisofts',
         url: 'https://calisteniabolivia-srl.github.io/',
         image: 'https://calisteniabolivia-srl.github.io/images/og/og-home.jpg',
         fallback: 'images/cotizacion-calistenia.jpg',
+        colors: ['#3a1206', '#8a3412'],
     },
     {
         title: 'Arma tu cotización',
+        subtitle: 'Cotizador',
+        text: 'Elige los módulos que necesitas y arma tu propia cotización.',
+        devs: 'Roy Ruddy Paz · Servisofts',
         url: '../cotizaciones/',
         fallback: 'images/cotizacion-cotizaciones.jpg',
+        colors: ['#1a1030', '#43207a'],
     },
-];
-const clickable = [];   // imágenes de los carteles, para el clic
-const BILLBOARD_RADIUS = 28;
-const BILLBOARD_HEIGHT = 3.4;   // alto de la imagen, en metros
-const BILLBOARD_BOTTOM = 1.6;   // altura del borde inferior
-const textureLoader = new THREE.TextureLoader().setCrossOrigin('anonymous');
-const poleMat = new THREE.MeshStandardMaterial({ color: 0x141a2e, roughness: 0.4, metalness: 0.6 });
-
-function buildBillboard(texture, color) {
-    const aspect = texture.image.width / texture.image.height || 16 / 9;
-    let h = BILLBOARD_HEIGHT;
-    let w = h * aspect;
-    if (w > 8) { w = 8; h = w / aspect; }
-    const centerY = BILLBOARD_BOTTOM + h / 2;
-    const group = new THREE.Group();
-
-    // Marco luminoso detrás de la imagen.
-    const frame = new THREE.Mesh(
-        new THREE.BoxGeometry(w + 0.3, h + 0.3, 0.12),
-        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2.2, fog: false })
-    );
-    frame.position.y = centerY;
-    group.add(frame);
-
-    // La imagen no recibe luz: brilla con sus propios colores.
-    const image = new THREE.Mesh(
-        new THREE.PlaneGeometry(w, h),
-        new THREE.MeshBasicMaterial({ map: texture, toneMapped: false, fog: false })
-    );
-    image.position.set(0, centerY, 0.07);
-    group.add(image);
-    clickable.push(image);
-
-    for (const side of [-1, 1]) {
-        const pole = new THREE.Mesh(new THREE.BoxGeometry(0.22, BILLBOARD_BOTTOM + 0.2, 0.22), poleMat);
-        pole.position.set(side * (w / 2 - 0.5), (BILLBOARD_BOTTOM + 0.2) / 2, -0.12);
-        pole.castShadow = true;
-        group.add(pole);
-    }
-
-    // Ilumina el piso frente al cartel.
-    const glow = new THREE.PointLight(color, 22, 11);
-    glow.position.set(0, centerY - h / 2, 2.2);
-    group.add(glow);
-
-    return { group, width: w, image };
-}
-
-// Intenta la og:image y, si falla, usa la imagen local.
-function loadBillboardTexture(item, onLoad) {
-    const local = () => textureLoader.load(item.fallback, onLoad);
-    if (item.image) textureLoader.load(item.image, onLoad, undefined, local);
-    else local();
-}
-
-BILLBOARDS.forEach((item, i) => {
-    loadBillboardTexture(item, (texture) => {
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-        const { group, width, image } = buildBillboard(texture, NEON[i % NEON.length]);
-        image.userData = { title: item.title, url: item.url };
-
-        const angle = (i / BILLBOARDS.length) * Math.PI * 2 + Math.PI / 2;
-        group.position.set(Math.cos(angle) * BILLBOARD_RADIUS, 0, Math.sin(angle) * BILLBOARD_RADIUS);
-        group.lookAt(0, 0, 0);
-        scene.add(group);
-
-        // Ruddy choca con el cartel a lo largo de su ancho.
-        group.updateMatrixWorld(true);
-        const p = new THREE.Vector3();
-        for (let x = -width / 2; x <= width / 2 + 0.01; x += 0.6) {
-            group.localToWorld(p.set(x, 0, 0));
-            obstacles.push({ x: p.x, z: p.z, r: 0.5 });
-        }
-    });
-});
-
-// ---------- Galería estilo museo: sistemas como cuadros, con su ficha abajo ----------
-// Pared al fondo, detrás del cartel de ROR. Cada cuadro abre su sistema al tocarlo.
-const GALLERY = [
     {
         title: 'Condominio Santa María',
         subtitle: 'Portal de copropietarios',
@@ -271,8 +213,8 @@ const GALLERY = [
         colors: ['#3d2a0a', '#c27a12'],
     },
 ];
-const GALLERY_Z = 42;               // la pared mira al centro del mundo
-const PAINT_W = 6, PAINT_H = 3.4, PAINT_GAP = 3.2, PAINT_BOTTOM = 2.5;
+const GALLERY_Z = 40;               // la pared mira al centro del mundo
+const PAINT_W = 5.6, PAINT_H = 3.15, PAINT_GAP = 1.2, PAINT_BOTTOM = 2.5;
 const galleryWidth = GALLERY.length * PAINT_W + (GALLERY.length - 1) * PAINT_GAP;
 const gallery = new THREE.Group();
 gallery.position.set(0, 0, GALLERY_Z);
@@ -289,7 +231,7 @@ scene.add(gallery);
     const sign = makeLabelTexture(1024, 128, (c, w, h) => {
         c.fillStyle = '#e9dcc0'; c.textAlign = 'center'; c.textBaseline = 'middle';
         c.font = '600 64px "Space Grotesk", serif';
-        c.fillText('GALERÍA DE SISTEMAS', w / 2, h / 2);
+        c.fillText('GALERÍA DE PROYECTOS', w / 2, h / 2);
     });
     const signMesh = new THREE.Mesh(new THREE.PlaneGeometry(8, 1), new THREE.MeshBasicMaterial({ map: sign, transparent: true, toneMapped: false }));
     signMesh.position.set(0, 6.6, -0.09);
@@ -328,7 +270,7 @@ function drawPainting(c, w, h, item, img) {
     g.addColorStop(0, item.colors[0]); g.addColorStop(1, item.colors[1]);
     c.fillStyle = g; c.fillRect(0, 0, w, h);
     if (img) {
-        const s = Math.max(w / img.width, h / img.height);
+        const s = Math.min(w / img.width, h / img.height);
         c.drawImage(img, (w - img.width * s) / 2, (h - img.height * s) / 2, img.width * s, img.height * s);
         return;
     }
@@ -364,7 +306,7 @@ GALLERY.forEach((item, i) => {
     mat.position.set(0, cy, 0.085);
     piece.add(frame, mat);
 
-    const tex = makeLabelTexture(1200, 680, (c, w, h) => drawPainting(c, w, h, item));
+    const tex = makeLabelTexture(1280, 720, (c, w, h) => drawPainting(c, w, h, item));
     const canvasMesh = new THREE.Mesh(
         new THREE.PlaneGeometry(PAINT_W, PAINT_H),
         new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })
@@ -373,12 +315,16 @@ GALLERY.forEach((item, i) => {
     canvasMesh.userData = { title: item.title, url: item.url, hint: `Visitar ${item.title} ↗` };
     piece.add(canvasMesh);
     clickable.push(canvasMesh);
-    if (item.image) {
+    const sources = [item.image, item.fallback].filter(Boolean);
+    const loadNext = () => {
+        if (!sources.length) return;
         const img = new Image();
         img.crossOrigin = 'anonymous';
-        img.onload = () => { drawPainting(tex.image.getContext('2d'), 1200, 680, item, img); tex.needsUpdate = true; };
-        img.src = item.image;
-    }
+        img.onload = () => { drawPainting(tex.image.getContext('2d'), 1280, 720, item, img); tex.needsUpdate = true; };
+        img.onerror = loadNext;
+        img.src = sources.shift();
+    };
+    loadNext();
 
     // Ficha del museo, abajo del cuadro.
     const plaque = makeLabelTexture(900, 360, (c, w, h) => {
@@ -627,8 +573,7 @@ function flashHint(text) {
 }
 
 // ---------- Tótem táctil: Medical Center (el sistema se conecta más adelante) ----------
-const TOTEM_ANGLE = (2 / BILLBOARDS.length) * Math.PI * 2 + Math.PI / 2;  // frente al cartel de Medical Center
-const TOTEM_RADIUS = 16;
+const TOTEM_INDEX = GALLERY.findIndex((g) => g.title === 'Medical Center');  // frente a su cuadro
 const totemPanel = document.querySelector('[data-totem-panel]');
 const totemScreenCanvas = document.createElement('canvas');
 totemScreenCanvas.width = 512; totemScreenCanvas.height = 860;
@@ -651,8 +596,9 @@ totemScreenCanvas.width = 512; totemScreenCanvas.height = 860;
 const totemTex = new THREE.CanvasTexture(totemScreenCanvas);
 totemTex.colorSpace = THREE.SRGBColorSpace;
 const totem = new THREE.Group();
-totem.position.set(Math.cos(TOTEM_ANGLE) * TOTEM_RADIUS, 0, Math.sin(TOTEM_ANGLE) * TOTEM_RADIUS);
-totem.lookAt(0, 0, 0);
+// La galería está girada 180°: la x local del cuadro queda invertida en el mundo.
+totem.position.set(-(-galleryWidth / 2 + PAINT_W / 2 + TOTEM_INDEX * (PAINT_W + PAINT_GAP)), 0, GALLERY_Z - 6);
+totem.lookAt(totem.position.x, 0, 0);
 {
     const base = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.16, 0.7), poleMat);
     base.position.y = 0.08;
@@ -932,7 +878,7 @@ function setFirstPerson(on) {
         camera.position.copy(eye);
     } else {
         controls.minDistance = 1.5;
-        controls.maxDistance = 9;
+        controls.maxDistance = 14;
         controls.minPolarAngle = 0;
         controls.maxPolarAngle = Math.PI * 0.495;
         controls.target.copy(player.position).setY(1);
