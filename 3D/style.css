@@ -230,19 +230,3 @@ body {
 .totem-panel__card p { color: var(--muted); margin: 0 0 1rem; }
 .totem-panel__tag { color: var(--cyan) !important; font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 0 !important; }
 
-/* Acceso con usuario y contraseña, antes de cargar el mundo. */
-.login { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 1rem; background: radial-gradient(circle at 50% 30%, #141a33, #05060a 70%); }
-.login__card {
-    display: grid; gap: .9rem; width: min(100%, 22rem); padding: 1.6rem;
-    border-radius: 1.2rem; background: rgba(10, 13, 22, .92); border: 1px solid rgba(0, 229, 255, .45);
-    box-shadow: 0 0 32px rgba(0, 229, 255, .2);
-}
-.login__card h2 { margin: 0; font-family: "Space Grotesk", sans-serif; font-size: 1.8rem; }
-.login__card label { display: grid; gap: .35rem; font-size: .9rem; color: rgba(255,255,255,.8); }
-.login__card input {
-    padding: .7rem .9rem; border-radius: .7rem; border: 1px solid rgba(255,255,255,.2);
-    background: rgba(255,255,255,.06); color: #fff; font: inherit; font-size: 16px;
-}
-.login__card input:focus { outline: none; border-color: #00e5ff; }
-.login__error { margin: 0; color: #ff6b9a; font-size: .9rem; }
-.login__back { justify-self: center; color: rgba(255,255,255,.7); font-size: .85rem; text-decoration: none; }

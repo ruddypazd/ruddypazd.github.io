@@ -664,6 +664,7 @@ let current = null;
 let jumping = false;
 let placeholder = null;
 let headBone = null;  // la cabeza asiente mientras Ruddy habla por voz
+let mouth = null;     // boca que se abre con la voz (el GLB no trae mandíbula ni visemas)
 
 // precise: mide los vértices ya deformados por el esqueleto (modelos de Mixamo).
 function fitToHeight(object, height) {
@@ -727,6 +728,18 @@ new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(
         });
         body.add(model);
         model.traverse((o) => { if (o.isBone && /head$/i.test(o.name)) headBone ??= o; });
+        if (headBone) {
+            // Medido sobre el modelo: en el espacio del hueso Head, +z mira al frente y
+            // la boca queda bajo la nariz, entre el bigote y la barba.
+            mouth = new THREE.Mesh(
+                new THREE.CircleGeometry(1, 32).translate(0, -1, 0),  // crece hacia abajo, como la mandíbula
+                new THREE.MeshBasicMaterial({ color: 0x1a0606 })
+            );
+            mouth.position.set(0, 0.021, 0.087);  // borde superior bajo el bigote
+            mouth.scale.set(0.017, 0.001, 1);
+            mouth.visible = false;
+            headBone.add(mouth);
+        }
 
         if (gltf.animations.length) {
             mixer = new THREE.AnimationMixer(model);
@@ -1239,6 +1252,12 @@ function updateTalking(t, dt) {
         headBone.rotation.z += Math.sin(t * 0.8) * 0.05 * voiceLevel;
     }
     if (placeholder) placeholder.scale.y = 1 + voiceLevel * 0.03;
+    if (mouth) {
+        // Abre y cierra a ritmo de sílabas, más grande cuanto más fuerte habla.
+        const open = speaking ? voiceLevel * (0.45 + 0.55 * Math.abs(Math.sin(t * 13) * Math.sin(t * 4.7 + 1))) : 0;
+        mouth.visible = open > 0.03;
+        mouth.scale.set(0.012 + open * 0.003, 0.001 + open * 0.0045, 1);
+    }
 }
 
 // Quieto y en llamada: Ruddy se gira hacia la cámara para hablarte de frente.
