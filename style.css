@@ -635,6 +635,19 @@ body.nav-open { overflow: hidden; }
         border-radius: 0; border: none;
     }
 }
+/* Datos de la persona antes de chatear (la sesión es por teléfono) */
+.chat__login { display: grid; gap: .55rem; padding: .9rem; border-top: 1px solid var(--panel-brd); }
+.chat__login[hidden] { display: none; }
+.chat__login p { margin: 0; color: var(--muted); font-size: .88rem; }
+.chat__login input {
+    background: var(--bg-soft); color: var(--text); border: 1px solid var(--panel-brd); border-radius: 12px;
+    padding: .6rem .8rem; font-family: var(--font); font-size: 16px; outline: none;
+}
+.chat__login input:focus { border-color: var(--cyan); box-shadow: 0 0 0 2px rgba(0,229,255,.15); }
+.chat__login .chat__login-error { color: #ff6b9a; }
+.chat__login-btn { border: none; border-radius: 12px; padding: .65rem; cursor: pointer; color: #05060a; background: var(--grad); font-weight: 600; font-family: var(--font); }
+.chatw.needs-login .chat__form { display: none; }
+
 /* Bloqueo del fondo mientras el chat está abierto (evita que la página haga scroll) */
 body.chat-open { position: fixed; width: 100%; overflow: hidden; }
 
