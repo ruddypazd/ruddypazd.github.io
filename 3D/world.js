@@ -670,6 +670,11 @@ let avatarTemplate = null;  // modelo ya ajustado, para clonar a las demás pers
 
 // precise: mide los vértices ya deformados por el esqueleto (modelos de Mixamo).
 function fitToHeight(object, height) {
+    // Se mide fuera de su padre: si Ruddy ya se movió (p. ej. a su posición guardada,
+    // que llega antes que el modelo al recargar), el centro saldría en coordenadas del
+    // mundo y el modelo quedaría corrido de su anillo y de la posición que ven los demás.
+    const parent = object.parent;
+    parent?.remove(object);
     object.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(object, true);
     const size = box.getSize(new THREE.Vector3());
@@ -680,6 +685,7 @@ function fitToHeight(object, height) {
     object.position.x -= center.x;
     object.position.z -= center.z;
     object.position.y -= box.min.y;
+    parent?.add(object);
 }
 
 // Avatar provisional mientras no exista el GLB de Ruddy.
@@ -1050,8 +1056,6 @@ const chatForm = document.querySelector('[data-chat]');
 const chatInput = chatForm.querySelector('input');
 const chatOpenBtn = document.querySelector('[data-chat-open]');
 const bubble = document.querySelector('[data-bubble]');
-const HEAD = new THREE.Vector3();
-let bubbleUntil = 0;
 
 function openChat() {
     keys.clear();  // que no siga caminando con una tecla que quedó presionada
@@ -1073,30 +1077,44 @@ chatForm.addEventListener('submit', (e) => {
     closeChat();
     if (!text) return;
     showBubble(text);
+    net.send({ type: 'say', message: text });  // los demás lo ven sobre tu Ruddy
 });
 
-function showBubble(text) {
-    bubble.textContent = text;
-    bubble.hidden = false;
-    bubble.classList.remove('fade');
-    bubbleUntil = performance.now() + Math.min(12000, 4000 + text.length * 60);
+// Globo de texto sobre una cabeza: el tuyo y el de cada persona del mundo (ver «Personas»).
+function makeBubble(el, anchor, lift) {
+    let until = 0;
+    const pos = new THREE.Vector3();
+    return {
+        show(text) {
+            el.textContent = text;
+            el.hidden = false;
+            el.classList.remove('fade');
+            until = performance.now() + Math.min(12000, 4000 + text.length * 60);
+        },
+        update() {
+            if (el.hidden) return;
+            const now = performance.now();
+            if (now > until) {
+                if (!el.classList.contains('fade')) el.classList.add('fade');
+                if (now > until + 300) el.hidden = true;
+            }
+            pos.copy(anchor.position);
+            pos.y += lift;
+            pos.project(camera);
+            if (pos.z > 1) { el.style.visibility = 'hidden'; return; }  // detrás de la cámara
+            el.style.visibility = '';
+            const x = (pos.x + 1) / 2 * window.innerWidth;
+            const y = (1 - pos.y) / 2 * window.innerHeight;
+            el.style.transform = `translate(${x}px, ${y}px) translate(-50%, calc(-100% - 6px))`;
+        },
+    };
 }
+const myBubble = makeBubble(bubble, player, 1.9);
+const showBubble = (text) => myBubble.show(text);
 
 function updateBubble() {
-    if (bubble.hidden) return;
-    const now = performance.now();
-    if (now > bubbleUntil) {
-        if (!bubble.classList.contains('fade')) bubble.classList.add('fade');
-        if (now > bubbleUntil + 300) bubble.hidden = true;
-    }
-    HEAD.copy(player.position);
-    HEAD.y += 1.9;
-    HEAD.project(camera);
-    if (HEAD.z > 1) { bubble.style.visibility = 'hidden'; return; }  // detrás de la cámara
-    bubble.style.visibility = '';
-    const x = (HEAD.x + 1) / 2 * window.innerWidth;
-    const y = (1 - HEAD.y) / 2 * window.innerHeight;
-    bubble.style.transform = `translate(${x}px, ${y}px) translate(-50%, calc(-100% - 6px))`;
+    myBubble.update();
+    for (const r of remotes.values()) r.bubble?.update();
 }
 
 // ---------- Hablar con Ruddy por voz (agente conversacional de ElevenLabs) ----------
@@ -1499,6 +1517,17 @@ function upsertRemote(p) {
 }
 
 net.on('players', (m) => m.players.forEach(upsertRemote));
+net.on('say', (m) => {
+    const r = remotes.get(m.id);
+    if (!r || !m.message) return;
+    if (!r.bubble) {
+        const el = bubble.cloneNode();
+        el.removeAttribute('data-bubble');
+        document.body.appendChild(el);
+        r.bubble = makeBubble(el, r.group, 2.5);  // encima del nombre
+    }
+    r.bubble.show(m.message);
+});
 net.on('player', upsertRemote);
 
 function updateRemotes(dt) {
