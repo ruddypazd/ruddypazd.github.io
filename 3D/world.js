@@ -1106,6 +1106,52 @@ let speaking = false;
 let voiceLevel = 0;       // volumen suavizado de la voz del agente, 0..1
 let musicWasOn = false;
 
+// Transcripción de la llamada al mismo socket del portafolio (wss://ws.ruddypazd.com/ws).
+// El socket se abre al llamar y se cierra al colgar; cada línea (tuya o de Ruddy) se
+// envía como {type:"call_transcript", ...}. Si aún no conecta, las líneas esperan en cola.
+const WS_URL = 'wss://ws.ruddypazd.com/ws';
+const transcript = (() => {
+    let ws = null;
+    let callId = '';
+    let queue = [];
+    let closeTimer = null;
+
+    function flush() {
+        if (ws?.readyState !== WebSocket.OPEN) return;
+        for (const msg of queue) ws.send(JSON.stringify(msg));
+        queue = [];
+    }
+
+    function send(msg) {
+        queue.push({ ...msg, call_id: callId, origin: 'mundo-3d', at: new Date().toISOString() });
+        flush();
+    }
+
+    return {
+        start() {
+            clearTimeout(closeTimer);
+            ws?.close();
+            callId = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+            queue = [];
+            try {
+                ws = new WebSocket(WS_URL);
+                ws.addEventListener('open', flush);
+                ws.addEventListener('error', () => console.warn('Socket de transcripción no disponible'));
+            } catch (e) { ws = null; }
+            send({ type: 'call_transcript', event: 'start' });
+        },
+        line(role, message) { if (callId) send({ type: 'call_transcript', role, message }); },
+        end() {
+            if (!callId) return;
+            send({ type: 'call_transcript', event: 'end' });
+            callId = '';
+            // Deja salir lo que quede en cola antes de cerrar.
+            const s = ws;
+            closeTimer = setTimeout(() => s?.close(), 3000);
+        },
+    };
+})();
+
 function setTalk(state, text) {
     talkState = state;
     talkBtn.setAttribute('aria-pressed', String(state !== 'idle'));
@@ -1122,6 +1168,7 @@ function endTalk(text) {
     talkSession = null;
     speaking = false;
     s?.endSession().catch(() => {});
+    transcript.end();
     clearSubs();
     setTalk('idle', text);
     if (text) setTimeout(() => talkState === 'idle' && setTalk('idle'), 3500);
@@ -1137,6 +1184,7 @@ async function startTalk() {
     try {
         const { Conversation } = await import(SDK);
         if (talkState !== 'connecting') return;  // colgó mientras cargaba
+        transcript.start();
         talkSession = await Conversation.startSession({
             agentId: talkBtn.dataset.agentId,
             connectionType: 'webrtc',
@@ -1144,6 +1192,7 @@ async function startTalk() {
             onMessage: (m) => {
                 const text = (m.message || '').trim();
                 const user = m.source === 'user' || m.role === 'user';
+                if (text) transcript.line(user ? 'user' : 'agent', text);
                 if (text && !user) showSubs(text);
             },
             onModeChange: ({ mode }) => {
