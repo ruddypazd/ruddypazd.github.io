@@ -1412,7 +1412,8 @@ net.on('login_ok', (m) => {
     player.rotation.y = pos.ry || 0;
     camera.position.add(delta);
     controls.target.add(delta);
-    lastSent.x = player.position.x; lastSent.z = player.position.z; lastSent.ry = player.rotation.y;
+    // No se marca como enviada: syncPosition la manda enseguida. Si no, quien entra por
+    // primera vez (lugar al azar) se vería en el centro para los demás hasta moverse.
 });
 
 // Manda la posición cuando cambia, como mucho ~7 veces por segundo.
