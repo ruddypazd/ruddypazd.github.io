@@ -442,6 +442,22 @@ const rpSocket = (() => {
     };
 })();
 
+/* ----------------------------------------------------------
+   Perfil de la persona: nombre, teléfono y email. La sesión del
+   socket es por teléfono; se recuerda en este navegador y el
+   Mundo 3D usa el mismo (misma clave de localStorage).
+   ---------------------------------------------------------- */
+const PROFILE_KEY = 'rp_profile';
+function getProfile() {
+    try {
+        const p = JSON.parse(localStorage.getItem(PROFILE_KEY));
+        return p && p.name && p.phone && p.email ? p : null;
+    } catch (e) { return null; }
+}
+function saveProfile(p) {
+    try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)); } catch (e) {}
+}
+
 /* Markdown mínimo y seguro: escapa HTML y renderiza formato básico,
    bloques de código y TABLAS. Pensado para tolerar streaming parcial. */
 function renderMarkdown(src) {
@@ -694,7 +710,7 @@ function initChat() {
         if (v) {
             if (viewport) viewport.setAttribute('content', VP_LOCK);
             if (isMobile()) { lockBg(); applyVV(); }
-            setTimeout(() => { input.focus({ preventScroll: true }); applyVV(); }, 80);
+            setTimeout(() => { (loginForm.hidden ? input : loginForm.name).focus({ preventScroll: true }); applyVV(); }, 80);
         } else {
             unlockBg();
             if (viewport) viewport.setAttribute('content', VP_DEFAULT);
@@ -703,12 +719,39 @@ function initChat() {
     toggles.forEach(t => t.addEventListener('click', () => setOpen(!open)));
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && open) setOpen(false); });
 
+    // Datos de la persona: hasta tenerlos (y que el servidor los acepte) no se puede chatear.
+    const loginForm  = root.querySelector('[data-chat-login]');
+    const loginError = root.querySelector('[data-chat-login-error]');
+    let loggedIn = false;
+    const showLogin = (error) => {
+        root.classList.add('needs-login');
+        loginForm.hidden = false;
+        loginError.hidden = !error;
+        loginError.textContent = error || '';
+        const p = getProfile();
+        if (p) { loginForm.name.value = p.name; loginForm.phone.value = p.phone; loginForm.email.value = p.email; }
+    };
+    const sendLogin = () => {
+        const p = getProfile();
+        if (!p) return showLogin();
+        rpSocket.send({ type: 'login', name: p.name, phone: p.phone, email: p.email });
+    };
+    loginForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        saveProfile({
+            name: loginForm.name.value.trim(),
+            phone: loginForm.phone.value.trim(),
+            email: loginForm.email.value.trim(),
+        });
+        if (rpSocket.isOpen()) sendLogin();
+    });
+
     let streaming = false, connected = false;
     let bubble = null, raw = '';
     const CURSOR = '<span class="chat__cursor">▋</span>';
     const GREETING = '¡Hola! Soy <strong>Nemotron</strong>, la IA de este sitio. Pregúntame lo que quieras. 🤖';
 
-    const updateBtn = () => { sendBtn.disabled = streaming || !connected; };
+    const updateBtn = () => { sendBtn.disabled = streaming || !connected || !loggedIn; };
 
     function addMsg(role, content, asHTML) {
         const el = document.createElement('div');
@@ -737,6 +780,8 @@ function initChat() {
 
     rpSocket.onState((s) => {
         connected = (s === 'live');
+        loggedIn = false;
+        if (connected) sendLogin();
         root.classList.toggle('is-off', !connected);
         if (idDot) {
             idDot.classList.toggle('is-live', connected);
@@ -750,7 +795,16 @@ function initChat() {
     });
 
     rpSocket.onMessage((msg) => {
-        if (msg.type === 'history') {
+        if (msg.type === 'login_ok') {
+            loggedIn = true;
+            root.classList.remove('needs-login');
+            loginForm.hidden = true;
+            updateBtn();
+        } else if (msg.type === 'login_error') {
+            showLogin(msg.message);
+        } else if (msg.type === 'login_required') {
+            sendLogin();
+        } else if (msg.type === 'history') {
             renderHistory(msg.messages);
         } else if (msg.type === 'start') {
             streaming = true; raw = '';
@@ -771,7 +825,7 @@ function initChat() {
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         const text = input.value.trim();
-        if (!text || streaming || !connected) return;
+        if (!text || streaming || !connected || !loggedIn) return;
         addMsg('user', text);
         rpSocket.send({ type: 'stream_ia', message: text });
         input.value = '';

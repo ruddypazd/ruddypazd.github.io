@@ -5,6 +5,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
 const MODEL_URL = 'models/ruddy.glb';
 
@@ -665,6 +666,7 @@ let jumping = false;
 let placeholder = null;
 let headBone = null;  // la cabeza asiente mientras Ruddy habla por voz
 let mouth = null;     // boca que se abre con la voz (el GLB no trae mandíbula ni visemas)
+let avatarTemplate = null;  // modelo ya ajustado, para clonar a las demás personas
 
 // precise: mide los vértices ya deformados por el esqueleto (modelos de Mixamo).
 function fitToHeight(object, height) {
@@ -709,6 +711,7 @@ function buildPlaceholder() {
 function done(isPlaceholder) {
     modelNote.hidden = !isPlaceholder;
     loader.classList.add('done');
+    remotes.forEach(attachAvatar);  // los que llegaron antes que el modelo
 }
 
 new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(
@@ -768,6 +771,7 @@ new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(
             jumpBtn.hidden = !actions.jump;
         }
         fitToHeight(model, 1.8);
+        avatarTemplate = { model, animations: gltf.animations };
         done(false);
     },
     (e) => {
@@ -776,6 +780,7 @@ new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(
     () => {
         placeholder = buildPlaceholder();
         body.add(placeholder);
+        avatarTemplate = { model: null, animations: [] };
         done(true);
     }
 );
@@ -934,7 +939,7 @@ const KEYMAP = {
     KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0],
 };
 window.addEventListener('keydown', (e) => {
-    if (e.target === chatInput) return;  // escribiendo: las teclas son del mensaje
+    if (e.target.matches?.('input, textarea')) return;  // escribiendo: las teclas son del texto
     if (e.code === 'Enter' || e.code === 'NumpadEnter') { e.preventDefault(); openChat(); return; }
     if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) jump(); return; }
     // R alterna correr sin mantener Shift: muchos teclados no registran
@@ -1106,6 +1111,26 @@ let speaking = false;
 let voiceLevel = 0;       // volumen suavizado de la voz del agente, 0..1
 let musicWasOn = false;
 
+// La transcripción de la llamada viaja por el socket del mundo (ver «Personas en el mundo»).
+// Cada línea (tuya o de Ruddy) se envía como {type:"call_transcript", ...}; si el socket
+// no está listo, espera en cola.
+const transcript = (() => {
+    let callId = '';
+    const send = (msg) => net.send({ ...msg, call_id: callId, origin: 'mundo-3d', at: new Date().toISOString() }, true);
+    return {
+        start() {
+            callId = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+            send({ type: 'call_transcript', event: 'start' });
+        },
+        line(role, message) { if (callId) send({ type: 'call_transcript', role, message }); },
+        end() {
+            if (!callId) return;
+            send({ type: 'call_transcript', event: 'end' });
+            callId = '';
+        },
+    };
+})();
+
 function setTalk(state, text) {
     talkState = state;
     talkBtn.setAttribute('aria-pressed', String(state !== 'idle'));
@@ -1122,6 +1147,7 @@ function endTalk(text) {
     talkSession = null;
     speaking = false;
     s?.endSession().catch(() => {});
+    transcript.end();
     clearSubs();
     setTalk('idle', text);
     if (text) setTimeout(() => talkState === 'idle' && setTalk('idle'), 3500);
@@ -1137,6 +1163,7 @@ async function startTalk() {
     try {
         const { Conversation } = await import(SDK);
         if (talkState !== 'connecting') return;  // colgó mientras cargaba
+        transcript.start();
         talkSession = await Conversation.startSession({
             agentId: talkBtn.dataset.agentId,
             connectionType: 'webrtc',
@@ -1144,6 +1171,7 @@ async function startTalk() {
             onMessage: (m) => {
                 const text = (m.message || '').trim();
                 const user = m.source === 'user' || m.role === 'user';
+                if (text) transcript.line(user ? 'user' : 'agent', text);
                 if (text && !user) showSubs(text);
             },
             onModeChange: ({ mode }) => {
@@ -1269,6 +1297,234 @@ function faceCamera(dt) {
     player.rotation.y += diff * Math.min(1, dt * 3);
 }
 
+// ---------- Personas en el mundo ----------
+// Al entrar se piden nombre, teléfono y email (la sesión del socket es por teléfono y se
+// recuerda en este navegador, igual que en el chat del portafolio). Mientras te mueves se
+// manda tu posición: el servidor la guarda para la próxima vez y la reenvía a los demás,
+// que te ven con tu nombre encima. Quien no está conectado sigue en su última posición.
+const WS_URL = 'wss://ws.ruddypazd.com/ws';
+const PROFILE_KEY = 'rp_profile';
+
+function getProfile() {
+    try {
+        const p = JSON.parse(localStorage.getItem(PROFILE_KEY));
+        return p && p.name && p.phone && p.email ? p : null;
+    } catch { return null; }
+}
+function saveProfile(p) {
+    try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)); } catch { /* modo privado */ }
+}
+
+const net = (() => {
+    let ws = null;
+    let delay = 2000;
+    let timer = null;
+    let queue = [];          // mensajes que deben llegar aunque el socket aún no esté listo
+    const handlers = {};
+    const api = { loggedIn: false, myId: null, on: (type, fn) => { handlers[type] = fn; } };
+
+    function sendLogin() {
+        const p = getProfile();
+        if (p && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'login', world: true, ...p }));
+    }
+
+    function connect() {
+        if (ws || !getProfile()) return;
+        try { ws = new WebSocket(WS_URL); } catch { ws = null; return schedule(); }
+        ws.addEventListener('open', () => { delay = 2000; sendLogin(); });
+        ws.addEventListener('message', (ev) => {
+            let m;
+            try { m = JSON.parse(ev.data); } catch { return; }
+            if (m.type === 'login_ok') {
+                api.loggedIn = true;
+                api.myId = m.id;
+                for (const q of queue) ws.send(JSON.stringify(q));
+                queue = [];
+            }
+            if (m.type === 'login_required') sendLogin();
+            handlers[m.type]?.(m);
+        });
+        ws.addEventListener('close', () => { api.loggedIn = false; ws = null; schedule(); });
+        ws.addEventListener('error', () => { try { ws.close(); } catch { /* ya cerrado */ } });
+    }
+
+    function schedule() {
+        if (timer) return;
+        timer = setTimeout(() => { timer = null; connect(); }, delay);
+        delay = Math.min(Math.round(delay * 1.6), 15000);
+    }
+
+    // Entrar (o reintentar con datos corregidos): reusa el socket si ya está abierto.
+    api.login = () => (ws?.readyState === WebSocket.OPEN ? sendLogin() : connect());
+    // keep: encola si no se puede mandar ahora (la transcripción); la posición no hace falta.
+    api.send = (msg, keep = false) => {
+        if (api.loggedIn && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+        else if (keep && queue.length < 200) queue.push(msg);
+    };
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && !ws) { delay = 2000; connect(); } });
+    window.addEventListener('online', () => { if (!ws) { delay = 2000; connect(); } });
+    return api;
+})();
+
+// Formulario de entrada
+const loginBox = document.querySelector('[data-login]');
+const loginForm = loginBox.querySelector('[data-login-form]');
+const loginError = loginBox.querySelector('[data-login-error]');
+
+function showLogin(error) {
+    const p = getProfile();
+    if (p) { loginForm.name.value = p.name; loginForm.phone.value = p.phone; loginForm.email.value = p.email; }
+    loginError.hidden = !error;
+    loginError.textContent = error || '';
+    loginBox.hidden = false;
+    setTimeout(() => loginForm.name.focus(), 50);
+}
+
+loginForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    saveProfile({
+        name: loginForm.name.value.trim(),
+        phone: loginForm.phone.value.trim(),
+        email: loginForm.email.value.trim(),
+    });
+    loginBox.hidden = true;
+    net.login();
+});
+
+document.querySelector('[data-logout]').addEventListener('click', () => {
+    try { localStorage.removeItem(PROFILE_KEY); } catch { /* modo privado */ }
+    location.reload();
+});
+
+net.on('login_error', (m) => showLogin(m.message));
+
+// Al entrar por primera vez en esta visita, Ruddy aparece donde quedó la última vez.
+let placedFromSave = false;
+net.on('login_ok', (m) => {
+    loginBox.hidden = true;
+    if (placedFromSave) return;
+    placedFromSave = true;
+    // Primera vez: un lugar al azar cerca del centro, para no aparecer encima de otra persona.
+    const a = Math.random() * Math.PI * 2;
+    const pos = m.position || { x: Math.cos(a) * 2.5, z: Math.sin(a) * 2.5, ry: 0 };
+    const delta = new THREE.Vector3(pos.x, 0, pos.z).sub(player.position);
+    player.position.add(delta);
+    player.rotation.y = pos.ry || 0;
+    camera.position.add(delta);
+    controls.target.add(delta);
+    lastSent.x = player.position.x; lastSent.z = player.position.z; lastSent.ry = player.rotation.y;
+});
+
+// Manda la posición cuando cambia, como mucho ~7 veces por segundo.
+const lastSent = { x: NaN, z: NaN, ry: NaN, at: 0 };
+function syncPosition() {
+    if (!net.loggedIn) return;
+    const now = performance.now();
+    const { x, z } = player.position;
+    const ry = player.rotation.y;
+    const changed = !(Math.hypot(x - lastSent.x, z - lastSent.z) < 0.05 && Math.abs(ry - lastSent.ry) < 0.05);
+    if (!changed || now - lastSent.at < 150) return;
+    Object.assign(lastSent, { x, z, ry, at: now });
+    net.send({ type: 'position', x, z, ry });
+}
+
+// Los demás: un clon de Ruddy (o del avatar provisional) con su nombre encima.
+const remotes = new Map();   // id -> { group, avatar, mixer, actions, current, target, ry, label }
+
+function makeNameLabel(name, online) {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 128;
+    const g = c.getContext('2d');
+    g.font = '600 52px "Space Grotesk", sans-serif';
+    const w = Math.min(500, g.measureText(name).width + 70);
+    g.fillStyle = 'rgba(10, 13, 22, .78)';
+    g.beginPath(); g.roundRect((512 - w) / 2, 22, w, 84, 42); g.fill();
+    g.fillStyle = online ? '#36f1a0' : '#6b7290';
+    g.beginPath(); g.arc((512 - w) / 2 + 36, 64, 10, 0, Math.PI * 2); g.fill();
+    g.fillStyle = online ? '#ffffff' : '#a9aec4';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(name, 256 + 12, 66, w - 70);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+    sprite.scale.set(1.6, 0.4, 1);
+    sprite.position.y = 2.15;
+    return sprite;
+}
+
+function attachAvatar(r) {
+    if (r.avatar || !avatarTemplate) return;
+    if (avatarTemplate.model) {
+        r.avatar = cloneSkinned(avatarTemplate.model);
+        const anims = avatarTemplate.animations;
+        if (anims.length) {
+            r.mixer = new THREE.AnimationMixer(r.avatar);
+            const clip = (re) => anims.find((a) => re.test(a.name));
+            r.actions = {
+                idle: r.mixer.clipAction(clip(/idle/i) || anims[0]),
+                walk: clip(/walk/i) && r.mixer.clipAction(clip(/walk/i)),
+                run: clip(/run/i) && r.mixer.clipAction(clip(/run/i)),
+            };
+            r.current = r.actions.idle;
+            r.current.play();
+        }
+    } else {
+        r.avatar = buildPlaceholder();
+    }
+    r.avatar.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    r.group.add(r.avatar);
+}
+
+function upsertRemote(p) {
+    if (!p.id || p.id === net.myId) return;
+    let r = remotes.get(p.id);
+    if (!r) {
+        r = { group: new THREE.Group(), target: new THREE.Vector3(), ry: 0, label: null, avatar: null };
+        r.group.position.set(p.x, 0, p.z);
+        r.group.rotation.y = p.ry || 0;
+        scene.add(r.group);
+        remotes.set(p.id, r);
+        attachAvatar(r);
+    }
+    r.target.set(p.x, 0, p.z);
+    r.ry = p.ry || 0;
+    if (r.name !== p.name || r.online !== p.online) {
+        if (r.label) { r.group.remove(r.label); r.label.material.map.dispose(); r.label.material.dispose(); }
+        r.label = makeNameLabel(p.name || 'Visitante', p.online);
+        r.group.add(r.label);
+        r.name = p.name;
+        r.online = p.online;
+    }
+}
+
+net.on('players', (m) => m.players.forEach(upsertRemote));
+net.on('player', upsertRemote);
+
+function updateRemotes(dt) {
+    for (const r of remotes.values()) {
+        const dist = r.group.position.distanceTo(r.target);
+        // Si quedó muy lejos (p. ej. volvió tras un rato), salta; si no, camina hasta ahí.
+        if (dist > 8) r.group.position.copy(r.target);
+        else r.group.position.lerp(r.target, Math.min(1, dt * 6));
+        let diff = r.ry - r.group.rotation.y;
+        diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+        r.group.rotation.y += diff * Math.min(1, dt * 8);
+        if (!r.mixer) continue;
+        const speed = dist * 6;   // m/s aproximados según lo que le falta por recorrer
+        const next = speed < 0.3 ? r.actions.idle : (speed > 3.5 && r.actions.run) || r.actions.walk || r.actions.idle;
+        if (next !== r.current) {
+            next.enabled = true;
+            next.setEffectiveWeight(1);
+            next.play();
+            r.current.crossFadeTo(next, 0.25, false);
+            r.current = next;
+        }
+        r.mixer.update(dt);
+    }
+}
+
+if (getProfile()) net.login(); else showLogin();
+
 const clock = new THREE.Clock();
 
 renderer.setAnimationLoop(() => {
@@ -1281,6 +1537,8 @@ renderer.setAnimationLoop(() => {
     updateTalking(t, dt);
     updateSubs();
     faceCamera(dt);
+    updateRemotes(dt);
+    syncPosition();
 
     ring.position.x = player.position.x;
     ring.position.z = player.position.z;

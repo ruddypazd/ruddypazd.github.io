@@ -29,7 +29,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2">
     <!-- Mapa de visitas (jsVectorMap) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsvectormap@1.5.3/dist/css/jsvectormap.min.css">
 </head>
@@ -524,6 +524,14 @@
                     <div class="chat__bubble">¡Hola! Soy <strong>Pitufa</strong>, la IA de este sitio. Pregúntame lo que quieras. 🤖</div>
                 </div>
             </div>
+            <form class="chat__login" data-chat-login hidden autocomplete="on">
+                <p>Antes de chatear, dime quién eres. Tu teléfono será tu sesión, aquí y en el Mundo 3D.</p>
+                <input name="name" placeholder="Nombre" autocomplete="name" maxlength="60" required>
+                <input name="phone" type="tel" placeholder="Teléfono (con código de país)" autocomplete="tel" inputmode="tel" required>
+                <input name="email" type="email" placeholder="Email" autocomplete="email" required>
+                <p class="chat__login-error" data-chat-login-error hidden></p>
+                <button type="submit" class="chat__login-btn">Empezar a chatear</button>
+            </form>
             <form class="chat__form" data-chat-form>
                 <textarea class="chat__input" data-chat-input rows="1" placeholder="Escribe tu mensaje…" autocomplete="off"></textarea>
                 <button type="submit" class="chat__send" data-chat-send aria-label="Enviar mensaje">➤</button>
@@ -597,7 +605,7 @@
     <script src="https://cdn.jsdelivr.net/npm/jsvectormap@1.5.3/dist/js/jsvectormap.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsvectormap@1.5.3/dist/maps/world.js"></script>
 
-    <script src="index.js"></script>
+    <script src="index.js?v=2"></script>
     <script type="module" src="phone.js"></script>
     <script type="module" src="firebase.js"></script>
 </body>

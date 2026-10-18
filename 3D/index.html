@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=25">
+    <link rel="stylesheet" href="style.css?v=27">
     <script type="importmap">
     {
         "imports": {
@@ -32,6 +32,7 @@
                 <button class="settings__item" type="button" data-chat-open aria-expanded="false">💬 Escribir un mensaje</button>
                 <button class="settings__item" type="button" data-music>🔊 Música: activada</button>
                 <button class="settings__item" type="button" data-fp aria-pressed="false">👁 Vista en primera persona</button>
+                <button class="settings__item" type="button" data-logout>👤 Cambiar de persona</button>
             </div>
         </div>
     </header>
@@ -74,6 +75,20 @@
         <p class="hud__hint">Joystick o WASD para moverte · R, Shift o «Correr» para correr · Espacio salta · Enter escribe un mensaje · ⚙️ ajustes: hablar, música, primera persona · Toca un cuadro para abrirlo</p>
     </footer>
 
-    <script type="module" src="world.js?v=25"></script>
+    <div class="login" data-login role="dialog" aria-modal="true" aria-labelledby="login-title" hidden>
+        <form class="login__card" data-login-form autocomplete="on">
+            <p class="totem-panel__tag">Entrar al mundo</p>
+            <h2 id="login-title">Mundo <span class="grad">3D</span></h2>
+            <p class="login__note">Tu teléfono es tu sesión: guarda dónde quedaste y los demás te verán ahí.</p>
+            <label>Nombre<input name="name" autocomplete="name" maxlength="60" required></label>
+            <label>Teléfono<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Con código de país" required></label>
+            <label>Email<input name="email" type="email" autocomplete="email" required></label>
+            <p class="login__error" data-login-error hidden></p>
+            <button class="chat__send" type="submit">Entrar</button>
+            <a class="login__back" href="../">← Volver al portafolio</a>
+        </form>
+    </div>
+
+    <script type="module" src="world.js?v=27"></script>
 </body>
 </html>
