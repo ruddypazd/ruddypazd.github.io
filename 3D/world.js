@@ -670,6 +670,11 @@ let avatarTemplate = null;  // modelo ya ajustado, para clonar a las demás pers
 
 // precise: mide los vértices ya deformados por el esqueleto (modelos de Mixamo).
 function fitToHeight(object, height) {
+    // Se mide fuera de su padre: si Ruddy ya se movió (p. ej. a su posición guardada,
+    // que llega antes que el modelo al recargar), el centro saldría en coordenadas del
+    // mundo y el modelo quedaría corrido de su anillo y de la posición que ven los demás.
+    const parent = object.parent;
+    parent?.remove(object);
     object.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(object, true);
     const size = box.getSize(new THREE.Vector3());
@@ -680,6 +685,7 @@ function fitToHeight(object, height) {
     object.position.x -= center.x;
     object.position.z -= center.z;
     object.position.y -= box.min.y;
+    parent?.add(object);
 }
 
 // Avatar provisional mientras no exista el GLB de Ruddy.
@@ -831,6 +837,7 @@ function jump() {
     actions.jump.reset();
     actions.jump.timeScale = 1;
     fadeTo(actions.jump, 0.15);
+    net.send({ type: 'anim', name: 'jump' });  // los demás también te ven saltar
 }
 // En iOS un toque no genera 'click' si otro dedo ya está en pantalla (el joystick),
 // así que los botones responden en pointerdown. 'click' queda solo para el teclado.
@@ -1050,8 +1057,6 @@ const chatForm = document.querySelector('[data-chat]');
 const chatInput = chatForm.querySelector('input');
 const chatOpenBtn = document.querySelector('[data-chat-open]');
 const bubble = document.querySelector('[data-bubble]');
-const HEAD = new THREE.Vector3();
-let bubbleUntil = 0;
 
 function openChat() {
     keys.clear();  // que no siga caminando con una tecla que quedó presionada
@@ -1073,30 +1078,44 @@ chatForm.addEventListener('submit', (e) => {
     closeChat();
     if (!text) return;
     showBubble(text);
+    net.send({ type: 'say', message: text });  // los demás lo ven sobre tu Ruddy
 });
 
-function showBubble(text) {
-    bubble.textContent = text;
-    bubble.hidden = false;
-    bubble.classList.remove('fade');
-    bubbleUntil = performance.now() + Math.min(12000, 4000 + text.length * 60);
+// Globo de texto sobre una cabeza: el tuyo y el de cada persona del mundo (ver «Personas»).
+function makeBubble(el, anchor, lift) {
+    let until = 0;
+    const pos = new THREE.Vector3();
+    return {
+        show(text) {
+            el.textContent = text;
+            el.hidden = false;
+            el.classList.remove('fade');
+            until = performance.now() + Math.min(12000, 4000 + text.length * 60);
+        },
+        update() {
+            if (el.hidden) return;
+            const now = performance.now();
+            if (now > until) {
+                if (!el.classList.contains('fade')) el.classList.add('fade');
+                if (now > until + 300) el.hidden = true;
+            }
+            pos.copy(anchor.position);
+            pos.y += lift;
+            pos.project(camera);
+            if (pos.z > 1) { el.style.visibility = 'hidden'; return; }  // detrás de la cámara
+            el.style.visibility = '';
+            const x = (pos.x + 1) / 2 * window.innerWidth;
+            const y = (1 - pos.y) / 2 * window.innerHeight;
+            el.style.transform = `translate(${x}px, ${y}px) translate(-50%, calc(-100% - 6px))`;
+        },
+    };
 }
+const myBubble = makeBubble(bubble, player, 1.9);
+const showBubble = (text) => myBubble.show(text);
 
 function updateBubble() {
-    if (bubble.hidden) return;
-    const now = performance.now();
-    if (now > bubbleUntil) {
-        if (!bubble.classList.contains('fade')) bubble.classList.add('fade');
-        if (now > bubbleUntil + 300) bubble.hidden = true;
-    }
-    HEAD.copy(player.position);
-    HEAD.y += 1.9;
-    HEAD.project(camera);
-    if (HEAD.z > 1) { bubble.style.visibility = 'hidden'; return; }  // detrás de la cámara
-    bubble.style.visibility = '';
-    const x = (HEAD.x + 1) / 2 * window.innerWidth;
-    const y = (1 - HEAD.y) / 2 * window.innerHeight;
-    bubble.style.transform = `translate(${x}px, ${y}px) translate(-50%, calc(-100% - 6px))`;
+    myBubble.update();
+    for (const r of remotes.values()) r.bubble?.update();
 }
 
 // ---------- Hablar con Ruddy por voz (agente conversacional de ElevenLabs) ----------
@@ -1417,16 +1436,18 @@ net.on('login_ok', (m) => {
 });
 
 // Manda la posición cuando cambia, como mucho ~7 veces por segundo.
-const lastSent = { x: NaN, z: NaN, ry: NaN, at: 0 };
+const lastSent = { x: NaN, z: NaN, ry: NaN, g: '', at: 0 };
 function syncPosition() {
     if (!net.loggedIn) return;
     const now = performance.now();
     const { x, z } = player.position;
     const ry = player.rotation.y;
-    const changed = !(Math.hypot(x - lastSent.x, z - lastSent.z) < 0.05 && Math.abs(ry - lastSent.ry) < 0.05);
+    // Paso actual, para que los demás vean a tu Ruddy quieto, caminando o corriendo igual que tú.
+    const g = moving > 0.5 ? (running ? 'run' : 'walk') : 'idle';
+    const changed = g !== lastSent.g || !(Math.hypot(x - lastSent.x, z - lastSent.z) < 0.05 && Math.abs(ry - lastSent.ry) < 0.05);
     if (!changed || now - lastSent.at < 150) return;
-    Object.assign(lastSent, { x, z, ry, at: now });
-    net.send({ type: 'position', x, z, ry });
+    Object.assign(lastSent, { x, z, ry, g, at: now });
+    net.send({ type: 'position', x, z, ry, g });
 }
 
 // Los demás: un clon de Ruddy (o del avatar provisional) con su nombre encima.
@@ -1465,7 +1486,13 @@ function attachAvatar(r) {
                 idle: r.mixer.clipAction(clip(/idle/i) || anims[0]),
                 walk: clip(/walk/i) && r.mixer.clipAction(clip(/walk/i)),
                 run: clip(/run/i) && r.mixer.clipAction(clip(/run/i)),
+                jump: clip(/jump/i) && r.mixer.clipAction(clip(/jump/i)),
             };
+            if (r.actions.jump) {
+                r.actions.jump.setLoop(THREE.LoopOnce, 1);
+                r.actions.jump.clampWhenFinished = true;
+                r.mixer.addEventListener('finished', (e) => { if (e.action === r.actions.jump) r.jumping = false; });
+            }
             r.current = r.actions.idle;
             r.current.play();
         }
@@ -1489,6 +1516,7 @@ function upsertRemote(p) {
     }
     r.target.set(p.x, 0, p.z);
     r.ry = p.ry || 0;
+    r.gait = p.g;   // ausente en la lista inicial: entonces se deduce de la distancia
     if (r.name !== p.name || r.online !== p.online) {
         if (r.label) { r.group.remove(r.label); r.label.material.map.dispose(); r.label.material.dispose(); }
         r.label = makeNameLabel(p.name || 'Visitante', p.online);
@@ -1499,7 +1527,36 @@ function upsertRemote(p) {
 }
 
 net.on('players', (m) => m.players.forEach(upsertRemote));
+net.on('say', (m) => {
+    const r = remotes.get(m.id);
+    if (!r || !m.message) return;
+    if (!r.bubble) {
+        const el = bubble.cloneNode();
+        el.removeAttribute('data-bubble');
+        document.body.appendChild(el);
+        r.bubble = makeBubble(el, r.group, 2.5);  // encima del nombre
+    }
+    r.bubble.show(m.message);
+});
 net.on('player', upsertRemote);
+
+function fadeRemote(r, next, duration) {
+    if (next === r.current) return;
+    next.enabled = true;
+    next.setEffectiveWeight(1);
+    next.play();
+    r.current.crossFadeTo(next, duration, false);
+    r.current = next;
+}
+
+// Saltos y otras animaciones puntuales de los demás.
+net.on('anim', (m) => {
+    const r = remotes.get(m.id);
+    if (m.name !== 'jump' || !r?.actions?.jump) return;
+    r.jumping = true;
+    r.actions.jump.reset();
+    fadeRemote(r, r.actions.jump, 0.15);
+});
 
 function updateRemotes(dt) {
     for (const r of remotes.values()) {
@@ -1511,14 +1568,10 @@ function updateRemotes(dt) {
         diff = Math.atan2(Math.sin(diff), Math.cos(diff));
         r.group.rotation.y += diff * Math.min(1, dt * 8);
         if (!r.mixer) continue;
-        const speed = dist * 6;   // m/s aproximados según lo que le falta por recorrer
-        const next = speed < 0.3 ? r.actions.idle : (speed > 3.5 && r.actions.run) || r.actions.walk || r.actions.idle;
-        if (next !== r.current) {
-            next.enabled = true;
-            next.setEffectiveWeight(1);
-            next.play();
-            r.current.crossFadeTo(next, 0.25, false);
-            r.current = next;
+        if (!r.jumping) {
+            const speed = dist * 6;   // m/s aproximados según lo que le falta por recorrer
+            const gait = r.gait || (speed < 0.3 ? 'idle' : speed > 3.5 ? 'run' : 'walk');
+            fadeRemote(r, (gait === 'run' && r.actions.run) || (gait !== 'idle' && r.actions.walk) || r.actions.idle, 0.25);
         }
         r.mixer.update(dt);
     }
