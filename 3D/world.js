@@ -837,6 +837,7 @@ function jump() {
     actions.jump.reset();
     actions.jump.timeScale = 1;
     fadeTo(actions.jump, 0.15);
+    net.send({ type: 'anim', name: 'jump' });  // los demás también te ven saltar
 }
 // En iOS un toque no genera 'click' si otro dedo ya está en pantalla (el joystick),
 // así que los botones responden en pointerdown. 'click' queda solo para el teclado.
@@ -1435,16 +1436,18 @@ net.on('login_ok', (m) => {
 });
 
 // Manda la posición cuando cambia, como mucho ~7 veces por segundo.
-const lastSent = { x: NaN, z: NaN, ry: NaN, at: 0 };
+const lastSent = { x: NaN, z: NaN, ry: NaN, g: '', at: 0 };
 function syncPosition() {
     if (!net.loggedIn) return;
     const now = performance.now();
     const { x, z } = player.position;
     const ry = player.rotation.y;
-    const changed = !(Math.hypot(x - lastSent.x, z - lastSent.z) < 0.05 && Math.abs(ry - lastSent.ry) < 0.05);
+    // Paso actual, para que los demás vean a tu Ruddy quieto, caminando o corriendo igual que tú.
+    const g = moving > 0.5 ? (running ? 'run' : 'walk') : 'idle';
+    const changed = g !== lastSent.g || !(Math.hypot(x - lastSent.x, z - lastSent.z) < 0.05 && Math.abs(ry - lastSent.ry) < 0.05);
     if (!changed || now - lastSent.at < 150) return;
-    Object.assign(lastSent, { x, z, ry, at: now });
-    net.send({ type: 'position', x, z, ry });
+    Object.assign(lastSent, { x, z, ry, g, at: now });
+    net.send({ type: 'position', x, z, ry, g });
 }
 
 // Los demás: un clon de Ruddy (o del avatar provisional) con su nombre encima.
@@ -1483,7 +1486,13 @@ function attachAvatar(r) {
                 idle: r.mixer.clipAction(clip(/idle/i) || anims[0]),
                 walk: clip(/walk/i) && r.mixer.clipAction(clip(/walk/i)),
                 run: clip(/run/i) && r.mixer.clipAction(clip(/run/i)),
+                jump: clip(/jump/i) && r.mixer.clipAction(clip(/jump/i)),
             };
+            if (r.actions.jump) {
+                r.actions.jump.setLoop(THREE.LoopOnce, 1);
+                r.actions.jump.clampWhenFinished = true;
+                r.mixer.addEventListener('finished', (e) => { if (e.action === r.actions.jump) r.jumping = false; });
+            }
             r.current = r.actions.idle;
             r.current.play();
         }
@@ -1507,6 +1516,7 @@ function upsertRemote(p) {
     }
     r.target.set(p.x, 0, p.z);
     r.ry = p.ry || 0;
+    r.gait = p.g;   // ausente en la lista inicial: entonces se deduce de la distancia
     if (r.name !== p.name || r.online !== p.online) {
         if (r.label) { r.group.remove(r.label); r.label.material.map.dispose(); r.label.material.dispose(); }
         r.label = makeNameLabel(p.name || 'Visitante', p.online);
@@ -1530,6 +1540,24 @@ net.on('say', (m) => {
 });
 net.on('player', upsertRemote);
 
+function fadeRemote(r, next, duration) {
+    if (next === r.current) return;
+    next.enabled = true;
+    next.setEffectiveWeight(1);
+    next.play();
+    r.current.crossFadeTo(next, duration, false);
+    r.current = next;
+}
+
+// Saltos y otras animaciones puntuales de los demás.
+net.on('anim', (m) => {
+    const r = remotes.get(m.id);
+    if (m.name !== 'jump' || !r?.actions?.jump) return;
+    r.jumping = true;
+    r.actions.jump.reset();
+    fadeRemote(r, r.actions.jump, 0.15);
+});
+
 function updateRemotes(dt) {
     for (const r of remotes.values()) {
         const dist = r.group.position.distanceTo(r.target);
@@ -1540,14 +1568,10 @@ function updateRemotes(dt) {
         diff = Math.atan2(Math.sin(diff), Math.cos(diff));
         r.group.rotation.y += diff * Math.min(1, dt * 8);
         if (!r.mixer) continue;
-        const speed = dist * 6;   // m/s aproximados según lo que le falta por recorrer
-        const next = speed < 0.3 ? r.actions.idle : (speed > 3.5 && r.actions.run) || r.actions.walk || r.actions.idle;
-        if (next !== r.current) {
-            next.enabled = true;
-            next.setEffectiveWeight(1);
-            next.play();
-            r.current.crossFadeTo(next, 0.25, false);
-            r.current = next;
+        if (!r.jumping) {
+            const speed = dist * 6;   // m/s aproximados según lo que le falta por recorrer
+            const gait = r.gait || (speed < 0.3 ? 'idle' : speed > 3.5 ? 'run' : 'walk');
+            fadeRemote(r, (gait === 'run' && r.actions.run) || (gait !== 'idle' && r.actions.walk) || r.actions.idle, 0.25);
         }
         r.mixer.update(dt);
     }
