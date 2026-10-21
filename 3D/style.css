@@ -228,6 +228,11 @@ body {
 }
 .totem-panel__card h2 { margin: .2rem 0 .6rem; font-family: var(--font); font-size: 1.5rem; }
 .totem-panel__card p { color: var(--muted); margin: 0 0 1rem; }
+/* El tótem abre su página real (la demo de Medical Center) en un iframe vertical. */
+.totem-panel__card--frame { width: min(32rem, 100%); height: min(92vh, 60rem); padding: .8rem; display: flex; flex-direction: column; gap: .6rem; text-align: left; }
+.totem-panel__bar { display: flex; align-items: center; justify-content: space-between; gap: .8rem; }
+.totem-panel__bar h2 { margin: 0 !important; font-size: 1.1rem !important; }
+.totem-panel__frame { flex: 1; width: 100%; border: 0; border-radius: 12px; background: #fff; }
 .totem-panel__tag { color: var(--cyan) !important; font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 0 !important; }
 
 

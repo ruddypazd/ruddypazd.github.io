@@ -601,6 +601,13 @@ function flashHint(text) {
 // ---------- Tótem táctil: Medical Center (el sistema se conecta más adelante) ----------
 const TOTEM_INDEX = GALLERY.findIndex((g) => g.title === 'Medical Center');  // frente a su cuadro
 const totemPanel = document.querySelector('[data-totem-panel]');
+const totemFrame = document.querySelector('[data-totem-frame]');
+const TOTEM_URL = 'https://medicalcenterbo.github.io/demo/';
+// La página del tótem se carga recién la primera vez que se toca, para no pesar al entrar.
+function openTotem() {
+    if (!totemFrame.src) totemFrame.src = TOTEM_URL;
+    totemPanel.hidden = false;
+}
 const totemScreenCanvas = document.createElement('canvas');
 totemScreenCanvas.width = 512; totemScreenCanvas.height = 860;
 {
@@ -615,7 +622,7 @@ totemScreenCanvas.width = 512; totemScreenCanvas.height = 860;
     c.font = 'bold 54px "Space Grotesk", sans-serif';
     c.fillText('MEDICAL', 256, 480); c.fillText('CENTER', 256, 540);
     c.font = '30px "JetBrains Mono", monospace'; c.fillStyle = 'rgba(255,255,255,.8)';
-    c.fillText('Sistema próximamente', 256, 630);
+    c.fillText('Tótem de atención', 256, 630);
     c.fillStyle = '#ff3da6'; c.font = 'bold 34px "JetBrains Mono", monospace';
     c.fillText('☝ Toca la pantalla', 256, 750);
 }
@@ -641,7 +648,7 @@ totem.lookAt(totem.position.x, 0, 0);
         new THREE.MeshBasicMaterial({ map: totemTex, toneMapped: false })
     );
     screen.position.set(0, 1.45, 0.18);
-    screen.userData = { hint: 'Tótem Medical Center: toca la pantalla', action: () => { totemPanel.hidden = false; } };
+    screen.userData = { hint: 'Tótem Medical Center: toca la pantalla', action: openTotem };
     clickable.push(screen);
     const light = new THREE.PointLight(0x00e5ff, 6, 5);
     light.position.set(0, 1.4, 0.8);
