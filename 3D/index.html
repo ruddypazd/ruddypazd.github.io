@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=27">
+    <link rel="stylesheet" href="style.css?v=31">
     <script type="importmap">
     {
         "imports": {
@@ -38,11 +38,12 @@
     </header>
 
     <div class="totem-panel" data-totem-panel hidden role="dialog" aria-modal="true" aria-labelledby="totem-title">
-        <div class="totem-panel__card">
-            <p class="totem-panel__tag">Tótem táctil</p>
-            <h2 id="totem-title">Medical Center</h2>
-            <p>Aquí estará el sistema de Medical Center. Próximamente.</p>
-            <button class="chat__send" type="button" data-totem-close>Cerrar</button>
+        <div class="totem-panel__card totem-panel__card--frame">
+            <div class="totem-panel__bar">
+                <h2 id="totem-title">Tótem Medical Center</h2>
+                <button class="chat__send" type="button" data-totem-close>Cerrar</button>
+            </div>
+            <iframe class="totem-panel__frame" data-totem-frame title="Tótem de Medical Center" allow="camera; microphone; autoplay; fullscreen"></iframe>
         </div>
     </div>
 
@@ -89,6 +90,6 @@
         </form>
     </div>
 
-    <script type="module" src="world.js?v=30"></script>
+    <script type="module" src="world.js?v=31"></script>
 </body>
 </html>
