@@ -628,6 +628,19 @@ totemScreenCanvas.width = 512; totemScreenCanvas.height = 860;
 }
 const totemTex = new THREE.CanvasTexture(totemScreenCanvas);
 totemTex.colorSpace = THREE.SRGBColorSpace;
+{
+    // Pantalla real del tótem; el dibujo de arriba queda si la imagen no carga.
+    const img = new Image();
+    img.onload = () => {
+        const c = totemScreenCanvas.getContext('2d');
+        const k = Math.min(512 / img.width, 860 / img.height);
+        const w = img.width * k, h = img.height * k;
+        c.fillStyle = '#f2f8f7'; c.fillRect(0, 0, 512, 860);
+        c.drawImage(img, (512 - w) / 2, (860 - h) / 2, w, h);
+        totemTex.needsUpdate = true;
+    };
+    img.src = 'images/totem-pantalla.jpg';
+}
 const totem = new THREE.Group();
 // La galería está girada 180°: la x local del cuadro queda invertida en el mundo.
 totem.position.set(-(-galleryWidth / 2 + PAINT_W / 2 + TOTEM_INDEX * (PAINT_W + PAINT_GAP)), 0, GALLERY_Z - 6);
