@@ -1075,21 +1075,21 @@ function fadeTo(action, duration) {
 // ---------- Mensaje sobre Ruddy ----------
 const chatForm = document.querySelector('[data-chat]');
 const chatInput = chatForm.querySelector('input');
-const chatOpenBtn = document.querySelector('[data-chat-open]');
+const chatOpenBtns = document.querySelectorAll('[data-chat-open]');  // el de Ajustes y el de abajo
 const bubble = document.querySelector('[data-bubble]');
 
 function openChat() {
     keys.clear();  // que no siga caminando con una tecla que quedó presionada
     chatForm.hidden = false;
-    chatOpenBtn.setAttribute('aria-expanded', 'true');
+    chatOpenBtns.forEach((b) => b.setAttribute('aria-expanded', 'true'));
     chatInput.focus();
 }
 function closeChat() {
     chatForm.hidden = true;
-    chatOpenBtn.setAttribute('aria-expanded', 'false');
+    chatOpenBtns.forEach((b) => b.setAttribute('aria-expanded', 'false'));
     chatInput.blur();
 }
-chatOpenBtn.addEventListener('click', () => (chatForm.hidden ? openChat() : closeChat()));
+chatOpenBtns.forEach((b) => b.addEventListener('click', () => (chatForm.hidden ? openChat() : closeChat())));
 chatInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeChat(); });
 chatForm.addEventListener('submit', (e) => {
     e.preventDefault();

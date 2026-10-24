@@ -118,6 +118,19 @@ body {
 .run-btn:hover, .run-btn[aria-pressed="true"] { border-color: var(--cyan); box-shadow: 0 0 16px rgba(0, 229, 255, .45); }
 .run-btn[aria-pressed="true"] { color: var(--cyan); }
 
+/* ---------- Escribir: siempre a mano abajo al centro, sin tapar los controles ---------- */
+.write-btn {
+    position: fixed; z-index: 3; left: 50%; transform: translateX(-50%);
+    bottom: calc(4.4rem + env(safe-area-inset-bottom));
+    padding: .5rem 1rem; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--panel-brd); background: var(--panel); backdrop-filter: blur(10px);
+    color: var(--text); font-family: var(--mono); font-size: .8rem; opacity: .85;
+    -webkit-tap-highlight-color: transparent; transition: border-color .2s, box-shadow .2s, opacity .2s;
+}
+.write-btn:hover, .write-btn[aria-expanded="true"] { opacity: 1; border-color: var(--cyan); box-shadow: 0 0 16px rgba(0, 229, 255, .45); }
+/* En móvil va entre «Saltar» y el joystick, pegado al borde. */
+@media (max-width: 600px) { .write-btn { bottom: calc(1.2rem + env(safe-area-inset-bottom)); } }
+
 /* ---------- Botones de la esquina: mensaje y música ---------- */
 .hud__actions { display: flex; gap: .5rem; }
 .hud__icon {
