@@ -6,7 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { createWormholes, buildDestination, hueFor, HOLE_R, DEST_RADIUS } from './wormholes.js?v=38';
+import { createWormholes, buildDestination, hueFor, HOLE_R, DEST_RADIUS } from './wormholes.js?v=39';
 
 const MODEL_URL = 'models/ruddy.glb';
 
@@ -940,7 +940,7 @@ settingsPanel.addEventListener('click', () => setSettings(false), true);
 document.addEventListener('pointerdown', (e) => {
     if (!settingsBox.contains(e.target)) setSettings(false);
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; document.querySelector('[data-note-box]').hidden = true; document.querySelector('[data-note-view]').hidden = true; } });
 
 // ---------- Primera persona ----------
 const fpBtn = document.querySelector('[data-fp]');
@@ -1930,11 +1930,16 @@ function makeHoleLabel() {
     document.body.appendChild(el);
     return el;
 }
-function fillHoleLabel(el, title, text, owner) {
+function fillHoleLabel(el, title, text, owner, createdAt) {
     el.querySelector('strong').textContent = title;
     el.querySelector('span').textContent = text || '';
     el.querySelector('span').hidden = !text;
-    el.querySelector('small').textContent = owner ? `Agujero de gusano de ${owner}` : '';
+    el.querySelector('small').textContent = holeByline(owner, createdAt);
+}
+// «Agujero de gusano de Ana · creado 24 oct, 14:30»
+function holeByline(owner, createdAt) {
+    const when = formatDate(createdAt);
+    return [owner ? `Agujero de gusano de ${owner}` : '', when && `creado ${when}`].filter(Boolean).join(' · ');
 }
 const returnLabel = makeHoleLabel();
 fillHoleLabel(returnLabel, 'Volver al Mundo 3D', 'Entra al agujero para regresar');
@@ -1948,7 +1953,7 @@ function addPortal(p) {
         portals.set(p.id, e);
     }
     e.data = p;
-    fillHoleLabel(e.label, p.name, p.description, p.owner_name);
+    fillHoleLabel(e.label, p.name, p.description, p.owner_name, p.created_at);
     if (here.id === p.id) fillBanner(p);
     refreshMyHoles();
 }
@@ -1979,7 +1984,7 @@ function fillBanner(p) {
     banner.querySelector('[data-scene-name]').textContent = p.name;
     banner.querySelector('[data-scene-desc]').textContent = p.description || '';
     banner.querySelector('[data-scene-desc]').hidden = !p.description;
-    banner.querySelector('[data-scene-owner]').textContent = p.owner_name ? `Agujero de gusano de ${p.owner_name}` : 'Agujero de gusano';
+    banner.querySelector('[data-scene-owner]').textContent = holeByline(p.owner_name, p.created_at) || 'Agujero de gusano';
 }
 banner.addEventListener('click', () => banner.classList.toggle('is-compact'));
 
@@ -2038,6 +2043,7 @@ function goTo(id, { from = null, pos = null } = {}) {
         bannerTimer = setTimeout(() => banner.classList.add('is-compact'), 7000);
     }
     for (const r of remotes.values()) showRemote(r);
+    showNotesHere();
     lastSent.at = 0;   // los demás se enteran enseguida
 }
 
@@ -2178,6 +2184,190 @@ net.on('portal', (m) => {
     }
 });
 net.on('portal_error', (m) => { creating = false; holeMessage(m.message); });
+
+
+// ---------- Notas ----------
+// Cualquiera deja una nota donde está (en el mundo o dentro de un agujero de gusano) con una
+// fecha de vencimiento. Se ve como un letrero; al tocarlo se lee entera con su autor, cuándo
+// se creó y cuándo vence. Al vencer desaparece para todos.
+const NOTE_W = 0.9, NOTE_H = 1.05, NOTE_BOTTOM = 0.7;
+const notes = new Map();   // id -> { data, group, panel }
+const noteView = document.querySelector('[data-note-view]');
+
+function drawNote(c, w, h, n) {
+    const g = c.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#fff6c9'); g.addColorStop(1, '#ffe48a');
+    c.fillStyle = g; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#ff3da6'; c.fillRect(0, 0, w, 14);
+    c.fillStyle = '#5a3c00'; c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+    c.font = 'bold 34px "Space Grotesk", sans-serif';
+    c.fillText(`📝 ${n.owner_name || 'Visitante'}`, 30, 66, w - 60);
+    c.fillStyle = '#2a2206'; c.font = '32px "Space Grotesk", sans-serif';
+    // Hasta 8 líneas; el resto se lee al abrirla.
+    const words = n.text.replace(/\s+/g, ' ').split(' ');
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+        const test = line ? `${line} ${word}` : word;
+        if (c.measureText(test).width > w - 60 && line) { lines.push(line); line = word; }
+        else line = test;
+    }
+    if (line) lines.push(line);
+    const shown = lines.slice(0, 8);
+    if (lines.length > 8) shown[7] = shown[7].replace(/\s*\S*$/, '') + '…';
+    shown.forEach((l, i) => c.fillText(l, 30, 124 + i * 42, w - 60));
+    c.fillStyle = '#7a5a12'; c.font = '24px "JetBrains Mono", monospace';
+    c.fillText(`Vence ${formatDate(n.expires_at)}`, 30, h - 28, w - 60);
+}
+
+function addNote(n) {
+    removeNote(n.id);
+    const group = new THREE.Group();
+    group.position.set(n.x, 0, n.z);
+    group.rotation.y = n.ry || 0;
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, NOTE_BOTTOM + NOTE_H / 2, 0.06), poleMat);
+    post.position.set(0, (NOTE_BOTTOM + NOTE_H / 2) / 2, -0.03);
+    const tex = makeLabelTexture(512, 600, (c, w, h) => drawNote(c, w, h, n));
+    const panel = new THREE.Mesh(
+        new THREE.PlaneGeometry(NOTE_W, NOTE_H),
+        new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, side: THREE.DoubleSide })
+    );
+    panel.position.y = NOTE_BOTTOM + NOTE_H / 2;
+    panel.userData = { hint: `Leer la nota de ${n.owner_name || 'Visitante'}`, action: () => openNote(n.id) };
+    group.add(post, panel);
+    (n.scene === MAIN ? scene : dest.scene).add(group);
+    clickable.push(panel);
+    notes.set(n.id, { data: n, group, panel });
+    group.visible = n.scene === here.id;
+    refreshMyNotes();
+}
+
+function removeNote(id) {
+    const e = notes.get(id);
+    if (!e) return;
+    e.group.parent?.remove(e.group);
+    e.panel.material.map.dispose(); e.panel.material.dispose(); e.panel.geometry.dispose();
+    clickable.splice(clickable.indexOf(e.panel), 1);
+    notes.delete(id);
+    if (noteView.dataset.id === id) noteView.hidden = true;
+    refreshMyNotes();
+}
+
+// Solo las de la escena donde estás (todas las escenas de destino comparten la misma plantilla).
+function showNotesHere() {
+    for (const e of notes.values()) e.group.visible = e.data.scene === here.id;
+}
+
+function openNote(id) {
+    const n = notes.get(id)?.data;
+    if (!n) return;
+    noteView.dataset.id = id;
+    noteView.querySelector('[data-note-author]').textContent = n.owner_name || 'Visitante';
+    noteView.querySelector('[data-note-text]').textContent = n.text;
+    noteView.querySelector('[data-note-created]').textContent = formatDate(n.created_at) || 'Sin dato';
+    noteView.querySelector('[data-note-expires]').textContent = formatDate(n.expires_at) || 'Sin dato';
+    const del = noteView.querySelector('[data-note-delete]');
+    del.hidden = !net.myId || n.owner_id !== net.myId;
+    del.textContent = 'Borrar nota';
+    delete del.dataset.confirm;
+    noteView.hidden = false;
+}
+noteView.querySelector('[data-note-close]').addEventListener('click', () => { noteView.hidden = true; });
+noteView.addEventListener('click', (e) => { if (e.target === noteView) noteView.hidden = true; });
+noteView.querySelector('[data-note-delete]').addEventListener('click', (e) => {
+    const del = e.currentTarget;
+    if (!del.dataset.confirm) { del.dataset.confirm = '1'; del.textContent = '¿Borrar? Toca otra vez'; return; }
+    net.send({ type: 'note_delete', id: noteView.dataset.id });
+});
+
+// Las vencidas se quitan solas, aunque nadie avise.
+setInterval(() => {
+    const now = new Date().toISOString();
+    for (const [id, e] of notes) if (e.data.expires_at <= now) removeNote(id);
+}, 30000);
+
+net.on('notes', (m) => {
+    const ids = new Set(m.notes.map((n) => n.id));
+    for (const id of [...notes.keys()]) if (!ids.has(id)) removeNote(id);
+    m.notes.forEach(addNote);
+});
+net.on('note_removed', (m) => removeNote(m.id));
+
+// Dejar una nota (Ajustes → Dejar una nota).
+const noteBox = document.querySelector('[data-note-box]');
+const noteForm = noteBox.querySelector('[data-note-form]');
+const noteError = noteBox.querySelector('[data-note-error]');
+const myNotes = noteBox.querySelector('[data-my-notes]');
+let noting = false;
+const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function noteMessage(text) {
+    noteError.hidden = !text;
+    noteError.textContent = text || '';
+}
+function refreshMyNotes() {
+    const mine = [...notes.values()].filter((e) => net.myId && e.data.owner_id === net.myId);
+    myNotes.hidden = !mine.length;
+    myNotes.querySelector('ul').replaceChildren(...mine.map((e) => {
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        name.textContent = `${e.data.text.slice(0, 40)}${e.data.text.length > 40 ? '…' : ''} · vence ${formatDate(e.data.expires_at)}`;
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'holes__delete';
+        del.textContent = 'Borrar';
+        del.addEventListener('click', () => {
+            if (del.dataset.confirm) return net.send({ type: 'note_delete', id: e.data.id });
+            del.dataset.confirm = '1';
+            del.textContent = '¿Borrar? Toca otra vez';
+        });
+        li.append(name, del);
+        return li;
+    }));
+}
+document.querySelector('[data-note-open]').addEventListener('click', () => {
+    if (!getProfile()) return showLogin();
+    const today = new Date();
+    const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    noteForm.expires.min = isoDay(tomorrow);
+    noteForm.expires.max = isoDay(new Date(today.getFullYear() + 1, today.getMonth(), today.getDate()));
+    if (!noteForm.expires.value) noteForm.expires.value = isoDay(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7));
+    noteMessage('');
+    refreshMyNotes();
+    noteBox.hidden = false;
+    setTimeout(() => noteForm.text.focus(), 50);
+});
+noteBox.querySelector('[data-note-close]').addEventListener('click', () => { noteBox.hidden = true; });
+noteForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!net.loggedIn) return noteMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
+    if (!noteForm.expires.value) return noteMessage('Elige la fecha de vencimiento.');
+    // Vence al final del día elegido (hora de quien la escribe).
+    const expires = new Date(`${noteForm.expires.value}T23:59:59`);
+    // 1,6 m delante de Ruddy en la dirección de la cámara, mirando hacia él.
+    camera.getWorldDirection(forward);
+    const yaw = Math.atan2(forward.x, forward.z);
+    noting = true;
+    noteMessage('');
+    net.send({
+        type: 'note_create',
+        text: noteForm.text.value.trim(),
+        expires_at: expires.toISOString(),
+        x: player.position.x + Math.sin(yaw) * 1.6,
+        z: player.position.z + Math.cos(yaw) * 1.6,
+        ry: yaw + Math.PI,
+        scene: here.id,
+    });
+});
+net.on('note', (m) => {
+    addNote(m.note);
+    if (noting && m.note.owner_id === net.myId) {
+        noting = false;
+        noteBox.hidden = true;
+        noteForm.text.value = '';
+        flashHint('Tu nota quedó delante de ti. Todos pueden leerla hasta que venza');
+    }
+});
+net.on('note_error', (m) => { noting = false; noteMessage(m.message); });
 
 // Perfiles guardados antes de elegir país (8 dígitos bolivianos): pasan al número completo y el
 // servidor mueve su sesión, para no perder posición ni historial.
