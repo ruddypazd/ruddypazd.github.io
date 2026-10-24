@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=41">
+    <link rel="stylesheet" href="style.css?v=42">
     <script type="importmap">
     {
         "imports": {
@@ -42,6 +42,7 @@
                 <section class="settings__group">
                     <h3>Mundo</h3>
                     <div class="settings__grid">
+                        <button class="settings__item" type="button" data-avatar-open>🧍 Cambiar personaje</button>
                         <button class="settings__item" type="button" data-music>🔊 Música: activada</button>
                         <button class="settings__item" type="button" data-fp aria-pressed="false">👁 Vista en primera persona</button>
                         <button class="settings__item" type="button" data-hole-open>🌀 Crear agujero de gusano</button>
@@ -148,6 +149,17 @@
         </form>
     </div>
 
+    <div class="login login--scroll" data-avatar-box role="dialog" aria-modal="true" aria-labelledby="avatar-title" hidden>
+        <div class="login__card">
+            <p class="totem-panel__tag">Personaje</p>
+            <h2 id="avatar-title">Elige tu personaje</h2>
+            <p class="login__note">Todos te verán con el personaje que elijas.</p>
+            <div class="avatars" data-avatar-list></div>
+            <p class="login__error" data-avatar-error hidden></p>
+            <button class="login__back" type="button" data-avatar-close>Cerrar</button>
+        </div>
+    </div>
+
     <div class="login login--scroll" data-hole-box role="dialog" aria-modal="true" aria-labelledby="hole-title" hidden>
         <form class="login__card" data-hole-form autocomplete="off">
             <p class="totem-panel__tag">Agujero de gusano</p>
@@ -230,6 +242,6 @@
         <p data-scene-desc></p>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=41"></script>
+    <script type="module" src="world.js?v=42"></script>
 </body>
 </html>
