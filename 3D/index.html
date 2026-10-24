@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=34">
+    <link rel="stylesheet" href="style.css?v=35">
     <script type="importmap">
     {
         "imports": {
@@ -26,14 +26,34 @@
         <span class="hud__title">Mundo&nbsp;<span class="grad">3D</span></span>
         <div class="settings" data-settings>
             <button class="hud__icon" type="button" data-settings-open aria-label="Ajustes" aria-expanded="false" aria-controls="settings-panel">⚙️</button>
-            <div class="settings__panel" id="settings-panel" data-settings-panel hidden>
-                <a href="../" class="settings__item">← Volver al portafolio</a>
-                <button class="settings__item" type="button" data-talk data-agent-id="agent_7001kxsnr66mej8tctnrrcrwtd6c" aria-label="Hablar con Ruddy por voz" aria-pressed="false">📞 Hablar con Ruddy</button>
-                <button class="settings__item" type="button" data-chat-open aria-expanded="false">💬 Escribir un mensaje</button>
-                <button class="settings__item" type="button" data-music>🔊 Música: activada</button>
-                <button class="settings__item" type="button" data-fp aria-pressed="false">👁 Vista en primera persona</button>
-                <button class="settings__item" type="button" data-my-profile>🪪 Mi perfil</button>
-                <button class="settings__item" type="button" data-logout>👤 Cambiar de persona</button>
+            <div class="settings__panel" id="settings-panel" data-settings-panel hidden role="dialog" aria-modal="true" aria-labelledby="settings-title">
+                <div class="settings__head">
+                    <h2 id="settings-title">Ajustes</h2>
+                    <button class="settings__close" type="button" aria-label="Cerrar ajustes">✕</button>
+                </div>
+                <!-- Para agregar una opción: otro botón .settings__item en el grupo que corresponda. -->
+                <section class="settings__group">
+                    <h3>Conversar</h3>
+                    <div class="settings__grid">
+                        <button class="settings__item" type="button" data-talk data-agent-id="agent_7001kxsnr66mej8tctnrrcrwtd6c" aria-label="Hablar con Ruddy por voz" aria-pressed="false">📞 Hablar con Ruddy</button>
+                        <button class="settings__item" type="button" data-chat-open aria-expanded="false">💬 Escribir un mensaje</button>
+                    </div>
+                </section>
+                <section class="settings__group">
+                    <h3>Mundo</h3>
+                    <div class="settings__grid">
+                        <button class="settings__item" type="button" data-music>🔊 Música: activada</button>
+                        <button class="settings__item" type="button" data-fp aria-pressed="false">👁 Vista en primera persona</button>
+                    </div>
+                </section>
+                <section class="settings__group">
+                    <h3>Cuenta</h3>
+                    <div class="settings__grid">
+                        <button class="settings__item" type="button" data-my-profile>🪪 Mi perfil</button>
+                        <button class="settings__item" type="button" data-logout>👤 Cambiar de persona</button>
+                        <a href="../" class="settings__item">← Volver al portafolio</a>
+                    </div>
+                </section>
             </div>
         </div>
     </header>
@@ -121,6 +141,6 @@
         </form>
     </div>
 
-    <script type="module" src="world.js?v=34"></script>
+    <script type="module" src="world.js?v=35"></script>
 </body>
 </html>

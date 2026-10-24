@@ -1702,6 +1702,118 @@ function updateRemotes(dt) {
     }
 }
 
+// ---------- Pelota ----------
+// Rueda y rebota con física sencilla. Quien la toca con su Ruddy manda el estado al resto,
+// que lo adopta; los choques con los demás se simulan aquí sin enviar nada (los manda su dueño).
+const BALL_R = 0.35;
+const ball = new THREE.Mesh(
+    new THREE.SphereGeometry(BALL_R, 32, 20),
+    new THREE.MeshStandardMaterial({ map: (() => {
+        const c = document.createElement('canvas');
+        c.width = 256; c.height = 128;
+        const g = c.getContext('2d');
+        g.fillStyle = '#f4f6ff'; g.fillRect(0, 0, 256, 128);
+        g.fillStyle = '#ff3da6'; g.fillRect(0, 44, 256, 40);
+        g.fillStyle = '#00e5ff'; for (const x of [32, 160]) { g.beginPath(); g.arc(x, 64, 18, 0, Math.PI * 2); g.fill(); }
+        const t = new THREE.CanvasTexture(c);
+        t.colorSpace = THREE.SRGBColorSpace;
+        return t;
+    })(), roughness: 0.45, emissive: 0x220a18 })
+);
+ball.castShadow = true;
+ball.position.set(0, BALL_R, 5);
+scene.add(ball);
+const ballVel = new THREE.Vector3();
+const prevPlayer = new THREE.Vector3().copy(player.position);
+let ballSentAt = 0;
+let ballRestSent = true;
+
+function sendBall() {
+    ballSentAt = performance.now();
+    ballRestSent = ballVel.lengthSq() < 0.0004;
+    const { x, y, z } = ball.position;
+    net.send({ type: 'ball', x, y, z, vx: ballVel.x, vy: ballVel.y, vz: ballVel.z });
+}
+
+// Empuja la pelota si una persona (pos, con velocidad vel) la toca. Devuelve true si la tocó.
+function pushBall(pos, vel) {
+    const dx = ball.position.x - pos.x;
+    const dz = ball.position.z - pos.z;
+    const d = Math.hypot(dx, dz);
+    const reach = BALL_R + 0.38;
+    if (d >= reach || d === 0 || ball.position.y > 1.6) return false;
+    const nx = dx / d, nz = dz / d;
+    ball.position.x = pos.x + nx * reach;
+    ball.position.z = pos.z + nz * reach;
+    const toward = vel.x * nx + vel.z * nz;          // qué tanto camina hacia la pelota
+    const kick = Math.max(0, toward) * 1.6 + 0.6;
+    const along = ballVel.x * nx + ballVel.z * nz;
+    if (along < kick) {
+        ballVel.x += nx * (kick - along);
+        ballVel.z += nz * (kick - along);
+        if (toward > 4) ballVel.y = Math.max(ballVel.y, 2.2);   // corriendo, la levanta un poco
+    }
+    return true;
+}
+
+const tmpVel = new THREE.Vector3();
+function updateBall(dt) {
+    // Choques: mi Ruddy (y lo aviso) y los demás (solo aquí).
+    tmpVel.copy(player.position).sub(prevPlayer).divideScalar(Math.max(dt, 1e-3));
+    prevPlayer.copy(player.position);
+    if (pushBall(player.position, tmpVel) && performance.now() - ballSentAt > 120) sendBall();
+    for (const r of remotes.values()) {
+        tmpVel.copy(r.target).sub(r.group.position).multiplyScalar(6);
+        pushBall(r.group.position, tmpVel);
+    }
+
+    // Gravedad, rebote, roce con el piso.
+    ballVel.y -= 9.8 * dt;
+    ball.position.addScaledVector(ballVel, dt);
+    if (ball.position.y < BALL_R) {
+        ball.position.y = BALL_R;
+        ballVel.y = ballVel.y < -1 ? -ballVel.y * 0.55 : 0;
+        const f = Math.max(0, 1 - 0.9 * dt);
+        ballVel.x *= f; ballVel.z *= f;
+        if (Math.hypot(ballVel.x, ballVel.z) < 0.05) { ballVel.x = 0; ballVel.z = 0; }
+    }
+    // Bordes del mundo y pilares: rebota.
+    const r = Math.hypot(ball.position.x, ball.position.z);
+    if (r > WORLD_RADIUS) {
+        const nx = ball.position.x / r, nz = ball.position.z / r;
+        ball.position.x = nx * WORLD_RADIUS; ball.position.z = nz * WORLD_RADIUS;
+        const vn = ballVel.x * nx + ballVel.z * nz;
+        if (vn > 0) { ballVel.x -= 1.7 * vn * nx; ballVel.z -= 1.7 * vn * nz; }
+    }
+    for (const o of obstacles) {
+        const dx = ball.position.x - o.x, dz = ball.position.z - o.z;
+        const d = Math.hypot(dx, dz);
+        const min = o.r - 0.3 + BALL_R;
+        if (d < min && d > 0) {
+            const nx = dx / d, nz = dz / d;
+            ball.position.x = o.x + nx * min; ball.position.z = o.z + nz * min;
+            const vn = ballVel.x * nx + ballVel.z * nz;
+            if (vn < 0) { ballVel.x -= 1.7 * vn * nx; ballVel.z -= 1.7 * vn * nz; }
+        }
+    }
+    // Rueda: gira según lo que avanza.
+    const speed = Math.hypot(ballVel.x, ballVel.z);
+    if (speed > 0.01) {
+        tmpVel.set(ballVel.z, 0, -ballVel.x).normalize();
+        ball.rotateOnWorldAxis(tmpVel, (speed * dt) / BALL_R);
+    }
+    // Cuando se detiene después de mi toque, mando dónde quedó.
+    if (!ballRestSent && speed === 0 && Math.abs(ballVel.y) < 0.01 && performance.now() - ballSentAt > 300) sendBall();
+}
+
+// Estado que manda otra persona (o el servidor al entrar): se adopta tal cual.
+net.on('ball', (m) => {
+    if (![m.x, m.y, m.z, m.vx, m.vy, m.vz].every(Number.isFinite)) return;
+    ball.position.set(m.x, Math.max(BALL_R, m.y), m.z);
+    ballVel.set(m.vx, m.vy, m.vz);
+    ballRestSent = true;
+});
+
 if (getProfile()) net.login(); else showLogin();
 
 const clock = new THREE.Clock();
@@ -1717,6 +1829,7 @@ renderer.setAnimationLoop(() => {
     updateSubs();
     faceCamera(dt);
     updateRemotes(dt);
+    updateBall(dt);
     syncPosition();
 
     ring.position.x = player.position.x;
