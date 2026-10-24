@@ -6,7 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { createWormholes, buildDestination, hueFor, HOLE_R, DEST_RADIUS } from './wormholes.js?v=40';
+import { createWormholes, buildDestination, hueFor, HOLE_R, DEST_RADIUS } from './wormholes.js?v=41';
 
 const MODEL_URL = 'models/ruddy.glb';
 
