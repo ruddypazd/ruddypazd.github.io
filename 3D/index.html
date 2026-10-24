@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=38">
+    <link rel="stylesheet" href="style.css?v=39">
     <script type="importmap">
     {
         "imports": {
@@ -45,6 +45,7 @@
                         <button class="settings__item" type="button" data-music>🔊 Música: activada</button>
                         <button class="settings__item" type="button" data-fp aria-pressed="false">👁 Vista en primera persona</button>
                         <button class="settings__item" type="button" data-hole-open>🌀 Crear agujero de gusano</button>
+                        <button class="settings__item" type="button" data-note-open>📝 Dejar una nota</button>
                     </div>
                 </section>
                 <section class="settings__group">
@@ -162,12 +163,41 @@
             <button class="login__back" type="button" data-hole-close>Cerrar</button>
         </form>
     </div>
+    <div class="login login--scroll" data-note-box role="dialog" aria-modal="true" aria-labelledby="note-title" hidden>
+        <form class="login__card" data-note-form autocomplete="off">
+            <p class="totem-panel__tag">Nota</p>
+            <h2 id="note-title">Deja una nota</h2>
+            <p class="login__note">Queda como un letrero delante de ti, en el lugar donde estás. Cualquiera puede leerla hasta que venza.</p>
+            <label>Mensaje<textarea name="text" maxlength="500" rows="4" required placeholder="Escribe tu nota…"></textarea></label>
+            <label>Vence el<input name="expires" type="date" required></label>
+            <p class="login__error" data-note-error hidden></p>
+            <button class="chat__send" type="submit">Dejar nota</button>
+            <div class="holes" data-my-notes hidden>
+                <h3>Tus notas</h3>
+                <ul></ul>
+            </div>
+            <button class="login__back" type="button" data-note-close>Cerrar</button>
+        </form>
+    </div>
+    <div class="totem-panel" data-note-view hidden role="dialog" aria-modal="true" aria-labelledby="note-view-author">
+        <div class="totem-panel__card profile note-view">
+            <p class="totem-panel__tag">Nota de</p>
+            <h2 id="note-view-author" data-note-author></h2>
+            <p class="note-view__text" data-note-text></p>
+            <dl class="profile__facts">
+                <dt>Creada</dt><dd data-note-created></dd>
+                <dt>Vence</dt><dd data-note-expires></dd>
+            </dl>
+            <button class="holes__delete" type="button" data-note-delete hidden>Borrar nota</button>
+            <button class="chat__send" type="button" data-note-close>Cerrar</button>
+        </div>
+    </div>
     <div class="scene-banner" data-scene-banner hidden>
         <p class="totem-panel__tag" data-scene-owner>Agujero de gusano</p>
         <h2 data-scene-name></h2>
         <p data-scene-desc></p>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=38"></script>
+    <script type="module" src="world.js?v=39"></script>
 </body>
 </html>
