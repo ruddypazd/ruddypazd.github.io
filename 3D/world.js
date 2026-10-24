@@ -926,7 +926,7 @@ settingsPanel.addEventListener('click', () => setSettings(false), true);
 document.addEventListener('pointerdown', (e) => {
     if (!settingsBox.contains(e.target)) setSettings(false);
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSettings(false); closeProfile(); } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; } });
 
 // ---------- Primera persona ----------
 const fpBtn = document.querySelector('[data-fp]');
@@ -1567,6 +1567,9 @@ function upsertRemote(p) {
     // La posición en vivo no trae fechas: se conservan las que llegaron antes.
     const lastSeen = p.last_seen ?? r.lastSeen;
     if (p.since) r.since = p.since;
+    // Teléfono y correo llegan en la lista y en los avisos de conexión, no en la posición en vivo.
+    if (p.phone) r.phone = p.phone;
+    if (p.email) r.email = p.email;
     if (r.name !== p.name || r.online !== p.online || r.lastSeen !== lastSeen) {
         if (r.label) { r.group.remove(r.label); r.label.material.map.dispose(); r.label.material.dispose(); }
         r.label = makeNameLabel(p.name || 'Visitante', p.online, lastSeen);
@@ -1592,6 +1595,52 @@ function fillProfile(r) {
     status.classList.toggle('is-online', !!r.online);
     profileBox.querySelector('[data-profile-seen]').textContent = r.online ? 'Ahora' : formatDate(r.lastSeen) || 'Sin dato';
     profileBox.querySelector('[data-profile-since]').textContent = formatDate(r.since) || 'Sin dato';
+    showGravatar(r.email);
+    // Teléfono y correo: tocarlos abre WhatsApp o un correo nuevo.
+    // Un número boliviano de 8 dígitos sin código de país se completa con 591 para WhatsApp.
+    const wa = r.phone && (/^[67]\d{7}$/.test(r.phone) ? `591${r.phone}` : r.phone);
+    const phone = profileBox.querySelector('[data-profile-phone]');
+    const email = profileBox.querySelector('[data-profile-email]');
+    phone.textContent = wa ? `+${wa}` : '';
+    phone.href = wa ? `https://wa.me/${wa}` : '';
+    email.textContent = r.email || '';
+    email.href = r.email ? `mailto:${r.email}` : '';
+    profileBox.querySelectorAll('[data-profile-contact]').forEach((el) => { el.hidden = !r[el.dataset.profileContact]; });
+}
+
+// Mi perfil (desde Ajustes): editar nombre y correo.
+const myBox = document.querySelector('[data-my-profile-box]');
+const myForm = myBox.querySelector('[data-my-profile-form]');
+document.querySelector('[data-my-profile]').addEventListener('click', () => {
+    const p = getProfile();
+    if (!p) return showLogin();
+    myForm.name.value = p.name;
+    myForm.email.value = p.email;
+    myForm.phone.value = p.phone;
+    myBox.hidden = false;
+    setTimeout(() => myForm.name.focus(), 50);
+});
+myBox.querySelector('[data-my-profile-close]').addEventListener('click', () => { myBox.hidden = true; });
+myForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    saveProfile({ ...getProfile(), name: myForm.name.value.trim(), email: myForm.email.value.trim() });
+    myBox.hidden = true;
+    net.login();   // el servidor guarda los cambios y avisa a los demás
+});
+// Foto de Gravatar del correo; si no tiene (404), quedan las iniciales.
+const profilePhoto = profileBox.querySelector('[data-profile-photo]');
+profilePhoto.addEventListener('load', () => { profilePhoto.hidden = false; });
+profilePhoto.addEventListener('error', () => { profilePhoto.hidden = true; });
+async function showGravatar(email) {
+    const clean = (email || '').trim().toLowerCase();
+    let url = '';
+    if (clean && crypto.subtle) {
+        const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(clean));
+        url = `https://gravatar.com/avatar/${[...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, '0')).join('')}?s=200&d=404`;
+    }
+    if ((profileOf?.email || '').trim().toLowerCase() !== clean || profilePhoto.src === url) return;
+    profilePhoto.hidden = true;
+    if (url) profilePhoto.src = url; else profilePhoto.removeAttribute('src');
 }
 function openProfile(r) {
     profileOf = r;

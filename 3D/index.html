@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=33">
+    <link rel="stylesheet" href="style.css?v=34">
     <script type="importmap">
     {
         "imports": {
@@ -32,6 +32,7 @@
                 <button class="settings__item" type="button" data-chat-open aria-expanded="false">💬 Escribir un mensaje</button>
                 <button class="settings__item" type="button" data-music>🔊 Música: activada</button>
                 <button class="settings__item" type="button" data-fp aria-pressed="false">👁 Vista en primera persona</button>
+                <button class="settings__item" type="button" data-my-profile>🪪 Mi perfil</button>
                 <button class="settings__item" type="button" data-logout>👤 Cambiar de persona</button>
             </div>
         </div>
@@ -49,13 +50,15 @@
 
     <div class="totem-panel" data-profile hidden role="dialog" aria-modal="true" aria-labelledby="profile-name">
         <div class="totem-panel__card profile">
-            <div class="profile__avatar" data-profile-initials></div>
+            <div class="profile__avatar"><span data-profile-initials></span><img data-profile-photo alt="" hidden></div>
             <p class="totem-panel__tag">Perfil</p>
             <h2 id="profile-name" data-profile-name></h2>
             <p class="profile__status" data-profile-status></p>
             <dl class="profile__facts">
                 <dt>Última conexión</dt><dd data-profile-seen></dd>
                 <dt>En el mundo desde</dt><dd data-profile-since></dd>
+                <dt data-profile-contact="phone" hidden>Teléfono</dt><dd data-profile-contact="phone" hidden><a data-profile-phone target="_blank" rel="noopener">WhatsApp</a></dd>
+                <dt data-profile-contact="email" hidden>Correo</dt><dd data-profile-contact="email" hidden><a data-profile-email>Correo</a></dd>
             </dl>
             <button class="chat__send" type="button" data-profile-close>Cerrar</button>
         </div>
@@ -94,7 +97,7 @@
         <form class="login__card" data-login-form autocomplete="on">
             <p class="totem-panel__tag">Entrar al mundo</p>
             <h2 id="login-title">Mundo <span class="grad">3D</span></h2>
-            <p class="login__note">Tu teléfono es tu sesión: guarda dónde quedaste y los demás te verán ahí.</p>
+            <p class="login__note">Tu teléfono es tu sesión: guarda dónde quedaste y los demás te verán ahí, con tu teléfono y correo en tu perfil.</p>
             <label>Nombre<input name="name" autocomplete="name" maxlength="60" required></label>
             <label>Teléfono<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Con código de país" required></label>
             <label>Email<input name="email" type="email" autocomplete="email" required></label>
@@ -104,6 +107,20 @@
         </form>
     </div>
 
-    <script type="module" src="world.js?v=33"></script>
+    <div class="login" data-my-profile-box role="dialog" aria-modal="true" aria-labelledby="my-profile-title" hidden>
+        <form class="login__card" data-my-profile-form autocomplete="on">
+            <p class="totem-panel__tag">Mi perfil</p>
+            <h2 id="my-profile-title">Edita tus datos</h2>
+            <label>Nombre<input name="name" autocomplete="name" maxlength="60" required></label>
+            <label>Email<input name="email" type="email" autocomplete="email" required></label>
+            <label>Teléfono<input name="phone" type="tel" readonly></label>
+            <p class="login__note">Para usar otro teléfono, entra con «Cambiar de persona».</p>
+            <p class="login__note">Los demás ven tu teléfono y correo en tu perfil.</p>
+            <button class="chat__send" type="submit">Guardar</button>
+            <button class="login__back" type="button" data-my-profile-close>Cancelar</button>
+        </form>
+    </div>
+
+    <script type="module" src="world.js?v=34"></script>
 </body>
 </html>
