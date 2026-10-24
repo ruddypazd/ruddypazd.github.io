@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=32">
+    <link rel="stylesheet" href="style.css?v=33">
     <script type="importmap">
     {
         "imports": {
@@ -44,6 +44,20 @@
                 <button class="chat__send" type="button" data-totem-close>Cerrar</button>
             </div>
             <iframe class="totem-panel__frame" data-totem-frame title="Tótem de Medical Center" allow="camera; microphone; autoplay; fullscreen"></iframe>
+        </div>
+    </div>
+
+    <div class="totem-panel" data-profile hidden role="dialog" aria-modal="true" aria-labelledby="profile-name">
+        <div class="totem-panel__card profile">
+            <div class="profile__avatar" data-profile-initials></div>
+            <p class="totem-panel__tag">Perfil</p>
+            <h2 id="profile-name" data-profile-name></h2>
+            <p class="profile__status" data-profile-status></p>
+            <dl class="profile__facts">
+                <dt>Última conexión</dt><dd data-profile-seen></dd>
+                <dt>En el mundo desde</dt><dd data-profile-since></dd>
+            </dl>
+            <button class="chat__send" type="button" data-profile-close>Cerrar</button>
         </div>
     </div>
 
@@ -90,6 +104,6 @@
         </form>
     </div>
 
-    <script type="module" src="world.js?v=32"></script>
+    <script type="module" src="world.js?v=33"></script>
 </body>
 </html>
