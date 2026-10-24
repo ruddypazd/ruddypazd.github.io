@@ -1075,21 +1075,21 @@ function fadeTo(action, duration) {
 // ---------- Mensaje sobre Ruddy ----------
 const chatForm = document.querySelector('[data-chat]');
 const chatInput = chatForm.querySelector('input');
-const chatOpenBtn = document.querySelector('[data-chat-open]');
+const chatOpenBtns = document.querySelectorAll('[data-chat-open]');  // el de Ajustes y el de abajo
 const bubble = document.querySelector('[data-bubble]');
 
 function openChat() {
     keys.clear();  // que no siga caminando con una tecla que quedó presionada
     chatForm.hidden = false;
-    chatOpenBtn.setAttribute('aria-expanded', 'true');
+    chatOpenBtns.forEach((b) => b.setAttribute('aria-expanded', 'true'));
     chatInput.focus();
 }
 function closeChat() {
     chatForm.hidden = true;
-    chatOpenBtn.setAttribute('aria-expanded', 'false');
+    chatOpenBtns.forEach((b) => b.setAttribute('aria-expanded', 'false'));
     chatInput.blur();
 }
-chatOpenBtn.addEventListener('click', () => (chatForm.hidden ? openChat() : closeChat()));
+chatOpenBtns.forEach((b) => b.addEventListener('click', () => (chatForm.hidden ? openChat() : closeChat())));
 chatInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeChat(); });
 chatForm.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -1354,6 +1354,34 @@ function saveProfile(p) {
     try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)); } catch { /* modo privado */ }
 }
 
+// Países para el teléfono: [código ISO, nombre, código telefónico]. La bandera sale del ISO.
+const COUNTRIES = [
+    ['BO', 'Bolivia', '591'], ['AR', 'Argentina', '54'], ['BR', 'Brasil', '55'], ['CL', 'Chile', '56'],
+    ['CO', 'Colombia', '57'], ['CR', 'Costa Rica', '506'], ['CU', 'Cuba', '53'], ['EC', 'Ecuador', '593'],
+    ['SV', 'El Salvador', '503'], ['GT', 'Guatemala', '502'], ['HN', 'Honduras', '504'], ['MX', 'México', '52'],
+    ['NI', 'Nicaragua', '505'], ['PA', 'Panamá', '507'], ['PY', 'Paraguay', '595'], ['PE', 'Perú', '51'],
+    ['PR', 'Puerto Rico', '1787'], ['DO', 'República Dominicana', '1809'], ['UY', 'Uruguay', '598'],
+    ['VE', 'Venezuela', '58'], ['US', 'Estados Unidos', '1'], ['CA', 'Canadá', '1'], ['ES', 'España', '34'],
+    ['PT', 'Portugal', '351'], ['FR', 'Francia', '33'], ['IT', 'Italia', '39'], ['DE', 'Alemania', '49'],
+    ['GB', 'Reino Unido', '44'], ['NL', 'Países Bajos', '31'], ['BE', 'Bélgica', '32'], ['CH', 'Suiza', '41'],
+    ['AT', 'Austria', '43'], ['SE', 'Suecia', '46'], ['NO', 'Noruega', '47'], ['DK', 'Dinamarca', '45'],
+    ['IE', 'Irlanda', '353'], ['PL', 'Polonia', '48'], ['RU', 'Rusia', '7'], ['TR', 'Turquía', '90'],
+    ['IL', 'Israel', '972'], ['AE', 'Emiratos Árabes', '971'], ['IN', 'India', '91'], ['CN', 'China', '86'],
+    ['JP', 'Japón', '81'], ['KR', 'Corea del Sur', '82'], ['PH', 'Filipinas', '63'], ['AU', 'Australia', '61'],
+    ['NZ', 'Nueva Zelanda', '64'], ['ZA', 'Sudáfrica', '27'], ['EG', 'Egipto', '20'], ['MA', 'Marruecos', '212'],
+];
+const flagOf = (iso) => String.fromCodePoint(...[...iso].map((c) => 0x1f1a5 + c.charCodeAt(0)));
+
+// País de un teléfono guardado (solo dígitos): el código más largo que coincide. Los números
+// bolivianos de 8 dígitos sin código (como se guardaban antes) cuentan como Bolivia.
+function splitPhone(digits) {
+    digits = String(digits || '').replace(/\D/g, '');
+    if (/^[67]\d{7}$/.test(digits)) return { country: COUNTRIES[0], local: digits, full: `591${digits}` };
+    let best = null;
+    for (const c of COUNTRIES) if (digits.startsWith(c[2]) && (!best || c[2].length > best[2].length)) best = c;
+    return best ? { country: best, local: digits.slice(best[2].length), full: digits } : { country: null, local: digits, full: digits };
+}
+
 const net = (() => {
     let ws = null;
     let delay = 2000;
@@ -1410,9 +1438,28 @@ const loginBox = document.querySelector('[data-login]');
 const loginForm = loginBox.querySelector('[data-login-form]');
 const loginError = loginBox.querySelector('[data-login-error]');
 
+loginForm.country.innerHTML = COUNTRIES
+    .map(([iso, name, code]) => `<option value="${iso}">${flagOf(iso)} +${code} ${name}</option>`).join('');
+const countryByIso = (iso) => COUNTRIES.find((c) => c[0] === iso) || COUNTRIES[0];
+// En la lista cerrada se ve solo la bandera y el código; al abrirla, también el nombre.
+function syncCountryLabel() {
+    for (const o of loginForm.country.options) {
+        const [iso, name, code] = countryByIso(o.value);
+        o.textContent = o.selected ? `${flagOf(iso)} +${code}` : `${flagOf(iso)} +${code} ${name}`;
+    }
+}
+loginForm.country.addEventListener('change', syncCountryLabel);
+loginForm.country.addEventListener('focus', () => {
+    for (const o of loginForm.country.options) { const [iso, name, code] = countryByIso(o.value); o.textContent = `${flagOf(iso)} +${code} ${name}`; }
+});
+loginForm.country.addEventListener('blur', syncCountryLabel);
+
 function showLogin(error) {
     const p = getProfile();
-    if (p) { loginForm.name.value = p.name; loginForm.phone.value = p.phone; loginForm.email.value = p.email; }
+    const { country, local } = splitPhone(p?.phone);
+    loginForm.country.value = (country || COUNTRIES[0])[0];
+    syncCountryLabel();
+    if (p) { loginForm.name.value = p.name; loginForm.phone.value = local; loginForm.email.value = p.email; }
     loginError.hidden = !error;
     loginError.textContent = error || '';
     loginBox.hidden = false;
@@ -1421,10 +1468,17 @@ function showLogin(error) {
 
 loginForm.addEventListener('submit', (e) => {
     e.preventDefault();
+    const code = countryByIso(loginForm.country.value)[2];
+    let local = loginForm.phone.value.replace(/\D/g, '');
+    if (local.startsWith(code) && local.length > code.length + 6) local = local.slice(code.length);  // ya traía el código
+    const prev = getProfile()?.phone;
+    const phone = code + local;
     saveProfile({
         name: loginForm.name.value.trim(),
-        phone: loginForm.phone.value.trim(),
+        phone,
         email: loginForm.email.value.trim(),
+        // Quien entró antes sin código de país conserva su sesión (el servidor la mueve al número completo).
+        ...(prev && prev !== phone && phone.endsWith(prev) ? { legacy_phone: prev } : {}),
     });
     loginBox.hidden = true;
     net.login();
@@ -1441,6 +1495,8 @@ net.on('login_error', (m) => showLogin(m.message));
 let placedFromSave = false;
 net.on('login_ok', (m) => {
     loginBox.hidden = true;
+    const p = getProfile();
+    if (p?.legacy_phone) { delete p.legacy_phone; saveProfile(p); }
     if (placedFromSave) return;
     placedFromSave = true;
     // Primera vez: un lugar al azar cerca del centro, para no aparecer encima de otra persona.
@@ -1589,7 +1645,8 @@ function fillProfile(r) {
     const name = r.name || 'Visitante';
     profileBox.querySelector('[data-profile-initials]').textContent =
         name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || '?';
-    profileBox.querySelector('[data-profile-name]').textContent = name;
+    const country = r.phone && splitPhone(r.phone).country;
+    profileBox.querySelector('[data-profile-name]').textContent = country ? `${flagOf(country[0])} ${name}` : name;
     const status = profileBox.querySelector('[data-profile-status]');
     status.textContent = r.online ? 'En línea ahora' : 'Desconectado';
     status.classList.toggle('is-online', !!r.online);
@@ -1597,8 +1654,8 @@ function fillProfile(r) {
     profileBox.querySelector('[data-profile-since]').textContent = formatDate(r.since) || 'Sin dato';
     showGravatar(r.email);
     // Teléfono y correo: tocarlos abre WhatsApp o un correo nuevo.
-    // Un número boliviano de 8 dígitos sin código de país se completa con 591 para WhatsApp.
-    const wa = r.phone && (/^[67]\d{7}$/.test(r.phone) ? `591${r.phone}` : r.phone);
+    // Un número boliviano de 8 dígitos sin código de país (como se guardaban antes) se completa con 591.
+    const wa = r.phone && splitPhone(r.phone).full;
     const phone = profileBox.querySelector('[data-profile-phone]');
     const email = profileBox.querySelector('[data-profile-email]');
     phone.textContent = wa ? `+${wa}` : '';
@@ -1616,7 +1673,8 @@ document.querySelector('[data-my-profile]').addEventListener('click', () => {
     if (!p) return showLogin();
     myForm.name.value = p.name;
     myForm.email.value = p.email;
-    myForm.phone.value = p.phone;
+    const { country, local } = splitPhone(p.phone);
+    myForm.phone.value = country ? `${flagOf(country[0])} +${country[2]} ${local}` : p.phone;
     myBox.hidden = false;
     setTimeout(() => myForm.name.focus(), 50);
 });
@@ -1814,6 +1872,13 @@ net.on('ball', (m) => {
     ballRestSent = true;
 });
 
+// Perfiles guardados antes de elegir país (8 dígitos bolivianos): pasan al número completo y el
+// servidor mueve su sesión, para no perder posición ni historial.
+{
+    const p = getProfile();
+    const full = p && splitPhone(p.phone).full;
+    if (p && full !== p.phone.replace(/\D/g, '')) saveProfile({ ...p, phone: full, legacy_phone: p.phone });
+}
 if (getProfile()) net.login(); else showLogin();
 
 const clock = new THREE.Clock();
