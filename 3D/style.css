@@ -235,6 +235,19 @@ body {
 .totem-panel__frame { flex: 1; width: 100%; border: 0; border-radius: 12px; background: #fff; }
 .totem-panel__tag { color: var(--cyan) !important; font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 0 !important; }
 
+/* Perfil de otra persona del mundo (al tocarla). */
+.profile__avatar {
+    width: 4.2rem; height: 4.2rem; margin: 0 auto .6rem; border-radius: 50%; display: grid; place-items: center;
+    font: 700 1.5rem var(--font); color: #fff; background: linear-gradient(135deg, #7b5cff, #ff3da6);
+    box-shadow: 0 0 18px rgba(123, 92, 255, .5);
+}
+.totem-panel__card .profile__status { margin: 0 0 1rem; color: #a9aec4; }
+.totem-panel__card .profile__status::before { content: '●'; margin-right: .4rem; color: #6b7290; }
+.totem-panel__card .profile__status.is-online, .profile__status.is-online::before { color: #36f1a0; }
+.profile__facts { display: grid; grid-template-columns: auto 1fr; gap: .45rem 1rem; margin: 0 0 1.2rem; text-align: left; font-size: .85rem; }
+.profile__facts dt { color: var(--muted); }
+.profile__facts dd { margin: 0; text-align: right; }
+
 
 /* Nombre, teléfono y email antes de entrar: la sesión del socket es por teléfono. */
 .login { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 1rem; background: rgba(5, 6, 10, .7); backdrop-filter: blur(6px); }

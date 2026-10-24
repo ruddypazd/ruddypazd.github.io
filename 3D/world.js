@@ -926,7 +926,7 @@ settingsPanel.addEventListener('click', () => setSettings(false), true);
 document.addEventListener('pointerdown', (e) => {
     if (!settingsBox.contains(e.target)) setSettings(false);
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setSettings(false); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSettings(false); closeProfile(); } });
 
 // ---------- Primera persona ----------
 const fpBtn = document.querySelector('[data-fp]');
@@ -1473,9 +1473,20 @@ function syncPosition() {
 // Los demás: un clon de Ruddy (o del avatar provisional) con su nombre encima.
 const remotes = new Map();   // id -> { group, avatar, mixer, actions, current, target, ry, label }
 
-function makeNameLabel(name, online) {
+// Fecha corta para la etiqueta y el perfil, p. ej. «21 oct, 14:30» (con año si no es este).
+function formatDate(iso) {
+    const d = iso ? new Date(iso) : null;
+    if (!d || isNaN(d)) return '';
+    const sameYear = d.getFullYear() === new Date().getFullYear();
+    return d.toLocaleString('es', {
+        day: 'numeric', month: 'short', year: sameYear ? undefined : 'numeric',
+        hour: '2-digit', minute: '2-digit',
+    }).replace('.', '');
+}
+
+function makeNameLabel(name, online, lastSeen) {
     const c = document.createElement('canvas');
-    c.width = 512; c.height = 128;
+    c.width = 512; c.height = 192;
     const g = c.getContext('2d');
     g.font = '600 52px "Space Grotesk", sans-serif';
     const w = Math.min(500, g.measureText(name).width + 70);
@@ -1486,11 +1497,21 @@ function makeNameLabel(name, online) {
     g.fillStyle = online ? '#ffffff' : '#a9aec4';
     g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText(name, 256 + 12, 66, w - 70);
+    // Debajo del nombre: «En línea» o la fecha de su última conexión.
+    const seen = online ? 'En línea' : formatDate(lastSeen) && `Últ. vez ${formatDate(lastSeen)}`;
+    if (seen) {
+        g.font = '500 30px "JetBrains Mono", monospace';
+        const sw = Math.min(500, g.measureText(seen).width + 36);
+        g.fillStyle = 'rgba(10, 13, 22, .7)';
+        g.beginPath(); g.roundRect((512 - sw) / 2, 116, sw, 48, 24); g.fill();
+        g.fillStyle = online ? '#36f1a0' : '#c3c8da';
+        g.fillText(seen, 256, 141, sw - 36);
+    }
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
-    sprite.scale.set(1.6, 0.4, 1);
-    sprite.position.y = 2.15;
+    sprite.scale.set(1.6, 0.6, 1);
+    sprite.position.y = 2.05;
     return sprite;
 }
 
@@ -1533,18 +1554,53 @@ function upsertRemote(p) {
         scene.add(r.group);
         remotes.set(p.id, r);
         attachAvatar(r);
+        // Caja invisible del tamaño de la persona: tocarla abre su perfil.
+        r.hit = new THREE.Mesh(new THREE.BoxGeometry(0.8, 2.3, 0.8), new THREE.MeshBasicMaterial({ visible: false }));
+        r.hit.position.y = 1.15;
+        r.hit.userData = { action: () => openProfile(r) };
+        r.group.add(r.hit);
+        clickable.push(r.hit);
     }
     r.target.set(p.x, 0, p.z);
     r.ry = p.ry || 0;
     r.gait = p.g;   // ausente en la lista inicial: entonces se deduce de la distancia
-    if (r.name !== p.name || r.online !== p.online) {
+    // La posición en vivo no trae fechas: se conservan las que llegaron antes.
+    const lastSeen = p.last_seen ?? r.lastSeen;
+    if (p.since) r.since = p.since;
+    if (r.name !== p.name || r.online !== p.online || r.lastSeen !== lastSeen) {
         if (r.label) { r.group.remove(r.label); r.label.material.map.dispose(); r.label.material.dispose(); }
-        r.label = makeNameLabel(p.name || 'Visitante', p.online);
+        r.label = makeNameLabel(p.name || 'Visitante', p.online, lastSeen);
         r.group.add(r.label);
         r.name = p.name;
         r.online = p.online;
+        r.lastSeen = lastSeen;
+        r.hit.userData.hint = `Ver el perfil de ${p.name || 'Visitante'}`;
+        if (profileOf === r) fillProfile(r);
     }
 }
+
+// Ventana de perfil de otra persona (nunca muestra teléfono ni email).
+const profileBox = document.querySelector('[data-profile]');
+let profileOf = null;
+function fillProfile(r) {
+    const name = r.name || 'Visitante';
+    profileBox.querySelector('[data-profile-initials]').textContent =
+        name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || '?';
+    profileBox.querySelector('[data-profile-name]').textContent = name;
+    const status = profileBox.querySelector('[data-profile-status]');
+    status.textContent = r.online ? 'En línea ahora' : 'Desconectado';
+    status.classList.toggle('is-online', !!r.online);
+    profileBox.querySelector('[data-profile-seen]').textContent = r.online ? 'Ahora' : formatDate(r.lastSeen) || 'Sin dato';
+    profileBox.querySelector('[data-profile-since]').textContent = formatDate(r.since) || 'Sin dato';
+}
+function openProfile(r) {
+    profileOf = r;
+    fillProfile(r);
+    profileBox.hidden = false;
+}
+function closeProfile() { profileOf = null; profileBox.hidden = true; }
+profileBox.querySelector('[data-profile-close]').addEventListener('click', closeProfile);
+profileBox.addEventListener('click', (e) => { if (e.target === profileBox) closeProfile(); });
 
 net.on('players', (m) => m.players.forEach(upsertRemote));
 net.on('say', (m) => {
