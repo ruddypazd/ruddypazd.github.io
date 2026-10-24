@@ -241,6 +241,8 @@ body {
     font: 700 1.5rem var(--font); color: #fff; background: linear-gradient(135deg, #7b5cff, #ff3da6);
     box-shadow: 0 0 18px rgba(123, 92, 255, .5);
 }
+.profile__avatar { position: relative; overflow: hidden; }
+.profile__avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .totem-panel__card .profile__status { margin: 0 0 1rem; color: #a9aec4; }
 .totem-panel__card .profile__status::before { content: '●'; margin-right: .4rem; color: #6b7290; }
 .totem-panel__card .profile__status.is-online, .profile__status.is-online::before { color: #36f1a0; }
@@ -266,4 +268,7 @@ body {
 }
 .login__card input:focus { outline: none; border-color: #00e5ff; }
 .login__error { margin: 0; color: #ff6b9a; font-size: .9rem; }
+.login__card input[readonly] { opacity: .6; }
+button.login__back { background: none; border: 0; cursor: pointer; font-family: inherit; }
+.profile__facts a { color: var(--cyan); }
 .login__back { justify-self: center; color: rgba(255,255,255,.7); font-size: .85rem; text-decoration: none; }
