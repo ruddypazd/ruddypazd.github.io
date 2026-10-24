@@ -379,3 +379,14 @@ button.login__back { background: none; border: 0; cursor: pointer; font-family: 
 .totem-panel__card .memory-view__text { color: var(--text); font-family: var(--font); font-size: 1rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .totem-panel__card .memory-view__text[hidden] { display: none; }
 .memory-view .holes__delete { justify-self: center; margin-bottom: .8rem; }
+
+/* Elegir personaje: una tarjeta con foto por personaje */
+.avatars { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
+.avatar-card {
+    display: grid; gap: .45rem; padding: .5rem; border-radius: .9rem; cursor: pointer;
+    border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.05); color: #fff; font: inherit; font-size: .9rem;
+}
+.avatar-card img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: .6rem; background: rgba(0, 229, 255, .08); }
+.avatar-card:hover, .avatar-card:focus-visible { border-color: rgba(0, 229, 255, .6); outline: none; }
+.avatar-card[aria-pressed="true"] { border-color: #00e5ff; box-shadow: 0 0 16px rgba(0, 229, 255, .45); }
+.avatar-card[aria-busy="true"] { opacity: .6; cursor: progress; }

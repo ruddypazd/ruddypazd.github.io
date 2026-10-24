@@ -6,9 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { createWormholes, buildDestination, hueFor, HOLE_R, DEST_RADIUS } from './wormholes.js?v=41';
-
-const MODEL_URL = 'models/ruddy.glb';
+import { createWormholes, buildDestination, hueFor, HOLE_R, DEST_RADIUS } from './wormholes.js?v=42';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
@@ -754,76 +752,94 @@ function done(isPlaceholder) {
     remotes.forEach(attachAvatar);  // los que llegaron antes que el modelo
 }
 
-new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(
-    MODEL_URL,
-    (gltf) => {
-        const model = gltf.scene;
-        model.traverse((o) => {
-            if (!o.isMesh) return;
-            o.castShadow = true;
-            o.receiveShadow = true;
-            // El material de Mixamo viene metálico y pulido (metal 0.4, rugosidad 0.27):
-            // se deja mate para que las luces no lo hagan brillar tanto.
-            for (const m of [].concat(o.material)) {
-                if (m.metalness !== undefined) m.metalness = 0;
-                if (m.roughness !== undefined) m.roughness = 0.9;
-            }
-        });
-        body.add(model);
-        model.traverse((o) => { if (o.isBone && /head$/i.test(o.name)) headBone ??= o; });
-        if (headBone) {
-            // Medido sobre el modelo: en el espacio del hueso Head, +z mira al frente y
-            // la boca queda bajo la nariz, entre el bigote y la barba.
-            mouth = new THREE.Mesh(
-                new THREE.CircleGeometry(1, 32).translate(0, -1, 0),  // crece hacia abajo, como la mandíbula
-                new THREE.MeshBasicMaterial({ color: 0x1a0606 })
-            );
-            mouth.position.set(0, 0.021, 0.087);  // borde superior bajo el bigote
-            mouth.scale.set(0.017, 0.001, 1);
-            mouth.visible = false;
-            headBone.add(mouth);
-        }
+// Personajes que cada quien puede elegir (Ajustes → Cambiar personaje). Todos usan las
+// animaciones de Ruddy (idle, walk, run, jump), pasadas a su esqueleto de Mixamo.
+const AVATARS = {
+    ruddy: { name: 'Ruddy', url: 'models/ruddy.glb', thumb: 'models/ruddy.jpg', mouth: true },
+    androide18: { name: 'Androide 18', url: 'models/androide18.glb', thumb: 'models/androide18.jpg' },
+};
+const avatarIdOf = (id) => (AVATARS[id] ? id : 'ruddy');
 
-        if (gltf.animations.length) {
-            mixer = new THREE.AnimationMixer(model);
-            const clip = (re) => gltf.animations.find((a) => re.test(a.name));
-            const idle = clip(/idle/i) || gltf.animations[0];
-            const walk = clip(/walk/i);
-            const run = clip(/run/i);
-            const jump = clip(/jump/i);
-            actions = {
-                idle: mixer.clipAction(idle),
-                walk: walk && mixer.clipAction(walk),
-                run: run && mixer.clipAction(run),
-                jump: jump && mixer.clipAction(jump),
-            };
-            if (actions.jump) {
-                actions.jump.setLoop(THREE.LoopOnce, 1);
-                actions.jump.clampWhenFinished = true;
-                // Running Jump de Mixamo: despega y aterriza en el mismo clip.
-                mixer.addEventListener('finished', (e) => {
-                    if (e.action === actions.jump) jumping = false;
-                });
+// Cada GLB se carga una vez y queda ajustado a 1.8 m; de ahí se clona para todos.
+const avatarCache = {};
+function loadAvatar(id, onProgress) {
+    id = avatarIdOf(id);
+    avatarCache[id] ??= new Promise((resolve, reject) => {
+        new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(AVATARS[id].url, (gltf) => {
+            const model = gltf.scene;
+            model.traverse((o) => {
+                if (!o.isMesh) return;
+                o.castShadow = true;
+                o.receiveShadow = true;
+                // El material de Mixamo viene metálico y pulido (metal 0.4, rugosidad 0.27):
+                // se deja mate para que las luces no lo hagan brillar tanto.
+                for (const m of [].concat(o.material)) {
+                    if (m.metalness !== undefined) m.metalness = 0;
+                    if (m.roughness !== undefined) m.roughness = 0.9;
+                }
+            });
+            const anims = gltf.animations;
+            if (anims.length) {
+                // Medir con la pose de idle, no con la de enlace.
+                const m = new THREE.AnimationMixer(model);
+                m.clipAction(anims.find((a) => /idle/i.test(a.name)) || anims[0]).play();
+                m.update(0);
             }
-            current = actions.idle;
-            current.play();
-            mixer.update(0);  // medir con la pose de idle, no con la de enlace
-            jumpBtn.hidden = !actions.jump;
-        }
-        fitToHeight(model, 1.8);
-        avatarTemplate = { model, animations: gltf.animations };
-        done(false);
-    },
-    (e) => {
-        if (e.total) loaderText.textContent = `Cargando a Ruddy… ${Math.round((e.loaded / e.total) * 100)}%`;
-    },
-    () => {
-        placeholder = buildPlaceholder();
-        body.add(placeholder);
-        avatarTemplate = { model: null, animations: [] };
-        done(true);
+            fitToHeight(model, 1.8);
+            resolve({ model, animations: anims });
+        }, onProgress, reject);
+    });
+    avatarCache[id].catch(() => { delete avatarCache[id]; });  // se puede reintentar
+    return avatarCache[id];
+}
+
+// Acciones idle/walk/run/jump de un clon; el salto se reproduce una sola vez.
+function buildActions(mx, anims, onJumpEnd) {
+    const clip = (re) => anims.find((a) => re.test(a.name));
+    const pick = (re) => clip(re) && mx.clipAction(clip(re));
+    const acts = { idle: mx.clipAction(clip(/idle/i) || anims[0]), walk: pick(/walk/i), run: pick(/run/i), jump: pick(/jump/i) };
+    if (acts.jump) {
+        acts.jump.setLoop(THREE.LoopOnce, 1);
+        acts.jump.clampWhenFinished = true;
+        // Running Jump de Mixamo: despega y aterriza en el mismo clip.
+        mx.addEventListener('finished', (e) => { if (e.action === acts.jump) onJumpEnd(); });
     }
-);
+    return acts;
+}
+
+// Pone en tu cuerpo el personaje elegido (al cargar y al cambiarlo desde Ajustes).
+let myModel = null;
+let myAvatarId = null;
+function useAvatar(tpl, id) {
+    if (myModel) body.remove(myModel);
+    if (placeholder) { body.remove(placeholder); placeholder = null; }
+    mixer?.stopAllAction();
+    mixer = actions = current = headBone = mouth = null;
+    jumping = false;
+    myAvatarId = id;
+    const model = myModel = cloneSkinned(tpl.model);
+    model.traverse((o) => { if (o.isBone && /head$/i.test(o.name)) headBone ??= o; });
+    if (headBone && AVATARS[id].mouth) {
+        // Medido sobre Ruddy: en el espacio del hueso Head, +z mira al frente y
+        // la boca queda bajo la nariz, entre el bigote y la barba.
+        mouth = new THREE.Mesh(
+            new THREE.CircleGeometry(1, 32).translate(0, -1, 0),  // crece hacia abajo, como la mandíbula
+            new THREE.MeshBasicMaterial({ color: 0x1a0606 })
+        );
+        mouth.position.set(0, 0.021, 0.087);  // borde superior bajo el bigote
+        mouth.scale.set(0.017, 0.001, 1);
+        mouth.visible = false;
+        headBone.add(mouth);
+    }
+    if (tpl.animations.length) {
+        mixer = new THREE.AnimationMixer(model);
+        actions = buildActions(mixer, tpl.animations, () => { jumping = false; });
+        current = actions.idle;
+        current.play();
+    }
+    jumpBtn.hidden = !actions?.jump;
+    body.add(model);
+}
 
 // ---------- Controles: joystick virtual + teclado ----------
 const input = { x: 0, y: 0 };      // x: derecha, y: adelante, en [-1, 1]
@@ -1369,6 +1385,26 @@ function saveProfile(p) {
     try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)); } catch { /* modo privado */ }
 }
 
+// Tu personaje: el que elegiste la última vez (o Ruddy); si no carga, Ruddy o el provisional.
+const firstAvatar = avatarIdOf(getProfile()?.avatar);
+loadAvatar(firstAvatar, (e) => {
+    if (e.total) loaderText.textContent = `Cargando a ${AVATARS[firstAvatar].name}… ${Math.round((e.loaded / e.total) * 100)}%`;
+})
+    .then((tpl) => [tpl, firstAvatar], () => loadAvatar('ruddy').then((tpl) => [tpl, 'ruddy']))
+    .then(([tpl, id]) => {
+        useAvatar(tpl, id);
+        avatarTemplate = tpl;
+        done(false);
+        // El servidor pudo recordar otro personaje mientras este cargaba.
+        const want = avatarIdOf(getProfile()?.avatar);
+        if (want !== id && want !== firstAvatar) setMyAvatar(want).catch(() => {});
+    }, () => {
+        placeholder = buildPlaceholder();
+        body.add(placeholder);
+        avatarTemplate = { model: null, animations: [] };
+        done(true);
+    });
+
 // Países para el teléfono: [código ISO, nombre, código telefónico]. La bandera sale del ISO.
 const COUNTRIES = [
     ['BO', 'Bolivia', '591'], ['AR', 'Argentina', '54'], ['BR', 'Brasil', '55'], ['CL', 'Chile', '56'],
@@ -1512,6 +1548,11 @@ net.on('login_ok', (m) => {
     loginBox.hidden = true;
     const p = getProfile();
     if (p?.legacy_phone) { delete p.legacy_phone; saveProfile(p); }
+    // En otro dispositivo, o tras volver a entrar: el servidor recuerda tu personaje.
+    if (p && !p.avatar && m.avatar) {
+        saveProfile({ ...p, avatar: m.avatar });
+        if (myModel && avatarIdOf(m.avatar) !== myAvatarId) setMyAvatar(avatarIdOf(m.avatar)).catch(() => {});
+    }
     if (placedFromSave) return;
     placedFromSave = true;
     // Primera vez: un lugar al azar cerca del centro, para no aparecer encima de otra persona.
@@ -1590,40 +1631,40 @@ function makeNameLabel(name, online, lastSeen) {
     return sprite;
 }
 
+// Personaje de otra persona: el que eligió (llega en la lista y en los avisos de conexión).
+// Se carga su GLB si aún no está y se cambia cuando elige otro.
 function attachAvatar(r) {
-    if (r.avatar || !avatarTemplate) return;
-    if (avatarTemplate.model) {
-        r.avatar = cloneSkinned(avatarTemplate.model);
-        const anims = avatarTemplate.animations;
-        if (anims.length) {
-            r.mixer = new THREE.AnimationMixer(r.avatar);
-            const clip = (re) => anims.find((a) => re.test(a.name));
-            r.actions = {
-                idle: r.mixer.clipAction(clip(/idle/i) || anims[0]),
-                walk: clip(/walk/i) && r.mixer.clipAction(clip(/walk/i)),
-                run: clip(/run/i) && r.mixer.clipAction(clip(/run/i)),
-                jump: clip(/jump/i) && r.mixer.clipAction(clip(/jump/i)),
-            };
-            if (r.actions.jump) {
-                r.actions.jump.setLoop(THREE.LoopOnce, 1);
-                r.actions.jump.clampWhenFinished = true;
-                r.mixer.addEventListener('finished', (e) => { if (e.action === r.actions.jump) r.jumping = false; });
+    if (!avatarTemplate || r.avatarShown === r.avatarId) return;
+    const id = r.avatarId;
+    r.avatarShown = id;
+    const put = (tpl) => {
+        if (r.avatarId !== id) return;  // eligió otro mientras cargaba
+        if (r.avatar) { r.group.remove(r.avatar); r.mixer?.stopAllAction(); }
+        r.mixer = r.actions = r.current = null;
+        r.jumping = false;
+        if (tpl.model) {
+            r.avatar = cloneSkinned(tpl.model);
+            if (tpl.animations.length) {
+                r.mixer = new THREE.AnimationMixer(r.avatar);
+                r.actions = buildActions(r.mixer, tpl.animations, () => { r.jumping = false; });
+                r.current = r.actions.idle;
+                r.current.play();
             }
-            r.current = r.actions.idle;
-            r.current.play();
+        } else {
+            r.avatar = buildPlaceholder();
         }
-    } else {
-        r.avatar = buildPlaceholder();
-    }
-    r.avatar.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-    r.group.add(r.avatar);
+        r.avatar.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+        r.group.add(r.avatar);
+    };
+    if (!avatarTemplate.model) return put(avatarTemplate);
+    loadAvatar(id).then(put, () => loadAvatar('ruddy').then(put, () => put({ model: null, animations: [] })));
 }
 
 function upsertRemote(p) {
     if (!p.id || p.id === net.myId) return;
     let r = remotes.get(p.id);
     if (!r) {
-        r = { group: new THREE.Group(), target: new THREE.Vector3(), ry: 0, label: null, avatar: null };
+        r = { group: new THREE.Group(), target: new THREE.Vector3(), ry: 0, label: null, avatar: null, avatarId: avatarIdOf(p.avatar) };
         r.group.position.set(p.x, 0, p.z);
         r.group.rotation.y = p.ry || 0;
         actors.add(r.group);
@@ -1653,6 +1694,7 @@ function upsertRemote(p) {
     // Teléfono y correo llegan en la lista y en los avisos de conexión, no en la posición en vivo.
     if (p.phone) r.phone = p.phone;
     if (p.email) r.email = p.email;
+    if (p.avatar && avatarIdOf(p.avatar) !== r.avatarId) { r.avatarId = avatarIdOf(p.avatar); attachAvatar(r); }
     if (r.name !== p.name || r.online !== p.online || r.lastSeen !== lastSeen) {
         if (r.label) { r.group.remove(r.label); r.label.material.map.dispose(); r.label.material.dispose(); }
         r.label = makeNameLabel(p.name || 'Visitante', p.online, lastSeen);
@@ -1712,6 +1754,53 @@ myForm.addEventListener('submit', (e) => {
     myBox.hidden = true;
     net.login();   // el servidor guarda los cambios y avisa a los demás
 });
+// Cambiar personaje (desde Ajustes): se guarda en tu perfil y el servidor avisa a los demás.
+const avatarBox = document.querySelector('[data-avatar-box]');
+const avatarList = avatarBox.querySelector('[data-avatar-list]');
+const avatarError = avatarBox.querySelector('[data-avatar-error]');
+for (const [id, a] of Object.entries(AVATARS)) {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'avatar-card';
+    card.dataset.avatar = id;
+    card.innerHTML = `<img alt="" loading="lazy"><span></span>`;
+    card.querySelector('img').src = a.thumb;
+    card.querySelector('span').textContent = a.name;
+    card.addEventListener('click', () => chooseAvatar(id, card));
+    avatarList.append(card);
+}
+function markAvatar() {
+    avatarList.querySelectorAll('.avatar-card').forEach((c) => c.setAttribute('aria-pressed', String(c.dataset.avatar === myAvatarId)));
+}
+document.querySelector('[data-avatar-open]').addEventListener('click', () => {
+    if (!getProfile()) return showLogin();
+    avatarError.hidden = true;
+    markAvatar();
+    avatarBox.hidden = false;
+});
+avatarBox.querySelector('[data-avatar-close]').addEventListener('click', () => { avatarBox.hidden = true; });
+async function setMyAvatar(id) {
+    const tpl = await loadAvatar(id);
+    if (myModel || placeholder) useAvatar(tpl, id);  // si no, lo pone la carga inicial
+}
+async function chooseAvatar(id, card) {
+    if (id === myAvatarId) { avatarBox.hidden = true; return; }
+    card.setAttribute('aria-busy', 'true');
+    avatarError.hidden = true;
+    try {
+        await setMyAvatar(id);
+        saveProfile({ ...getProfile(), avatar: id });
+        net.login();   // los demás te ven con el nuevo personaje
+        markAvatar();
+        avatarBox.hidden = true;
+    } catch {
+        avatarError.textContent = `No se pudo cargar a ${AVATARS[id].name}. Intenta de nuevo.`;
+        avatarError.hidden = false;
+    } finally {
+        card.removeAttribute('aria-busy');
+    }
+}
+
 // Foto de Gravatar del correo; si no tiene (404), quedan las iniciales.
 const profilePhoto = profileBox.querySelector('[data-profile-photo]');
 profilePhoto.addEventListener('load', () => { profilePhoto.hidden = false; });
