@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=39">
+    <link rel="stylesheet" href="style.css?v=40">
     <script type="importmap">
     {
         "imports": {
@@ -46,6 +46,7 @@
                         <button class="settings__item" type="button" data-fp aria-pressed="false">👁 Vista en primera persona</button>
                         <button class="settings__item" type="button" data-hole-open>🌀 Crear agujero de gusano</button>
                         <button class="settings__item" type="button" data-note-open>📝 Dejar una nota</button>
+                        <button class="settings__item" type="button" data-memory-open>📷 Crear recuerdo</button>
                     </div>
                 </section>
                 <section class="settings__group">
@@ -192,12 +193,43 @@
             <button class="chat__send" type="button" data-note-close>Cerrar</button>
         </div>
     </div>
+    <div class="login login--scroll" data-memory-box role="dialog" aria-modal="true" aria-labelledby="memory-title" hidden>
+        <form class="login__card" data-memory-form autocomplete="off">
+            <p class="totem-panel__tag">Recuerdo</p>
+            <h2 id="memory-title">Crea un recuerdo</h2>
+            <p class="login__note">Un letrero grande con tu foto y un texto, delante de ti. Todos pueden verlo.</p>
+            <label>Foto<input name="photo" type="file" accept="image/*"></label>
+            <img class="memory__preview" data-memory-preview alt="Vista previa de la foto" hidden>
+            <p class="login__note" data-memory-info></p>
+            <label>Texto<textarea name="text" maxlength="300" rows="3" placeholder="Aquí celebramos…"></textarea></label>
+            <p class="login__error" data-memory-error hidden></p>
+            <button class="chat__send" type="submit">Crear recuerdo</button>
+            <div class="holes" data-my-memories hidden>
+                <h3>Tus recuerdos</h3>
+                <ul></ul>
+            </div>
+            <button class="login__back" type="button" data-memory-close>Cerrar</button>
+        </form>
+    </div>
+    <div class="totem-panel" data-memory-view hidden role="dialog" aria-modal="true" aria-labelledby="memory-view-author">
+        <div class="totem-panel__card profile memory-view">
+            <img class="memory-view__photo" data-memory-photo alt="">
+            <p class="totem-panel__tag">Recuerdo de</p>
+            <h2 id="memory-view-author" data-memory-author></h2>
+            <p class="memory-view__text" data-memory-text></p>
+            <dl class="profile__facts">
+                <dt>Creado</dt><dd data-memory-created></dd>
+            </dl>
+            <button class="holes__delete" type="button" data-memory-delete hidden>Borrar recuerdo</button>
+            <button class="chat__send" type="button" data-memory-close>Cerrar</button>
+        </div>
+    </div>
     <div class="scene-banner" data-scene-banner hidden>
         <p class="totem-panel__tag" data-scene-owner>Agujero de gusano</p>
         <h2 data-scene-name></h2>
         <p data-scene-desc></p>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=39"></script>
+    <script type="module" src="world.js?v=40"></script>
 </body>
 </html>

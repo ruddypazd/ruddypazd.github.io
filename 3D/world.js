@@ -6,7 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { createWormholes, buildDestination, hueFor, HOLE_R, DEST_RADIUS } from './wormholes.js?v=39';
+import { createWormholes, buildDestination, hueFor, HOLE_R, DEST_RADIUS } from './wormholes.js?v=40';
 
 const MODEL_URL = 'models/ruddy.glb';
 
@@ -940,7 +940,7 @@ settingsPanel.addEventListener('click', () => setSettings(false), true);
 document.addEventListener('pointerdown', (e) => {
     if (!settingsBox.contains(e.target)) setSettings(false);
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; document.querySelector('[data-note-box]').hidden = true; document.querySelector('[data-note-view]').hidden = true; } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; document.querySelector('[data-note-box]').hidden = true; document.querySelector('[data-note-view]').hidden = true; document.querySelector('[data-memory-box]').hidden = true; document.querySelector('[data-memory-view]').hidden = true; } });
 
 // ---------- Primera persona ----------
 const fpBtn = document.querySelector('[data-fp]');
@@ -2044,6 +2044,7 @@ function goTo(id, { from = null, pos = null } = {}) {
     }
     for (const r of remotes.values()) showRemote(r);
     showNotesHere();
+    showMemoriesHere();
     lastSent.at = 0;   // los demás se enteran enseguida
 }
 
@@ -2368,6 +2369,272 @@ net.on('note', (m) => {
     }
 });
 net.on('note_error', (m) => { noting = false; noteMessage(m.message); });
+
+
+// ---------- Recuerdos ----------
+// Un letrero grande con una foto y un texto, en el lugar donde está quien lo crea (como las
+// notas, pero sin vencimiento). La foto se achica y se comprime aquí antes de subirla: las del
+// iPhone pesan varios MB y en el letrero basta con ~1280 px.
+const API_BASE = WS_URL.replace(/^ws/, 'http').replace(/\/ws$/, '');
+const PHOTO_MAX_PX = 1280;
+const PHOTO_TARGET_BYTES = 320_000;
+const MEM_MAX_W = 2.4, MEM_MAX_H = 1.7, MEM_BOTTOM = 0.95, PLAQUE_H = 0.5;
+const memories = new Map();   // id -> { data, group, hits }
+const memoryView = document.querySelector('[data-memory-view]');
+const photoLoader = new THREE.TextureLoader().setCrossOrigin('anonymous');
+const photoUrl = (id) => `${API_BASE}/api/photos/${id}.jpg`;
+
+function addMemory(m) {
+    removeMemory(m.id);
+    const group = new THREE.Group();
+    group.position.set(m.x, 0, m.z);
+    group.rotation.y = m.ry || 0;
+    const aspect = m.w / m.h || 4 / 3;
+    const pw = Math.min(MEM_MAX_W, MEM_MAX_H * aspect);
+    const ph = pw / aspect;
+    const photoY = MEM_BOTTOM + PLAQUE_H + 0.12 + ph / 2;
+
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(pw + 0.18, ph + 0.18, 0.08), frameMat);
+    frame.position.set(0, photoY, -0.05);
+    frame.castShadow = true;
+    const photoMat = new THREE.MeshBasicMaterial({ color: 0x222633, toneMapped: false });
+    const photo = new THREE.Mesh(new THREE.PlaneGeometry(pw, ph), photoMat);
+    photo.position.y = photoY;
+    photoLoader.load(photoUrl(m.id), (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        photoMat.map = tex;
+        photoMat.color.set(0xffffff);
+        photoMat.needsUpdate = true;
+    });
+
+    // Placa con el texto, debajo de la foto.
+    const plaqueW = Math.max(pw, 1.6);
+    const plaqueTex = makeLabelTexture(1024, Math.round(1024 * PLAQUE_H / plaqueW), (c, w, h) => {
+        c.fillStyle = '#14112a'; c.fillRect(0, 0, w, h);
+        c.strokeStyle = '#ffb070'; c.lineWidth = 6; c.strokeRect(6, 6, w - 12, h - 12);
+        c.fillStyle = '#fff'; c.textAlign = 'center';
+        c.font = '600 40px "Space Grotesk", sans-serif';
+        const lines = [];
+        let line = '';
+        for (const word of (m.text || '').replace(/\s+/g, ' ').split(' ').filter(Boolean)) {
+            const test = line ? `${line} ${word}` : word;
+            if (c.measureText(test).width > w - 80 && line) { lines.push(line); line = word; } else line = test;
+        }
+        if (line) lines.push(line);
+        const maxLines = Math.max(1, Math.floor((h - 70) / 48));
+        const shown = lines.slice(0, maxLines);
+        if (lines.length > maxLines) shown[maxLines - 1] += '…';
+        const top = (h - 44 - shown.length * 48) / 2 + 36;
+        shown.forEach((l, i) => c.fillText(l, w / 2, top + i * 48, w - 80));
+        c.font = '26px "JetBrains Mono", monospace'; c.fillStyle = '#ffd2a6';
+        c.fillText(`Recuerdo de ${m.owner_name || 'Visitante'} · ${formatDate(m.created_at)}`, w / 2, h - 26, w - 80);
+    });
+    const plaque = new THREE.Mesh(new THREE.PlaneGeometry(plaqueW, PLAQUE_H), new THREE.MeshBasicMaterial({ map: plaqueTex, toneMapped: false }));
+    plaque.position.y = MEM_BOTTOM + PLAQUE_H / 2;
+
+    const postH = photoY + ph / 2 + 0.09;
+    for (const side of [-1, 1]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, postH, 0.08), poleMat);
+        post.position.set(side * (Math.max(pw, plaqueW) / 2 + 0.1), postH / 2, -0.06);
+        group.add(post);
+    }
+    group.add(frame, photo, plaque);
+    const hint = `Ver el recuerdo de ${m.owner_name || 'Visitante'}`;
+    for (const hit of [photo, plaque]) {
+        hit.userData = { hint, action: () => openMemory(m.id) };
+        clickable.push(hit);
+    }
+    (m.scene === MAIN ? scene : dest.scene).add(group);
+    group.visible = m.scene === here.id;
+    memories.set(m.id, { data: m, group, hits: [photo, plaque] });
+    refreshMyMemories();
+}
+
+function removeMemory(id) {
+    const e = memories.get(id);
+    if (!e) return;
+    e.group.parent?.remove(e.group);
+    e.group.traverse((o) => {
+        if (!o.isMesh) return;
+        o.geometry.dispose();
+        if (o.material !== frameMat && o.material !== poleMat) { o.material.map?.dispose(); o.material.dispose(); }
+    });
+    for (const hit of e.hits) clickable.splice(clickable.indexOf(hit), 1);
+    memories.delete(id);
+    if (memoryView.dataset.id === id) memoryView.hidden = true;
+    refreshMyMemories();
+}
+
+function showMemoriesHere() {
+    for (const e of memories.values()) e.group.visible = e.data.scene === here.id;
+}
+
+function openMemory(id) {
+    const m = memories.get(id)?.data;
+    if (!m) return;
+    memoryView.dataset.id = id;
+    const img = memoryView.querySelector('[data-memory-photo]');
+    img.src = photoUrl(m.id);
+    img.alt = m.text || `Recuerdo de ${m.owner_name || 'Visitante'}`;
+    memoryView.querySelector('[data-memory-author]').textContent = m.owner_name || 'Visitante';
+    memoryView.querySelector('[data-memory-text]').textContent = m.text || '';
+    memoryView.querySelector('[data-memory-text]').hidden = !m.text;
+    memoryView.querySelector('[data-memory-created]').textContent = formatDate(m.created_at) || 'Sin dato';
+    const del = memoryView.querySelector('[data-memory-delete]');
+    del.hidden = !net.myId || m.owner_id !== net.myId;
+    del.textContent = 'Borrar recuerdo';
+    delete del.dataset.confirm;
+    memoryView.hidden = false;
+}
+memoryView.querySelector('[data-memory-close]').addEventListener('click', () => { memoryView.hidden = true; });
+memoryView.addEventListener('click', (e) => { if (e.target === memoryView) memoryView.hidden = true; });
+memoryView.querySelector('[data-memory-delete]').addEventListener('click', (e) => {
+    const del = e.currentTarget;
+    if (!del.dataset.confirm) { del.dataset.confirm = '1'; del.textContent = '¿Borrar? Toca otra vez'; return; }
+    net.send({ type: 'memory_delete', id: memoryView.dataset.id });
+});
+
+net.on('memories', (m) => {
+    const ids = new Set(m.memories.map((x) => x.id));
+    for (const id of [...memories.keys()]) if (!ids.has(id)) removeMemory(id);
+    m.memories.forEach(addMemory);
+});
+net.on('memory_removed', (m) => removeMemory(m.id));
+
+// Achica la foto a PHOTO_MAX_PX y baja la calidad JPEG hasta que pese ~300 KB.
+async function compressPhoto(file) {
+    const url = URL.createObjectURL(file);
+    try {
+        const img = new Image();
+        img.src = url;
+        await img.decode();
+        let max = PHOTO_MAX_PX, quality = 0.82, blob = null, w = 0, h = 0;
+        for (let i = 0; i < 8; i++) {
+            const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+            w = Math.max(1, Math.round(img.naturalWidth * k));
+            h = Math.max(1, Math.round(img.naturalHeight * k));
+            const c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            c.getContext('2d').drawImage(img, 0, 0, w, h);
+            blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', quality));
+            if (blob && blob.size <= PHOTO_TARGET_BYTES) break;
+            if (quality > 0.6) quality -= 0.1; else max = Math.round(max * 0.8);
+        }
+        if (!blob) throw new Error('sin blob');
+        const dataUrl = await new Promise((res, rej) => {
+            const fr = new FileReader();
+            fr.onload = () => res(fr.result);
+            fr.onerror = rej;
+            fr.readAsDataURL(blob);
+        });
+        return { dataUrl, w, h, size: blob.size, original: file.size };
+    } finally {
+        URL.revokeObjectURL(url);
+    }
+}
+
+// Crear un recuerdo (Ajustes → Crear recuerdo).
+const memoryBox = document.querySelector('[data-memory-box]');
+const memoryForm = memoryBox.querySelector('[data-memory-form]');
+const memoryError = memoryBox.querySelector('[data-memory-error]');
+const memoryPreview = memoryBox.querySelector('[data-memory-preview]');
+const memoryInfo = memoryBox.querySelector('[data-memory-info]');
+const myMemories = memoryBox.querySelector('[data-my-memories]');
+let pendingPhoto = null;
+let remembering = false;
+const kb = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.round(n / 1000)} KB`);
+function memoryMessage(text) {
+    memoryError.hidden = !text;
+    memoryError.textContent = text || '';
+}
+function refreshMyMemories() {
+    const mine = [...memories.values()].filter((e) => net.myId && e.data.owner_id === net.myId);
+    myMemories.hidden = !mine.length;
+    myMemories.querySelector('ul').replaceChildren(...mine.map((e) => {
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        const t = e.data.text || 'Sin texto';
+        name.textContent = `${t.slice(0, 40)}${t.length > 40 ? '…' : ''} · ${formatDate(e.data.created_at)}`;
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'holes__delete';
+        del.textContent = 'Borrar';
+        del.addEventListener('click', () => {
+            if (del.dataset.confirm) return net.send({ type: 'memory_delete', id: e.data.id });
+            del.dataset.confirm = '1';
+            del.textContent = '¿Borrar? Toca otra vez';
+        });
+        li.append(name, del);
+        return li;
+    }));
+}
+document.querySelector('[data-memory-open]').addEventListener('click', () => {
+    if (!getProfile()) return showLogin();
+    memoryMessage('');
+    refreshMyMemories();
+    memoryBox.hidden = false;
+});
+memoryBox.querySelector('[data-memory-close]').addEventListener('click', () => { memoryBox.hidden = true; });
+memoryForm.photo.addEventListener('change', async () => {
+    const file = memoryForm.photo.files[0];
+    pendingPhoto = null;
+    memoryPreview.hidden = true;
+    memoryMessage('');
+    if (!file) { memoryInfo.textContent = ''; return; }
+    memoryInfo.textContent = 'Preparando la foto…';
+    try {
+        const p = await compressPhoto(file);
+        if (memoryForm.photo.files[0] !== file) return;   // eligió otra mientras tanto
+        pendingPhoto = p;
+        memoryPreview.src = p.dataUrl;
+        memoryPreview.hidden = false;
+        memoryInfo.textContent = `Lista: ${p.w}×${p.h}, ${kb(p.size)} (antes ${kb(p.original)})`;
+    } catch {
+        memoryInfo.textContent = '';
+        memoryMessage('No se pudo leer esa foto. Prueba con otra.');
+    }
+});
+memoryForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!pendingPhoto) return memoryMessage('Elige una foto.');
+    if (!net.loggedIn) return memoryMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
+    // 2,4 m delante de Ruddy en la dirección de la cámara, mirando hacia él.
+    camera.getWorldDirection(forward);
+    const yaw = Math.atan2(forward.x, forward.z);
+    remembering = true;
+    memoryMessage('');
+    memoryForm.querySelector('[type=submit]').disabled = true;
+    net.send({
+        type: 'memory_create',
+        text: memoryForm.text.value.trim(),
+        photo: pendingPhoto.dataUrl,
+        w: pendingPhoto.w,
+        h: pendingPhoto.h,
+        x: player.position.x + Math.sin(yaw) * 2.4,
+        z: player.position.z + Math.cos(yaw) * 2.4,
+        ry: yaw + Math.PI,
+        scene: here.id,
+    });
+});
+net.on('memory', (m) => {
+    addMemory(m.memory);
+    if (remembering && m.memory.owner_id === net.myId) {
+        remembering = false;
+        memoryForm.querySelector('[type=submit]').disabled = false;
+        memoryBox.hidden = true;
+        memoryForm.reset();
+        pendingPhoto = null;
+        memoryPreview.hidden = true;
+        memoryInfo.textContent = '';
+        flashHint('Tu recuerdo quedó delante de ti');
+    }
+});
+net.on('memory_error', (m) => {
+    remembering = false;
+    memoryForm.querySelector('[type=submit]').disabled = false;
+    memoryMessage(m.message);
+});
 
 // Perfiles guardados antes de elegir país (8 dígitos bolivianos): pasan al número completo y el
 // servidor mueve su sesión, para no perder posición ni historial.
