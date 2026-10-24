@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=35">
+    <link rel="stylesheet" href="style.css?v=36">
     <script type="importmap">
     {
         "imports": {
@@ -50,8 +50,7 @@
                     <h3>Cuenta</h3>
                     <div class="settings__grid">
                         <button class="settings__item" type="button" data-my-profile>🪪 Mi perfil</button>
-                        <button class="settings__item" type="button" data-logout>👤 Cambiar de persona</button>
-                        <a href="../" class="settings__item">← Volver al portafolio</a>
+                        <button class="settings__item" type="button" data-logout>🚪 Cerrar sesión</button>
                     </div>
                 </section>
             </div>
@@ -119,11 +118,15 @@
             <h2 id="login-title">Mundo <span class="grad">3D</span></h2>
             <p class="login__note">Tu teléfono es tu sesión: guarda dónde quedaste y los demás te verán ahí, con tu teléfono y correo en tu perfil.</p>
             <label>Nombre<input name="name" autocomplete="name" maxlength="60" required></label>
-            <label>Teléfono<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Con código de país" required></label>
+            <label>Teléfono
+                <span class="login__phone">
+                    <select name="country" aria-label="País" data-country></select>
+                    <input name="phone" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="Número" required>
+                </span>
+            </label>
             <label>Email<input name="email" type="email" autocomplete="email" required></label>
             <p class="login__error" data-login-error hidden></p>
             <button class="chat__send" type="submit">Entrar</button>
-            <a class="login__back" href="../">← Volver al portafolio</a>
         </form>
     </div>
 
@@ -134,13 +137,13 @@
             <label>Nombre<input name="name" autocomplete="name" maxlength="60" required></label>
             <label>Email<input name="email" type="email" autocomplete="email" required></label>
             <label>Teléfono<input name="phone" type="tel" readonly></label>
-            <p class="login__note">Para usar otro teléfono, entra con «Cambiar de persona».</p>
+            <p class="login__note">Para usar otro teléfono, cierra sesión y vuelve a entrar.</p>
             <p class="login__note">Los demás ven tu teléfono y correo en tu perfil.</p>
             <button class="chat__send" type="submit">Guardar</button>
             <button class="login__back" type="button" data-my-profile-close>Cancelar</button>
         </form>
     </div>
 
-    <script type="module" src="world.js?v=35"></script>
+    <script type="module" src="world.js?v=36"></script>
 </body>
 </html>

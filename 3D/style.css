@@ -281,6 +281,14 @@ body {
 .login__card input:focus { outline: none; border-color: #00e5ff; }
 .login__error { margin: 0; color: #ff6b9a; font-size: .9rem; }
 .login__card input[readonly] { opacity: .6; }
+/* Teléfono: país (bandera y código) + número. */
+.login__phone { display: grid; grid-template-columns: auto 1fr; gap: .5rem; }
+.login__phone input { min-width: 0; }
+.login__phone select {
+    max-width: 8.5rem; padding: .7rem .5rem; border-radius: .7rem; border: 1px solid rgba(255,255,255,.2);
+    background: rgba(255,255,255,.06); color: #fff; font: inherit; font-size: 16px;
+}
+.login__phone select option { color: #111; }
 button.login__back { background: none; border: 0; cursor: pointer; font-family: inherit; }
 .profile__facts a { color: var(--cyan); }
 .login__back { justify-self: center; color: rgba(255,255,255,.7); font-size: .85rem; text-decoration: none; }
