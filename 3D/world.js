@@ -6,6 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { createWormholes, buildDestination, hueFor, HOLE_R, DEST_RADIUS } from './wormholes.js?v=38';
 
 const MODEL_URL = 'models/ruddy.glb';
 
@@ -44,13 +45,18 @@ controls.addEventListener('start', () => { controls.autoRotate = false; });
 // ---------- Luces (tema neón del portafolio) ----------
 scene.add(new THREE.HemisphereLight(0xbcd4ff, 0x0a0d16, 1.1));
 
+// Lo que viaja con Ruddy entre escenas (mundo principal y agujeros de gusano): la luz que lo
+// sigue, su anillo, él mismo y las demás personas. Cada escena tiene su propio escenario.
+const actors = new THREE.Group();
+scene.add(actors);
+
 // La luz principal y su sombra siguen a Ruddy (ver bucle).
 const KEY_OFFSET = new THREE.Vector3(3, 5, 4);
 const key = new THREE.DirectionalLight(0xffffff, 2.2);
 key.position.copy(KEY_OFFSET);
 key.castShadow = true;
 key.shadow.mapSize.set(1024, 1024);
-scene.add(key, key.target);
+actors.add(key, key.target);
 
 const rimCyan = new THREE.PointLight(0x00e5ff, 18, 10);
 rimCyan.position.set(-2.5, 2, -2);
@@ -58,7 +64,7 @@ const rimPink = new THREE.PointLight(0xff3da6, 14, 10);
 rimPink.position.set(2.5, 1.5, -2);
 const rims = new THREE.Group();
 rims.add(rimCyan, rimPink);
-scene.add(rims);
+actors.add(rims);
 
 // ---------- Piso ----------
 const WORLD_RADIUS = 52;   // amplio, con espacio libre entre letreros para sumar más cosas
@@ -82,7 +88,7 @@ const ring = new THREE.Mesh(
 );
 ring.rotation.x = -Math.PI / 2;
 ring.position.y = 0.005;
-scene.add(ring);
+actors.add(ring);
 
 // ---------- Escenario: pilares y cubos neón para orientarse ----------
 const NEON = [0x00e5ff, 0xa060ff, 0xff3da6];
@@ -566,7 +572,15 @@ let pressAt = null;
 function billboardAt(e) {
     pointerNdc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
     raycaster.setFromCamera(pointerNdc, camera);
-    return raycaster.intersectObjects(clickable, false)[0]?.object ?? null;
+    // Solo lo que se ve en la escena donde estás (las personas de otra escena están ocultas).
+    return raycaster.intersectObjects(clickable, false).find((h) => shownHere(h.object))?.object ?? null;
+}
+function shownHere(o) {
+    for (let n = o; n; n = n.parent) {
+        if (!n.visible) return false;
+        if (n === here.scene) return true;
+    }
+    return false;
 }
 
 canvas.addEventListener('pointerdown', (e) => { pressAt = { x: e.clientX, y: e.clientY, t: performance.now() }; });
@@ -677,7 +691,7 @@ totemPanel.addEventListener('click', (e) => { if (e.target === totemPanel) totem
 const player = new THREE.Group();
 const body = new THREE.Group();
 player.add(body);
-scene.add(player);
+actors.add(player);
 
 let mixer = null;
 let actions = null;   // { idle, walk, run, jump } si el GLB trae animaciones
@@ -926,7 +940,7 @@ settingsPanel.addEventListener('click', () => setSettings(false), true);
 document.addEventListener('pointerdown', (e) => {
     if (!settingsBox.contains(e.target)) setSettings(false);
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; } });
 
 // ---------- Primera persona ----------
 const fpBtn = document.querySelector('[data-fp]');
@@ -1019,8 +1033,8 @@ function updatePlayer(dt) {
 
         // Límites del mundo y choques con los pilares.
         const r = Math.hypot(player.position.x, player.position.z);
-        if (r > WORLD_RADIUS) player.position.multiplyScalar(WORLD_RADIUS / r);
-        for (const o of obstacles) {
+        if (r > here.radius) player.position.multiplyScalar(here.radius / r);
+        for (const o of here.obstacles) {
             const dx = player.position.x - o.x;
             const dz = player.position.z - o.z;
             const d = Math.hypot(dx, dz);
@@ -1112,6 +1126,7 @@ function makeBubble(el, anchor, lift) {
             el.classList.remove('fade');
             until = performance.now() + Math.min(12000, 4000 + text.length * 60);
         },
+        hide() { el.hidden = true; },
         update() {
             if (el.hidden) return;
             const now = performance.now();
@@ -1507,12 +1522,14 @@ net.on('login_ok', (m) => {
     player.rotation.y = pos.ry || 0;
     camera.position.add(delta);
     controls.target.add(delta);
+    // Si quedó dentro de un agujero de gusano, entra a esa escena cuando llegue la lista de agujeros.
+    pendingScene = m.position?.scene && m.position.scene !== MAIN ? m.position : null;
     // No se marca como enviada: syncPosition la manda enseguida. Si no, quien entra por
     // primera vez (lugar al azar) se vería en el centro para los demás hasta moverse.
 });
 
 // Manda la posición cuando cambia, como mucho ~7 veces por segundo.
-const lastSent = { x: NaN, z: NaN, ry: NaN, g: '', at: 0 };
+const lastSent = { x: NaN, z: NaN, ry: NaN, g: '', scene: '', at: 0 };
 function syncPosition() {
     if (!net.loggedIn) return;
     const now = performance.now();
@@ -1520,10 +1537,10 @@ function syncPosition() {
     const ry = player.rotation.y;
     // Paso actual, para que los demás vean a tu Ruddy quieto, caminando o corriendo igual que tú.
     const g = moving > 0.5 ? (running ? 'run' : 'walk') : 'idle';
-    const changed = g !== lastSent.g || !(Math.hypot(x - lastSent.x, z - lastSent.z) < 0.05 && Math.abs(ry - lastSent.ry) < 0.05);
+    const changed = g !== lastSent.g || here.id !== lastSent.scene || !(Math.hypot(x - lastSent.x, z - lastSent.z) < 0.05 && Math.abs(ry - lastSent.ry) < 0.05);
     if (!changed || now - lastSent.at < 150) return;
-    Object.assign(lastSent, { x, z, ry, g, at: now });
-    net.send({ type: 'position', x, z, ry, g });
+    Object.assign(lastSent, { x, z, ry, g, scene: here.id, at: now });
+    net.send({ type: 'position', x, z, ry, g, scene: here.id });
 }
 
 // Los demás: un clon de Ruddy (o del avatar provisional) con su nombre encima.
@@ -1565,7 +1582,9 @@ function makeNameLabel(name, online, lastSeen) {
     }
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+    // alphaTest + depthWrite: el nombre tapa a un agujero de gusano que esté detrás (los agujeros
+    // se dibujan al final y solo respetan lo que escribió profundidad).
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, alphaTest: 0.05 }));
     sprite.scale.set(1.6, 0.6, 1);
     sprite.position.y = 2.05;
     return sprite;
@@ -1607,7 +1626,7 @@ function upsertRemote(p) {
         r = { group: new THREE.Group(), target: new THREE.Vector3(), ry: 0, label: null, avatar: null };
         r.group.position.set(p.x, 0, p.z);
         r.group.rotation.y = p.ry || 0;
-        scene.add(r.group);
+        actors.add(r.group);
         remotes.set(p.id, r);
         attachAvatar(r);
         // Caja invisible del tamaño de la persona: tocarla abre su perfil.
@@ -1619,6 +1638,14 @@ function upsertRemote(p) {
     }
     r.target.set(p.x, 0, p.z);
     r.ry = p.ry || 0;
+    // Escena donde está (mundo principal o un agujero de gusano): solo se ve si es la tuya.
+    const sceneId = p.scene === MAIN || portals.has(p.scene) ? p.scene : MAIN;
+    if (r.scene !== sceneId) {
+        // Al cambiar de escena aparece directo en su lugar, sin caminar desde el otro mundo.
+        if (r.scene) r.group.position.copy(r.target);
+        r.scene = sceneId;
+        showRemote(r);
+    }
     r.gait = p.g;   // ausente en la lista inicial: entonces se deduce de la distancia
     // La posición en vivo no trae fechas: se conservan las que llegaron antes.
     const lastSeen = p.last_seen ?? r.lastSeen;
@@ -1712,7 +1739,7 @@ profileBox.addEventListener('click', (e) => { if (e.target === profileBox) close
 net.on('players', (m) => m.players.forEach(upsertRemote));
 net.on('say', (m) => {
     const r = remotes.get(m.id);
-    if (!r || !m.message) return;
+    if (!r || !m.message || !r.group.visible) return;
     if (!r.bubble) {
         const el = bubble.cloneNode();
         el.removeAttribute('data-bubble');
@@ -1750,7 +1777,7 @@ function updateRemotes(dt) {
         let diff = r.ry - r.group.rotation.y;
         diff = Math.atan2(Math.sin(diff), Math.cos(diff));
         r.group.rotation.y += diff * Math.min(1, dt * 8);
-        if (!r.mixer) continue;
+        if (!r.mixer || !r.group.visible) continue;
         if (!r.jumping) {
             const speed = dist * 6;   // m/s aproximados según lo que le falta por recorrer
             const gait = r.gait || (speed < 0.3 ? 'idle' : speed > 3.5 ? 'run' : 'walk');
@@ -1821,6 +1848,7 @@ function updateBall(dt) {
     prevPlayer.copy(player.position);
     if (pushBall(player.position, tmpVel) && performance.now() - ballSentAt > 120) sendBall();
     for (const r of remotes.values()) {
+        if (!r.group.visible) continue;   // está en otra escena
         tmpVel.copy(r.target).sub(r.group.position).multiplyScalar(6);
         pushBall(r.group.position, tmpVel);
     }
@@ -1872,6 +1900,285 @@ net.on('ball', (m) => {
     ballRestSent = true;
 });
 
+
+// ---------- Agujeros de gusano ----------
+// Cualquiera crea uno (Ajustes → Crear agujero de gusano) con nombre y descripción, delante de
+// donde está. Al meterse en uno, Ruddy pasa a otra escena: lo ven los que están ahí y deja de
+// verlo el mundo principal. Por ahora todos llevan a la misma plantilla (islas al atardecer,
+// con otro color de cielo según el agujero); más adelante cada dueño configurará la suya.
+// La parte visual (lente, escena de destino y render) está en wormholes.js.
+const MAIN = 'main';
+const ENTER_DIST = 0.9;    // a esta distancia del centro del agujero se entra
+const EXIT_DIST = 2.6;     // al cruzar, apareces a esta distancia delante del agujero de salida
+const ARM_DIST = 3.5;      // y hay que alejarse esto para que vuelva a funcionar (no se entra sin querer)
+const LABEL_DIST = 24;     // el cartel con el nombre se ve desde esta distancia
+const wormholes = createWormholes(renderer);
+const dest = buildDestination();
+const returnHole = wormholes.makeHole({ scene: dest.scene, x: 0, z: 0 });
+const portals = new Map();   // id -> { data, hole, label }
+// Dónde estás: la escena, sus límites y sus obstáculos.
+const here = { id: MAIN, scene, radius: WORLD_RADIUS, obstacles };
+let pendingScene = null;
+let holeArmed = true;
+let warping = false;
+
+function makeHoleLabel() {
+    const el = document.createElement('div');
+    el.className = 'hole-label';
+    el.hidden = true;
+    el.innerHTML = '<strong></strong><span></span><small></small>';
+    document.body.appendChild(el);
+    return el;
+}
+function fillHoleLabel(el, title, text, owner) {
+    el.querySelector('strong').textContent = title;
+    el.querySelector('span').textContent = text || '';
+    el.querySelector('span').hidden = !text;
+    el.querySelector('small').textContent = owner ? `Agujero de gusano de ${owner}` : '';
+}
+const returnLabel = makeHoleLabel();
+fillHoleLabel(returnLabel, 'Volver al Mundo 3D', 'Entra al agujero para regresar');
+
+function addPortal(p) {
+    let e = portals.get(p.id);
+    if (!e) {
+        const hole = wormholes.makeHole({ scene, x: p.x, z: p.z });
+        hole.id = p.id;
+        e = { hole, label: makeHoleLabel() };
+        portals.set(p.id, e);
+    }
+    e.data = p;
+    fillHoleLabel(e.label, p.name, p.description, p.owner_name);
+    if (here.id === p.id) fillBanner(p);
+    refreshMyHoles();
+}
+
+function removePortal(id) {
+    const e = portals.get(id);
+    if (!e) return;
+    if (here.id === id) {
+        goTo(MAIN, { from: e.data });
+        flashHint(`El agujero «${e.data.name}» se cerró y volviste al mundo principal`);
+    }
+    e.hole.dispose();
+    e.label.remove();
+    portals.delete(id);
+    for (const r of remotes.values()) if (r.scene === id) { r.scene = MAIN; showRemote(r); }
+    refreshMyHoles();
+}
+
+function showRemote(r) {
+    r.group.visible = r.scene === here.id;
+    if (!r.group.visible && r.bubble) r.bubble.hide();
+}
+
+// Cartel de arriba mientras estás dentro de un agujero.
+const banner = document.querySelector('[data-scene-banner]');
+let bannerTimer = 0;
+function fillBanner(p) {
+    banner.querySelector('[data-scene-name]').textContent = p.name;
+    banner.querySelector('[data-scene-desc]').textContent = p.description || '';
+    banner.querySelector('[data-scene-desc]').hidden = !p.description;
+    banner.querySelector('[data-scene-owner]').textContent = p.owner_name ? `Agujero de gusano de ${p.owner_name}` : 'Agujero de gusano';
+}
+banner.addEventListener('click', () => banner.classList.toggle('is-compact'));
+
+// Pasa a otra escena. pos: posición guardada (al recargar); from: agujero por el que se sale.
+function goTo(id, { from = null, pos = null } = {}) {
+    const toMain = id === MAIN;
+    let x, z, ry;
+    if (pos) {
+        x = pos.x; z = pos.z; ry = pos.ry || 0;
+    } else if (toMain) {
+        const p = from || portals.get(here.id)?.data;
+        if (p) {
+            // Delante del agujero (del lado donde estaba quien lo creó), mirando hacia afuera.
+            ry = p.ry || 0;
+            x = p.x + Math.sin(ry) * EXIT_DIST;
+            z = p.z + Math.cos(ry) * EXIT_DIST;
+        } else {
+            const a = Math.random() * Math.PI * 2;
+            x = Math.cos(a) * 2.5; z = Math.sin(a) * 2.5; ry = 0;
+        }
+    } else {
+        // Delante del agujero de vuelta, mirando hacia afuera.
+        ry = (Math.random() - 0.5) * 0.8;
+        x = Math.sin(ry) * EXIT_DIST; z = Math.cos(ry) * EXIT_DIST;
+    }
+
+    const target = toMain ? scene : dest.scene;
+    target.add(actors);
+    here.id = id;
+    here.scene = target;
+    here.radius = toMain ? WORLD_RADIUS : DEST_RADIUS;
+    here.obstacles = toMain ? obstacles : dest.obstacles;
+    if (!toMain) dest.setHue(hueFor(id));
+
+    const offset = camera.position.clone().sub(controls.target);
+    player.position.set(x, 0, z);
+    player.rotation.y = ry;
+    prevPlayer.copy(player.position);   // que el salto no cuente como una patada a la pelota
+    if (firstPerson) setFirstPerson(true);
+    else {
+        // Al cruzar, la cámara mira a Ruddy de frente con el agujero detrás (se ve que acaba de
+        // salir); al recargar dentro de un agujero, queda detrás de él. Misma distancia y altura.
+        const flat = Math.hypot(offset.x, offset.z) || 4.2;
+        const side = pos ? -1 : 1;
+        controls.target.copy(player.position).setY(1);
+        camera.position.set(x + side * Math.sin(ry) * flat, controls.target.y + offset.y, z + side * Math.cos(ry) * flat);
+        controls.update();
+    }
+    holeArmed = false;
+    cssRenderer.domElement.style.visibility = toMain ? '' : 'hidden';
+    banner.hidden = toMain;
+    if (!toMain) {
+        fillBanner(portals.get(id)?.data || { name: 'Agujero de gusano' });
+        banner.classList.remove('is-compact');
+        clearTimeout(bannerTimer);
+        bannerTimer = setTimeout(() => banner.classList.add('is-compact'), 7000);
+    }
+    for (const r of remotes.values()) showRemote(r);
+    lastSent.at = 0;   // los demás se enteran enseguida
+}
+
+// Destello al cruzar: la escena cambia cuando la pantalla está cubierta.
+const warpEl = document.querySelector('[data-warp]');
+function enterHole(id) {
+    warping = true;
+    warpEl.classList.add('is-on');
+    setTimeout(() => {
+        goTo(id);
+        setTimeout(() => { warpEl.classList.remove('is-on'); warping = false; }, 150);
+    }, 280);
+}
+
+function checkHoles() {
+    if (warping) return;
+    let nearest = Infinity, hit = null;
+    const test = (id, x, z) => {
+        const d = Math.hypot(player.position.x - x, player.position.z - z);
+        if (d < nearest) nearest = d;
+        if (d < ENTER_DIST) hit = id;
+    };
+    if (here.id === MAIN) for (const [id, e] of portals) test(id, e.data.x, e.data.z);
+    else test(MAIN, 0, 0);
+    if (!holeArmed) { holeArmed = nearest > ARM_DIST; return; }
+    if (hit) enterHole(hit);
+}
+
+// Carteles con nombre y descripción, flotando sobre cada agujero cercano.
+const labelPos = new THREE.Vector3();
+function placeLabel(el, x, z) {
+    labelPos.set(x, 3.75, z);
+    const d = camera.position.distanceTo(labelPos);
+    labelPos.project(camera);
+    if (d > LABEL_DIST || labelPos.z > 1 || Math.abs(labelPos.x) > 1.2) { el.hidden = true; return; }
+    el.hidden = false;
+    el.style.opacity = String(Math.min(1, (LABEL_DIST - d) / 6));
+    const sx = (labelPos.x + 1) / 2 * window.innerWidth;
+    // Si el agujero llena la pantalla, el cartel queda arriba sin taparse con el encabezado.
+    const top = 64 + (banner.hidden ? 0 : banner.offsetHeight + 12);
+    const sy = Math.max((1 - labelPos.y) / 2 * window.innerHeight, el.offsetHeight + top);
+    el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
+}
+function updateHoleLabels() {
+    for (const e of portals.values()) {
+        if (here.id === MAIN) placeLabel(e.label, e.data.x, e.data.z);
+        else e.label.hidden = true;
+    }
+    if (here.id === MAIN) returnLabel.hidden = true;
+    else placeLabel(returnLabel, 0, 0);
+}
+
+// Lo que se ve dentro del agujero más cercano: el destino, o el mundo principal desde adentro.
+function otherSide(hole) {
+    if (hole === returnHole) return scene;
+    dest.setHue(hueFor(hole.id));
+    return dest.scene;
+}
+
+net.on('portals', (m) => {
+    const ids = new Set(m.portals.map((p) => p.id));
+    for (const id of [...portals.keys()]) if (!ids.has(id)) removePortal(id);
+    m.portals.forEach(addPortal);
+    if (pendingScene) {
+        const ps = pendingScene;
+        pendingScene = null;
+        if (portals.has(ps.scene)) goTo(ps.scene, { pos: ps });
+    }
+});
+net.on('portal_removed', (m) => removePortal(m.id));
+
+// Crear y borrar los tuyos (Ajustes → Crear agujero de gusano).
+const holeBox = document.querySelector('[data-hole-box]');
+const holeForm = holeBox.querySelector('[data-hole-form]');
+const holeError = holeBox.querySelector('[data-hole-error]');
+const myHoles = holeBox.querySelector('[data-my-holes]');
+let creating = false;
+function holeMessage(text) {
+    holeError.hidden = !text;
+    holeError.textContent = text || '';
+}
+function refreshMyHoles() {
+    const mine = [...portals.values()].filter((e) => net.myId && e.data.owner_id === net.myId);
+    myHoles.hidden = !mine.length;
+    const list = myHoles.querySelector('ul');
+    list.replaceChildren(...mine.map((e) => {
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        name.textContent = e.data.name;
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'holes__delete';
+        del.textContent = 'Borrar';
+        // Borrar no se deshace: pide un segundo toque.
+        del.addEventListener('click', () => {
+            if (del.dataset.confirm) return net.send({ type: 'portal_delete', id: e.data.id });
+            del.dataset.confirm = '1';
+            del.textContent = '¿Borrar? Toca otra vez';
+        });
+        li.append(name, del);
+        return li;
+    }));
+}
+document.querySelector('[data-hole-open]').addEventListener('click', () => {
+    if (!getProfile()) return showLogin();
+    holeMessage(here.id === MAIN ? '' : 'Vuelve al mundo principal para crear un agujero de gusano.');
+    refreshMyHoles();
+    holeBox.hidden = false;
+    setTimeout(() => holeForm.name.focus(), 50);
+});
+holeBox.querySelector('[data-hole-close]').addEventListener('click', () => { holeBox.hidden = true; });
+holeForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (here.id !== MAIN) return holeMessage('Vuelve al mundo principal para crear un agujero de gusano.');
+    if (!net.loggedIn) return holeMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
+    // Aparece 3,5 m delante de Ruddy en la dirección de la cámara (así se ve entero) y mira
+    // hacia él: por ese lado se sale al volver.
+    camera.getWorldDirection(forward);
+    const yaw = Math.atan2(forward.x, forward.z);
+    creating = true;
+    holeMessage('');
+    net.send({
+        type: 'portal_create',
+        name: holeForm.name.value.trim(),
+        description: holeForm.description.value.trim(),
+        x: player.position.x + Math.sin(yaw) * 3.5,
+        z: player.position.z + Math.cos(yaw) * 3.5,
+        ry: yaw + Math.PI,
+    });
+});
+net.on('portal', (m) => {
+    addPortal(m.portal);
+    if (creating && m.portal.owner_id === net.myId) {
+        creating = false;
+        holeBox.hidden = true;
+        holeForm.reset();
+        flashHint(`Tu agujero de gusano «${m.portal.name}» está delante de ti`);
+    }
+});
+net.on('portal_error', (m) => { creating = false; holeMessage(m.message); });
+
 // Perfiles guardados antes de elegir país (8 dígitos bolivianos): pasan al número completo y el
 // servidor mueve su sesión, para no perder posición ni historial.
 {
@@ -1894,7 +2201,9 @@ renderer.setAnimationLoop(() => {
     updateSubs();
     faceCamera(dt);
     updateRemotes(dt);
-    updateBall(dt);
+    if (here.id === MAIN) updateBall(dt);
+    checkHoles();
+    dest.update(t);
     syncPosition();
 
     ring.position.x = player.position.x;
@@ -1910,9 +2219,10 @@ renderer.setAnimationLoop(() => {
     });
 
     controls.update();
-    renderer.render(scene, camera);
-    cssRenderer.render(cssScene, camera);
+    wormholes.render(here.scene, camera, dt, t, otherSide);
+    if (here.id === MAIN) cssRenderer.render(cssScene, camera);
     updateBubble();
+    updateHoleLabels();
 });
 
 window.addEventListener('resize', () => {
@@ -1920,4 +2230,10 @@ window.addEventListener('resize', () => {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
     cssRenderer.setSize(window.innerWidth, window.innerHeight);
+    resizeWormholes();
 });
+function resizeWormholes() {
+    const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+    wormholes.setSize(size.x, size.y);
+}
+resizeWormholes();

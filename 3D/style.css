@@ -305,3 +305,57 @@ body {
 button.login__back { background: none; border: 0; cursor: pointer; font-family: inherit; }
 .profile__facts a { color: var(--cyan); }
 .login__back { justify-self: center; color: rgba(255,255,255,.7); font-size: .85rem; text-decoration: none; }
+
+/* Agujeros de gusano: cartel sobre cada agujero, cartel de la escena y destello al cruzar */
+.hole-label {
+    position: fixed; z-index: 2; left: 0; top: 0; pointer-events: none;
+    display: grid; gap: .2rem; max-width: min(15rem, 62vw); padding: .55rem .85rem;
+    border-radius: 12px; text-align: center;
+    background: rgba(10, 13, 22, .78); border: 1px solid rgba(255, 176, 112, .45);
+    box-shadow: 0 0 22px rgba(255, 140, 70, .25);
+}
+.hole-label[hidden] { display: none; }
+.hole-label strong { font-family: "Space Grotesk", sans-serif; font-size: 1.05rem; line-height: 1.2; color: #ffd2a6; }
+.hole-label span { font-size: .82rem; line-height: 1.35; color: rgba(255, 255, 255, .85); overflow-wrap: anywhere; }
+.hole-label span[hidden] { display: none; }
+.hole-label small { font-family: var(--mono); font-size: .68rem; color: rgba(255, 255, 255, .55); }
+
+.scene-banner {
+    position: fixed; z-index: 3; left: 50%; top: calc(4.2rem + env(safe-area-inset-top, 0px)); transform: translateX(-50%);
+    width: min(26rem, calc(100vw - 2rem)); padding: .7rem 1rem; border-radius: 14px; text-align: center; cursor: pointer;
+    background: rgba(10, 13, 22, .8); border: 1px solid rgba(255, 176, 112, .45); backdrop-filter: blur(6px);
+}
+.scene-banner[hidden] { display: none; }
+.scene-banner h2 { margin: .15rem 0 0; font-family: "Space Grotesk", sans-serif; font-size: 1.25rem; color: #ffd2a6; }
+.scene-banner p:not(.totem-panel__tag) { margin: .3rem 0 0; font-size: .88rem; color: rgba(255, 255, 255, .85); }
+.scene-banner p[hidden] { display: none; }
+.scene-banner.is-compact { padding: .45rem .9rem; }
+.scene-banner.is-compact h2 { font-size: 1rem; }
+.scene-banner.is-compact p { display: none; }
+
+.warp {
+    position: fixed; inset: 0; z-index: 19; pointer-events: none; opacity: 0;
+    background: radial-gradient(circle at 50% 50%, #fff6e8 0%, #ffb070 18%, #b0307a 45%, #1a0830 80%);
+    transition: opacity .28s ease-in;
+}
+.warp.is-on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .warp { transition: none; } }
+
+.login__card textarea {
+    font: inherit; font-size: 16px; color: #fff; resize: vertical; min-height: 4.5rem; padding: .7rem .9rem; border-radius: .7rem;
+    background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .2);
+}
+.login__card textarea:focus { outline: none; border-color: #00e5ff; }
+.holes { display: grid; gap: .4rem; border-top: 1px solid rgba(255, 255, 255, .12); padding-top: .7rem; }
+.holes[hidden] { display: none; }
+.holes h3 { margin: 0; font-size: .8rem; letter-spacing: .1em; text-transform: uppercase; color: rgba(255, 255, 255, .6); }
+.holes ul { margin: 0; padding: 0; list-style: none; display: grid; gap: .35rem; }
+.holes li { display: flex; align-items: center; justify-content: space-between; gap: .6rem; font-size: .9rem; }
+.holes li span { min-width: 0; overflow-wrap: anywhere; }
+.holes__delete {
+    flex: none; cursor: pointer; font: inherit; font-size: .8rem; color: #ff8fb5; background: none;
+    border: 1px solid rgba(255, 107, 154, .45); border-radius: 999px; padding: .25rem .7rem;
+}
+/* Ventana más alta que la pantalla (celular con teclado): se desplaza en vez de cortarse arriba. */
+.login--scroll { place-items: start center; overflow-y: auto; }
+.login--scroll .login__card { margin-block: auto; }
