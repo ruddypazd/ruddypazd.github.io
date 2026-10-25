@@ -6,7 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { createWormholes, buildDestination, hueFor, HOLE_R, DEST_RADIUS } from './wormholes.js?v=43';
+import { createWormholes, buildDestination, hueFor, HOLE_R, DEST_RADIUS } from './wormholes.js?v=45';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
@@ -475,7 +475,18 @@ function ytCommand(func, args = []) {
 }
 ytFrame.addEventListener('load', () => {
     ytFrame.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 'mundo3d' }), '*');
+    ytCommand('addEventListener', ['onError']);
 });
+// Hay videos que su dueño no deja insertar en otras páginas (errores 101 y 150) o que ya no
+// existen (100): se salta al siguiente de la lista y, si fallan varios, suena el video de antes.
+const FALLBACK_VIDEO_ID = '22y0yNXSbQI';
+let ytErrors = 0;
+function onVideoError() {
+    ytErrors += 1;
+    if (ytErrors <= 3) ytCommand('nextVideo');
+    else if (ytErrors === 4) ytCommand('loadPlaylist', [[FALLBACK_VIDEO_ID]]);
+    if (ytErrors <= 4) setTimeout(() => ytCommand('playVideo'), 800);
+}
 // La capa del video vive detrás del canvas. Solo si hace falta tocar el play de YouTube
 // (iPhone, o si el navegador bloqueó el autoplay) pasa delante hasta que se reproduce.
 let ytPlaying = null;
@@ -558,6 +569,7 @@ window.addEventListener('message', (e) => {
         drawPoster(posterCtx, 1280, 720, posterThumb, !!ytPlaying);
         posterTex.needsUpdate = true;
     }
+    if (data?.event === 'onError') return onVideoError();
     const state = data?.info?.playerState ?? (data?.event === 'onStateChange' ? data.info : undefined);
     if (typeof state !== 'number') return;
     const playing = state === 1 || state === 3;  // reproduciendo o cargando
@@ -767,6 +779,7 @@ function done(isPlaceholder) {
 const AVATARS = {
     ruddy: { name: 'Ruddy', url: 'models/ruddy.glb', thumb: 'models/ruddy.jpg', mouth: true },
     androide18: { name: 'Androide 18', url: 'models/androide18.glb', thumb: 'models/androide18.jpg' },
+    candie: { name: 'Candie', url: 'models/candie.glb', thumb: 'models/candie.jpg' },
 };
 const avatarIdOf = (id) => (AVATARS[id] ? id : 'ruddy');
 
