@@ -6,7 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { createWormholes, buildDestination, hueFor, HOLE_R, DEST_RADIUS } from './wormholes.js?v=42';
+import { createWormholes, buildDestination, hueFor, HOLE_R, DEST_RADIUS } from './wormholes.js?v=43';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
@@ -385,7 +385,10 @@ GALLERY.forEach((item, i) => {
 // ---------- Letrero de video (YouTube) a lo lejos: su audio es la música de fondo ----------
 // Un iframe no puede ser textura de WebGL. Se dibuja con CSS3DRenderer detrás del canvas y
 // un plano "agujero" en la escena deja ver el video, así Ruddy y los pilares lo tapan bien.
-const VIDEO_ID = '22y0yNXSbQI';
+// Arranca con este video y sigue con el resto de la lista de Roy, que se repite al terminar.
+const VIDEO_ID = 'xwtdhWltSIg';
+const PLAYLIST_ID = 'PLyyYs_E5nqBuSV2ARl6aTLMKOsRc3ms3Q';
+let videoTitle = 'Música de fondo';   // se cambia por el título real cuando YouTube lo avisa
 const VIDEO_W = 16;                    // ancho en metros (16:9); grande porque está lejos
 const VIDEO_H = VIDEO_W * 9 / 16;
 const VIDEO_PX = 1280;                 // ancho del iframe en píxeles CSS
@@ -404,7 +407,7 @@ const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent)
     || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const ytFrame = document.createElement('iframe');
 ytFrame.src = `https://www.youtube.com/embed/${VIDEO_ID}?enablejsapi=1${IS_IOS ? '' : '&autoplay=1&mute=1'}&loop=1`
-    + `&playlist=${VIDEO_ID}&controls=0&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3`
+    + `&list=${PLAYLIST_ID}&controls=0&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3`
     + `&origin=${encodeURIComponent(location.origin)}`;
 ytFrame.title = 'Video de fondo del Mundo 3D';
 ytFrame.allow = 'autoplay; encrypted-media';
@@ -505,7 +508,7 @@ function drawPoster(ctx, w, h, thumb, playing = false) {
         ctx.fillText('Toca para escuchar la música', w / 2, h / 2 + 150);
     }
     ctx.font = '36px "JetBrains Mono", monospace'; ctx.fillStyle = 'rgba(255,255,255,.8)';
-    ctx.fillText('Midnight Chicago Blues & Smooth Jazz', w / 2, h / 2 + 215);
+    ctx.fillText(videoTitle, w / 2, h / 2 + 215, w - 80);
 }
 const posterCanvas = document.createElement('canvas');
 posterCanvas.width = 1280; posterCanvas.height = 720;
@@ -548,6 +551,13 @@ window.addEventListener('message', (e) => {
     if (!ytReady) { ytReady = true; music.sync(); }
     let data;
     try { data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch { return; }
+    // Con la lista cambia la canción: el cartel muestra la que está sonando.
+    const title = data?.info?.videoData?.title;
+    if (title && title !== videoTitle) {
+        videoTitle = title;
+        drawPoster(posterCtx, 1280, 720, posterThumb, !!ytPlaying);
+        posterTex.needsUpdate = true;
+    }
     const state = data?.info?.playerState ?? (data?.event === 'onStateChange' ? data.info : undefined);
     if (typeof state !== 'number') return;
     const playing = state === 1 || state === 3;  // reproduciendo o cargando
