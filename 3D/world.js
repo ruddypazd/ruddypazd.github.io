@@ -6,7 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { createWormholes, buildDestination, hueFor, HOLE_R, DEST_RADIUS } from './wormholes.js?v=44';
+import { createWormholes, buildDestination, hueFor, HOLE_R, DEST_RADIUS } from './wormholes.js?v=45';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
@@ -779,6 +779,7 @@ function done(isPlaceholder) {
 const AVATARS = {
     ruddy: { name: 'Ruddy', url: 'models/ruddy.glb', thumb: 'models/ruddy.jpg', mouth: true },
     androide18: { name: 'Androide 18', url: 'models/androide18.glb', thumb: 'models/androide18.jpg' },
+    candie: { name: 'Candie', url: 'models/candie.glb', thumb: 'models/candie.jpg' },
 };
 const avatarIdOf = (id) => (AVATARS[id] ? id : 'ruddy');
 
