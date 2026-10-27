@@ -6,7 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { createWormholes, buildDestination, hueFor, HOLE_R, DEST_RADIUS } from './wormholes.js?v=45';
+import { createWormholes, buildDestination, hueFor, HOLE_R, DEST_RADIUS } from './wormholes.js?v=46';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
@@ -2051,10 +2051,10 @@ function fillHoleLabel(el, title, text, owner, createdAt) {
 // «Agujero de gusano de Ana · creado 24 oct, 14:30»
 function holeByline(owner, createdAt) {
     const when = formatDate(createdAt);
-    return [owner ? `Agujero de gusano de ${owner}` : '', when && `creado ${when}`].filter(Boolean).join(' · ');
+    return [owner ? `Puente de Einstein-Rosen de ${owner}` : '', when && `creado ${when}`].filter(Boolean).join(' · ');
 }
 const returnLabel = makeHoleLabel();
-fillHoleLabel(returnLabel, 'Volver al Mundo 3D', 'Entra al agujero para regresar');
+fillHoleLabel(returnLabel, 'Volver al Mundo 3D', 'Entra al puente para regresar');
 
 function addPortal(p) {
     let e = portals.get(p.id);
@@ -2075,7 +2075,7 @@ function removePortal(id) {
     if (!e) return;
     if (here.id === id) {
         goTo(MAIN, { from: e.data });
-        flashHint(`El agujero «${e.data.name}» se cerró y volviste al mundo principal`);
+        flashHint(`El puente «${e.data.name}» se cerró y volviste al mundo principal`);
     }
     e.hole.dispose();
     e.label.remove();
@@ -2096,7 +2096,7 @@ function fillBanner(p) {
     banner.querySelector('[data-scene-name]').textContent = p.name;
     banner.querySelector('[data-scene-desc]').textContent = p.description || '';
     banner.querySelector('[data-scene-desc]').hidden = !p.description;
-    banner.querySelector('[data-scene-owner]').textContent = holeByline(p.owner_name, p.created_at) || 'Agujero de gusano';
+    banner.querySelector('[data-scene-owner]').textContent = holeByline(p.owner_name, p.created_at) || 'Puente de Einstein-Rosen';
 }
 banner.addEventListener('click', () => banner.classList.toggle('is-compact'));
 
@@ -2149,7 +2149,7 @@ function goTo(id, { from = null, pos = null } = {}) {
     cssRenderer.domElement.style.visibility = toMain ? '' : 'hidden';
     banner.hidden = toMain;
     if (!toMain) {
-        fillBanner(portals.get(id)?.data || { name: 'Agujero de gusano' });
+        fillBanner(portals.get(id)?.data || { name: 'Puente de Einstein-Rosen' });
         banner.classList.remove('is-compact');
         clearTimeout(bannerTimer);
         bannerTimer = setTimeout(() => banner.classList.add('is-compact'), 7000);
@@ -2262,7 +2262,7 @@ function refreshMyHoles() {
 }
 document.querySelector('[data-hole-open]').addEventListener('click', () => {
     if (!getProfile()) return showLogin();
-    holeMessage(here.id === MAIN ? '' : 'Vuelve al mundo principal para crear un agujero de gusano.');
+    holeMessage(here.id === MAIN ? '' : 'Vuelve al mundo principal para crear un puente de Einstein-Rosen.');
     refreshMyHoles();
     holeBox.hidden = false;
     setTimeout(() => holeForm.name.focus(), 50);
@@ -2270,7 +2270,7 @@ document.querySelector('[data-hole-open]').addEventListener('click', () => {
 holeBox.querySelector('[data-hole-close]').addEventListener('click', () => { holeBox.hidden = true; });
 holeForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    if (here.id !== MAIN) return holeMessage('Vuelve al mundo principal para crear un agujero de gusano.');
+    if (here.id !== MAIN) return holeMessage('Vuelve al mundo principal para crear un puente de Einstein-Rosen.');
     if (!net.loggedIn) return holeMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
     // Aparece 3,5 m delante de Ruddy en la dirección de la cámara (así se ve entero) y mira
     // hacia él: por ese lado se sale al volver.
@@ -2293,7 +2293,7 @@ net.on('portal', (m) => {
         creating = false;
         holeBox.hidden = true;
         holeForm.reset();
-        flashHint(`Tu agujero de gusano «${m.portal.name}» está delante de ti`);
+        flashHint(`Tu puente de Einstein-Rosen «${m.portal.name}» está delante de ti`);
     }
 });
 net.on('portal_error', (m) => { creating = false; holeMessage(m.message); });
