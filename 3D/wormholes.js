@@ -188,102 +188,96 @@ export function createWormholes(renderer) {
     return { makeHole, setSize, render, holes };
 }
 
-// ---------- Escena de destino: islas flotantes al atardecer ----------
-// Por ahora todos los agujeros llevan a esta misma plantilla; el color del cielo cambia según
-// el agujero (hue) para que cada una se sienta distinta. Más adelante cada dueño la configura.
-export const DEST_RADIUS = 17;
-export function buildDestination() {
+// ---------- Escena de destino: el mismo mapa, en otro universo ----------
+// Cada puente lleva a una copia del mundo principal (piso, pilares, galería, video, tótem)
+// con otra paleta y un cielo de estrellas. El tono sale del id del puente, así que el mismo
+// puente siempre lleva al mismo universo. Las copias comparten geometrías y texturas.
+// parts: lo que se copia del mundo principal. Devuelve también copies (original -> copia).
+export function buildUniverse(parts, obstacles) {
     const scene = new THREE.Scene();
-    const fogColor = new THREE.Color(0x5a2450);
-    scene.background = fogColor.clone();
-    scene.fog = new THREE.Fog(fogColor, 30, 110);
-    const obstacles = [];
+    scene.background = new THREE.Color();
+    scene.fog = new THREE.Fog(scene.background, 14, 70);
+    const tinted = [];      // colores que cambian con el universo: { color, base }
+    const vertexTinted = [];
+    const copies = new Map();
+    const matCopies = new Map();
+    const keepTint = (color) => { if (color) tinted.push({ color, base: color.clone() }); };
 
-    const sky = new THREE.ShaderMaterial({
-        side: THREE.BackSide, depthWrite: false, fog: false,
-        uniforms: { uHue: { value: 0 } },
-        vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-        fragmentShader: `uniform float uHue; varying vec3 vP;
-            vec3 hueShift(vec3 c, float h){ const vec3 k = vec3(0.57735); float ca = cos(h); return c * ca + cross(k, c) * sin(h) + k * dot(k, c) * (1.0 - ca); }
-            void main(){
-                float h = vP.y;
-                vec3 top = vec3(0.10, 0.03, 0.28), mid = vec3(0.95, 0.30, 0.45), low = vec3(1.4, 0.75, 0.25);
-                vec3 col = mix(low, mid, smoothstep(-0.05, 0.18, h));
-                col = mix(col, top, smoothstep(0.15, 0.6, h));
-                float s = max(dot(vP, normalize(vec3(0.0, 0.08, -1.0))), 0.0);
-                col += vec3(2.2, 1.2, 0.5) * pow(s, 220.0) * 3.0 + vec3(1.0, 0.45, 0.25) * pow(s, 8.0) * 0.6;
-                gl_FragColor = vec4(max(hueShift(col, uHue), 0.0), 1.0);
-                #include <tonemapping_fragment>
-                #include <colorspace_fragment>
-            }`,
-    });
-    const skyMesh = new THREE.Mesh(new THREE.SphereGeometry(95, 32, 16), sky);
-    skyMesh.frustumCulled = false;
-    scene.add(skyMesh);
-    scene.add(new THREE.HemisphereLight(0xffb38a, 0x2a0a40, 1.3));
-    const sun = new THREE.DirectionalLight(0xffc28a, 1.6);
-    sun.position.set(0, 6, -20);
-    scene.add(sun);
-
-    const sea = new THREE.Mesh(new THREE.CircleGeometry(100, 48), new THREE.MeshStandardMaterial({ color: 0x3a1450, roughness: 0.15, metalness: 0.8 }));
-    sea.rotation.x = -Math.PI / 2;
-    sea.position.y = -6;
-    scene.add(sea);
-
-    // La isla donde se camina.
-    const rock = new THREE.MeshStandardMaterial({ color: 0x5b2a6e, roughness: 0.85, flatShading: true });
-    const grass = new THREE.MeshStandardMaterial({ color: 0x2fe0a0, roughness: 0.8, flatShading: true, emissive: 0x0a5040, emissiveIntensity: 0.35 });
-    const top = new THREE.Mesh(new THREE.CylinderGeometry(DEST_RADIUS + 1.5, DEST_RADIUS + 0.5, 0.6, 40), grass);
-    top.position.y = -0.3;
-    top.receiveShadow = true;
-    const under = new THREE.Mesh(new THREE.ConeGeometry(DEST_RADIUS + 0.5, 9, 40), rock);
-    under.rotation.x = Math.PI;
-    under.position.y = -5.1;
-    const edge = new THREE.Mesh(new THREE.TorusGeometry(DEST_RADIUS + 1.5, 0.05, 8, 96), new THREE.MeshBasicMaterial({ color: 0xffb070, toneMapped: false }));
-    edge.rotation.x = Math.PI / 2;
-    edge.position.y = 0.01;
-    scene.add(top, under, edge);
-
-    // Cristales para orientarse (también son obstáculos).
-    const crystalMat = new THREE.MeshStandardMaterial({ color: 0xffd0f0, emissive: 0xff5fb0, emissiveIntensity: 0.9, roughness: 0.2, flatShading: true });
-    for (let i = 0; i < 7; i++) {
-        const a = (i / 7) * Math.PI * 2 + 0.4;
-        const d = 7 + (i % 3) * 3;
-        const h = 1.2 + (i % 4) * 0.6;
-        const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.5, 0), crystalMat);
-        c.scale.set(1, h, 1);
-        c.position.set(Math.cos(a) * d, h * 0.5, Math.sin(a) * d);
-        c.castShadow = true;
-        scene.add(c);
-        obstacles.push({ x: c.position.x, z: c.position.z, r: 0.7 });
+    function copyMaterial(m) {
+        if (matCopies.has(m)) return matCopies.get(m);
+        const c = m.clone();
+        // Lo que tiene imagen (cuadros, póster, pantalla del tótem) queda igual.
+        if (!c.map) { keepTint(c.color); keepTint(c.emissive); }
+        matCopies.set(m, c);
+        return c;
     }
 
-    // Islas que flotan a lo lejos.
-    const floaters = [];
-    [[-14, 6, -30, 3], [18, 9, -38, 4], [-30, 4, -12, 2.5], [28, 5, 4, 2.2], [-8, 11, 34, 3.5], [24, 7, 30, 2.8]].forEach(([x, y, z, s], i) => {
-        const g = new THREE.Group();
-        const r = new THREE.Mesh(new THREE.ConeGeometry(1, 1.8, 7), rock);
-        r.rotation.x = Math.PI; r.position.y = -0.9;
-        const t = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1, 0.25, 7), grass);
-        g.add(r, t);
-        g.position.set(x, y, z);
-        g.scale.setScalar(s);
-        g.userData.baseY = y;
-        g.userData.phase = i * 1.7;
-        scene.add(g);
-        floaters.push(g);
-    });
+    for (const part of parts) {
+        const copy = part.clone(true);
+        const src = [];
+        part.traverse((o) => src.push(o));
+        let i = 0;
+        copy.traverse((o) => {
+            copies.set(src[i++], o);
+            if (o.isLight) { keepTint(o.color); keepTint(o.groundColor); }
+            if (!o.material) return;
+            o.material = Array.isArray(o.material) ? o.material.map(copyMaterial) : copyMaterial(o.material);
+            const col = o.geometry?.attributes.color;
+            if (o.material.vertexColors && col) {
+                // La grilla: sus líneas tienen color por vértice.
+                o.geometry = o.geometry.clone();
+                vertexTinted.push({ attr: o.geometry.attributes.color, base: Float32Array.from(o.geometry.attributes.color.array) });
+            }
+        });
+        scene.add(copy);
+    }
 
+    // Estrellas, para que se note que es otro cielo.
+    const STARS = 900;
+    const pos = new Float32Array(STARS * 3);
+    for (let i = 0; i < STARS; i++) {
+        const y = Math.random() * 0.95 + 0.05;
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(1 - y * y);
+        pos.set([Math.cos(a) * r * 90, y * 90, Math.sin(a) * r * 90], i * 3);
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const starMat = new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: false, fog: false, transparent: true, depthWrite: false });
+    const stars = new THREE.Points(starGeo, starMat);
+    stars.frustumCulled = false;
+    scene.add(stars);
+
+    const tmp = new THREE.Color();
+    let current = null;
     return {
-        scene, obstacles,
-        setHue(h) { sky.uniforms.uHue.value = h; },
-        update(t) { for (const g of floaters) g.position.y = g.userData.baseY + Math.sin(t * 0.5 + g.userData.phase) * 0.4; },
+        scene, copies,
+        obstacles: obstacles.map((o) => ({ ...o })),
+        // hue: vueltas de color (0..1) respecto del mundo principal.
+        setHue(hue) {
+            if (hue === current) return;
+            current = hue;
+            for (const t of tinted) t.color.copy(t.base).offsetHSL(hue, 0, 0);
+            for (const v of vertexTinted) {
+                const a = v.attr.array;
+                for (let i = 0; i < a.length; i += 3) {
+                    tmp.setRGB(v.base[i], v.base[i + 1], v.base[i + 2]).offsetHSL(hue, 0, 0);
+                    a[i] = tmp.r; a[i + 1] = tmp.g; a[i + 2] = tmp.b;
+                }
+                v.attr.needsUpdate = true;
+            }
+            scene.background.setHSL(hue + 0.62, 0.7, 0.008);
+            scene.fog.color.copy(scene.background);
+            starMat.color.setHSL(hue + 0.5, 0.6, 0.85);
+        },
+        update(t) { starMat.opacity = 0.75 + Math.sin(t * 0.7) * 0.15; },
     };
 }
 
-// Un tono distinto (en radianes) para cada agujero, estable para el mismo id.
+// Un tono distinto para cada puente (en vueltas de color), estable para el mismo id. Nunca
+// cae cerca de 0, que sería igual al mundo principal.
 export function hueFor(id) {
     let h = 0;
     for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    return ((h % 360) / 360) * Math.PI * 2;
+    return 0.15 + ((h % 1000) / 1000) * 0.7;
 }
