@@ -6,7 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { createWormholes, buildDestination, hueFor, HOLE_R, DEST_RADIUS } from './wormholes.js?v=46';
+import { createWormholes, buildUniverse, hueFor, HOLE_R } from './wormholes.js?v=47';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
@@ -2016,8 +2016,8 @@ net.on('ball', (m) => {
 // ---------- Agujeros de gusano ----------
 // Cualquiera crea uno (Ajustes → Crear agujero de gusano) con nombre y descripción, delante de
 // donde está. Al meterse en uno, Ruddy pasa a otra escena: lo ven los que están ahí y deja de
-// verlo el mundo principal. Por ahora todos llevan a la misma plantilla (islas al atardecer,
-// con otro color de cielo según el agujero); más adelante cada dueño configurará la suya.
+// verlo el mundo principal. Adentro está el mismo mapa del mundo principal, pero en otro
+// universo: otra paleta y un cielo de estrellas, distinto para cada puente.
 // La parte visual (lente, escena de destino y render) está en wormholes.js.
 const MAIN = 'main';
 const ENTER_DIST = 0.9;    // a esta distancia del centro del agujero se entra
@@ -2025,7 +2025,21 @@ const EXIT_DIST = 2.6;     // al cruzar, apareces a esta distancia delante del a
 const ARM_DIST = 3.5;      // y hay que alejarse esto para que vuelva a funcionar (no se entra sin querer)
 const LABEL_DIST = 24;     // el cartel con el nombre se ve desde esta distancia
 const wormholes = createWormholes(renderer);
-const dest = buildDestination();
+// Se copia el escenario tal como está al cargar: todavía no hay puentes, notas ni recuerdos.
+const dest = buildUniverse(scene.children.filter((o) => o !== actors && o !== ball), obstacles);
+{
+    // En el otro universo no hay video (la capa del video es del mundo principal): queda el póster.
+    dest.copies.get(videoHole).visible = false;
+    dest.copies.get(videoPoster).visible = true;
+    // Los cuadros y el tótem también se abren desde allá.
+    for (const o of [...clickable]) {
+        const copy = dest.copies.get(o);
+        if (!copy || o === videoPoster) continue;
+        copy.userData = o.userData;
+        clickable.push(copy);
+    }
+}
+const mirrorCubes = cubes.map((c) => dest.copies.get(c));
 const returnHole = wormholes.makeHole({ scene: dest.scene, x: 0, z: 0 });
 const portals = new Map();   // id -> { data, hole, label }
 // Dónde estás: la escena, sus límites y sus obstáculos.
@@ -2127,8 +2141,7 @@ function goTo(id, { from = null, pos = null } = {}) {
     target.add(actors);
     here.id = id;
     here.scene = target;
-    here.radius = toMain ? WORLD_RADIUS : DEST_RADIUS;
-    here.obstacles = toMain ? obstacles : dest.obstacles;
+        here.obstacles = toMain ? obstacles : dest.obstacles;
     if (!toMain) dest.setHue(hueFor(id));
 
     const offset = camera.position.clone().sub(controls.target);
@@ -2781,7 +2794,7 @@ renderer.setAnimationLoop(() => {
     rims.position.copy(player.position);
     key.position.copy(player.position).add(KEY_OFFSET);
     key.target.position.copy(player.position);
-    cubes.forEach((c, i) => {
+    for (const list of [cubes, mirrorCubes]) list.forEach((c, i) => {
         c.rotation.x = t * 0.6 + i;
         c.rotation.y = t * 0.8 + i;
         c.position.y = 1.2 + Math.sin(t * 1.5 + i * 2) * 0.25;
