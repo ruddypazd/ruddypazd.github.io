@@ -131,8 +131,10 @@ const cubes = NEON.map((color, i) => {
 const clickable = [];   // cuadros, póster del video y tótem, para el clic
 const poleMat = new THREE.MeshStandardMaterial({ color: 0x141a2e, roughness: 0.4, metalness: 0.6 });
 
-// ---------- Galería estilo museo: cotizaciones y sistemas como cuadros, con su ficha ----------
-// Todos en una misma pared al fondo. Cada cuadro abre su página al tocarlo.
+// ---------- Galería estilo museo: la pared de la publicidad ----------
+// Una pared al fondo con AD_SLOTS espacios para cuadros. Cada cuadro es una publicidad (imagen +
+// enlace) que alguien puso; el servidor guarda las de cada universo. GALLERY son los cuadros de
+// Roy con que empieza el mundo principal: se muestran mientras no llega la lista del servidor.
 // image: og:image del sitio (si la tiene); fallback: imagen local si la externa no carga.
 const GALLERY = [
     {
@@ -241,8 +243,10 @@ const GALLERY = [
         colors: ['#0a1e3a', '#b0242f'],
     },
 ];
+const AD_SLOTS = 12;
 const PAINT_W = 5.6, PAINT_H = 3.15, PAINT_GAP = 1.2, PAINT_BOTTOM = 2.5;
-const galleryWidth = GALLERY.length * PAINT_W + (GALLERY.length - 1) * PAINT_GAP;
+const galleryWidth = AD_SLOTS * PAINT_W + (AD_SLOTS - 1) * PAINT_GAP;
+const slotX = (i) => -galleryWidth / 2 + PAINT_W / 2 + i * (PAINT_W + PAINT_GAP);
 // La pared mira al centro del mundo. Cuantos más cuadros, más ancha: se acerca al
 // centro lo justo para que sus extremos sigan dentro del mundo.
 const GALLERY_Z = Math.min(40, Math.sqrt((WORLD_RADIUS - 1) ** 2 - (galleryWidth / 2 + 2) ** 2));
@@ -271,6 +275,13 @@ scene.add(gallery);
     for (let x = -galleryWidth / 2 - 2; x <= galleryWidth / 2 + 2.01; x += 0.6) {
         gallery.localToWorld(p.set(x, 0, -0.3));
         obstacles.push({ x: p.x, z: p.z, r: 0.6 });
+    }
+    // Foco de museo sobre cada espacio (cuadro y ficha), haya o no publicidad.
+    for (let i = 0; i < AD_SLOTS; i++) {
+        const spot = new THREE.SpotLight(0xfff1d6, 60, 12, Math.PI / 5, 0.5, 1.2);
+        spot.position.set(slotX(i), PAINT_BOTTOM + PAINT_H + 1.8, 2.4);
+        spot.target.position.set(slotX(i), PAINT_BOTTOM + PAINT_H / 2 - 0.8, 0);
+        gallery.add(spot, spot.target);
     }
 }
 
@@ -321,12 +332,10 @@ function drawPainting(c, w, h, item, img) {
 
 const frameMat = new THREE.MeshStandardMaterial({ color: 0xc9a24a, metalness: 0.85, roughness: 0.35 });
 const matMat = new THREE.MeshStandardMaterial({ color: 0xf1ead8, roughness: 0.95 });
-GALLERY.forEach((item, i) => {
-    const x = -galleryWidth / 2 + PAINT_W / 2 + i * (PAINT_W + PAINT_GAP);
+// Un cuadro con marco, paspartú y ficha. Devuelve el grupo y lo que se toca para abrir el enlace.
+function makePainting(item) {
     const cy = PAINT_BOTTOM + PAINT_H / 2;
     const piece = new THREE.Group();
-    piece.position.x = x;
-    gallery.add(piece);
 
     // Marco dorado y paspartú.
     const frame = new THREE.Mesh(new THREE.BoxGeometry(PAINT_W + 0.9, PAINT_H + 0.9, 0.16), frameMat);
@@ -344,7 +353,6 @@ GALLERY.forEach((item, i) => {
     canvasMesh.position.set(0, cy, 0.09);
     canvasMesh.userData = { title: item.title, url: item.url, hint: `Visitar ${item.title} ↗` };
     piece.add(canvasMesh);
-    clickable.push(canvasMesh);
     const sources = [item.image, item.fallback].filter(Boolean);
     const loadNext = () => {
         if (!sources.length) return;
@@ -366,7 +374,7 @@ GALLERY.forEach((item, i) => {
         c.font = '27px Georgia, serif'; c.fillStyle = '#2a2630';
         wrapText(c, item.text, 44, 176, w - 88, 36);
         c.font = 'bold 26px "JetBrains Mono", monospace'; c.fillStyle = '#7a5a12';
-        c.fillText(`Desarrollo: ${item.devs}`, 44, h - 40);
+        c.fillText(item.credit, 44, h - 40, w - 88);
     });
     const plaqueMesh = new THREE.Mesh(
         new THREE.PlaneGeometry(3.4, 1.36),
@@ -374,13 +382,8 @@ GALLERY.forEach((item, i) => {
     );
     plaqueMesh.position.set(0, 1.15, 0.02);
     piece.add(plaqueMesh);
-
-    // Foco de museo sobre el cuadro y la ficha.
-    const spot = new THREE.SpotLight(0xfff1d6, 60, 12, Math.PI / 5, 0.5, 1.2);
-    spot.position.set(0, PAINT_BOTTOM + PAINT_H + 1.8, 2.4);
-    spot.target.position.set(0, cy - 0.8, 0);
-    piece.add(spot, spot.target);
-});
+    return { piece, hits: [canvasMesh] };
+}
 
 // ---------- Letrero de video (YouTube) a lo lejos: su audio es la música de fondo ----------
 // Un iframe no puede ser textura de WebGL. Se dibuja con CSS3DRenderer detrás del canvas y
@@ -979,7 +982,7 @@ settingsPanel.addEventListener('click', () => setSettings(false), true);
 document.addEventListener('pointerdown', (e) => {
     if (!settingsBox.contains(e.target)) setSettings(false);
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; document.querySelector('[data-note-box]').hidden = true; document.querySelector('[data-note-view]').hidden = true; document.querySelector('[data-memory-box]').hidden = true; document.querySelector('[data-memory-view]').hidden = true; } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; document.querySelector('[data-note-box]').hidden = true; document.querySelector('[data-note-view]').hidden = true; document.querySelector('[data-memory-box]').hidden = true; document.querySelector('[data-memory-view]').hidden = true; document.querySelector('[data-ad-box]').hidden = true; } });
 
 // ---------- Primera persona ----------
 const fpBtn = document.querySelector('[data-fp]');
@@ -2170,6 +2173,7 @@ function goTo(id, { from = null, pos = null } = {}) {
     for (const r of remotes.values()) showRemote(r);
     showNotesHere();
     showMemoriesHere();
+    showAdsHere();
     lastSent.at = 0;   // los demás se enteran enseguida
 }
 
@@ -2759,6 +2763,207 @@ net.on('memory_error', (m) => {
     remembering = false;
     memoryForm.querySelector('[type=submit]').disabled = false;
     memoryMessage(m.message);
+});
+
+// ---------- Publicidad ----------
+// Los cuadros de la galería. Cualquiera pone uno con una imagen (se comprime como la foto de un
+// recuerdo) y un enlace, en un espacio libre de la pared del universo donde está. Su dueño lo
+// quita con «Anular publicidad». Los universos comparten dest.scene, así que cada cuadro de otro
+// universo se muestra solo cuando estás en el suyo.
+const adGalleries = { [MAIN]: gallery, other: dest.copies.get(gallery) };
+const ads = new Map();   // id -> { data, piece, hits }
+const adBox = document.querySelector('[data-ad-box]');
+const adForm = adBox.querySelector('[data-ad-form]');
+const adError = adBox.querySelector('[data-ad-error]');
+const adPreview = adBox.querySelector('[data-ad-preview]');
+const adInfo = adBox.querySelector('[data-ad-info]');
+const myAds = adBox.querySelector('[data-my-ads]');
+let pendingAdImage = null;
+let advertising = false;
+let adSlot = null;   // el espacio que se tocó para poner la publicidad
+
+const adImageUrl = (src) => (src && src.startsWith('/') ? API_BASE + src : src);
+const hostOf = (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } };
+function adColors(id) {
+    const h = Math.round(hueFor(id) * 360);
+    return [`hsl(${h} 55% 12%)`, `hsl(${h} 55% 32%)`];
+}
+
+// Espacio libre: un marco vacío que invita a poner la publicidad propia.
+const emptyTex = makeLabelTexture(1280, 720, (c, w, h) => {
+    c.fillStyle = '#15131d'; c.fillRect(0, 0, w, h);
+    c.setLineDash([28, 22]); c.strokeStyle = 'rgba(233,220,192,.55)'; c.lineWidth = 8;
+    c.strokeRect(30, 30, w - 60, h - 60);
+    c.fillStyle = '#e9dcc0'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.font = '600 84px "Space Grotesk", sans-serif';
+    c.fillText('Espacio libre', w / 2, h / 2 - 50);
+    c.font = '44px "JetBrains Mono", monospace'; c.fillStyle = 'rgba(233,220,192,.8)';
+    c.fillText('Toca para poner tu publicidad', w / 2, h / 2 + 60);
+});
+const emptyGeo = new THREE.PlaneGeometry(PAINT_W, PAINT_H);
+const emptyMat = new THREE.MeshBasicMaterial({ map: emptyTex, toneMapped: false });
+const emptySlots = {};   // MAIN / other -> [mesh por espacio]
+for (const [key, wall] of Object.entries(adGalleries)) {
+    emptySlots[key] = Array.from({ length: AD_SLOTS }, (_, i) => {
+        const m = new THREE.Mesh(emptyGeo, emptyMat);
+        m.position.set(slotX(i), PAINT_BOTTOM + PAINT_H / 2, 0.02);
+        m.userData = { hint: 'Poner tu publicidad aquí', action: () => openAdBox(i) };
+        wall.add(m);
+        clickable.push(m);
+        return m;
+    });
+}
+
+function addAd(a) {
+    removeAd(a.id, true);
+    const item = {
+        title: a.title || hostOf(a.url),
+        subtitle: a.subtitle || 'Publicidad',
+        text: a.text || hostOf(a.url),
+        credit: a.devs ? `Desarrollo: ${a.devs}` : `Publicidad de ${a.owner_name || 'Visitante'} · ${formatDate(a.created_at)}`,
+        url: a.url,
+        image: adImageUrl(a.image),
+        fallback: a.fallback,
+        colors: a.colors?.length === 2 ? a.colors : adColors(a.id),
+    };
+    const { piece, hits } = makePainting(item);
+    piece.position.x = slotX(a.slot);
+    adGalleries[a.scene === MAIN ? MAIN : 'other'].add(piece);
+    piece.visible = a.scene === here.id;
+    for (const hit of hits) clickable.push(hit);
+    ads.set(a.id, { data: a, piece, hits });
+    showAdsHere();
+    refreshMyAds();
+}
+
+function removeAd(id, quiet) {
+    const e = ads.get(id);
+    if (!e) return;
+    e.piece.parent?.remove(e.piece);
+    e.piece.traverse((o) => {
+        if (!o.isMesh) return;
+        o.geometry.dispose();
+        if (o.material !== frameMat && o.material !== matMat) { o.material.map?.dispose(); o.material.dispose(); }
+    });
+    for (const hit of e.hits) clickable.splice(clickable.indexOf(hit), 1);
+    ads.delete(id);
+    if (!quiet) { showAdsHere(); refreshMyAds(); }
+}
+
+function showAdsHere() {
+    const taken = { [MAIN]: new Set(), other: new Set() };
+    for (const e of ads.values()) {
+        e.piece.visible = e.data.scene === here.id;
+        if (e.data.scene === MAIN) taken[MAIN].add(e.data.slot);
+        else if (e.data.scene === here.id) taken.other.add(e.data.slot);
+    }
+    for (const key of [MAIN, 'other']) emptySlots[key].forEach((m, i) => { m.visible = !taken[key].has(i); });
+}
+
+// Mientras no llega la lista del servidor (o si no hay conexión), los cuadros de Roy.
+GALLERY.forEach((g, i) => addAd({ ...g, id: `local-${i}`, scene: MAIN, slot: i }));
+
+net.on('ads', (m) => {
+    const ids = new Set(m.ads.map((x) => x.id));
+    for (const id of [...ads.keys()]) if (!ids.has(id)) removeAd(id, true);
+    m.ads.forEach(addAd);
+    showAdsHere();
+    refreshMyAds();
+});
+net.on('ad_removed', (m) => removeAd(m.id));
+
+function adMessage(text) {
+    adError.hidden = !text;
+    adError.textContent = text || '';
+}
+function sceneLabel(scene) {
+    return scene === MAIN ? 'Universo principal' : (portals.get(scene)?.data.name || 'Otro universo');
+}
+function refreshMyAds() {
+    const mine = [...ads.values()].filter((e) => net.myId && e.data.owner_id === net.myId);
+    myAds.hidden = !mine.length;
+    myAds.querySelector('ul').replaceChildren(...mine.map((e) => {
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        name.textContent = `${e.data.title || hostOf(e.data.url)} · ${sceneLabel(e.data.scene)}`;
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'holes__delete';
+        del.textContent = 'Anular publicidad';
+        del.addEventListener('click', () => {
+            if (del.dataset.confirm) return net.send({ type: 'ad_delete', id: e.data.id });
+            del.dataset.confirm = '1';
+            del.textContent = '¿Anular? Toca otra vez';
+        });
+        li.append(name, del);
+        return li;
+    }));
+}
+function openAdBox(slot = null) {
+    if (!getProfile()) return showLogin();
+    adSlot = slot;
+    adMessage('');
+    refreshMyAds();
+    adBox.querySelector('[data-ad-where]').textContent = sceneLabel(here.id);
+    adBox.hidden = false;
+}
+document.querySelector('[data-ad-open]').addEventListener('click', () => openAdBox());
+adBox.querySelector('[data-ad-close]').addEventListener('click', () => { adBox.hidden = true; });
+adForm.image.addEventListener('change', async () => {
+    const file = adForm.image.files[0];
+    pendingAdImage = null;
+    adPreview.hidden = true;
+    adMessage('');
+    if (!file) { adInfo.textContent = ''; return; }
+    adInfo.textContent = 'Preparando la imagen…';
+    try {
+        const p = await compressPhoto(file);
+        if (adForm.image.files[0] !== file) return;   // eligió otra mientras tanto
+        pendingAdImage = p;
+        adPreview.src = p.dataUrl;
+        adPreview.hidden = false;
+        adInfo.textContent = `Lista: ${p.w}×${p.h}, ${kb(p.size)} (antes ${kb(p.original)})`;
+    } catch {
+        adInfo.textContent = '';
+        adMessage('No se pudo leer esa imagen. Prueba con otra.');
+    }
+});
+adForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!pendingAdImage) return adMessage('Elige una imagen.');
+    let url = adForm.url.value.trim();
+    if (url && !/^https?:\/\//i.test(url)) url = `https://${url}`;
+    if (!/^https?:\/\/[^\s/$.?#][^\s]*$/i.test(url)) return adMessage('Pon el enlace de tu página, por ejemplo https://mi-negocio.com');
+    if (!net.loggedIn) return adMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
+    advertising = true;
+    adMessage('');
+    adForm.querySelector('[type=submit]').disabled = true;
+    net.send({
+        type: 'ad_create',
+        url,
+        title: adForm.heading.value.trim(),
+        photo: pendingAdImage.dataUrl,
+        scene: here.id,
+        slot: adSlot,
+    });
+});
+net.on('ad', (m) => {
+    addAd(m.ad);
+    if (advertising && m.ad.owner_id === net.myId) {
+        advertising = false;
+        adForm.querySelector('[type=submit]').disabled = false;
+        adBox.hidden = true;
+        adForm.reset();
+        pendingAdImage = null;
+        adPreview.hidden = true;
+        adInfo.textContent = '';
+        flashHint('Tu publicidad quedó en la galería');
+    }
+});
+net.on('ad_error', (m) => {
+    advertising = false;
+    adForm.querySelector('[type=submit]').disabled = false;
+    adMessage(m.message);
 });
 
 // Perfiles guardados antes de elegir país (8 dígitos bolivianos): pasan al número completo y el

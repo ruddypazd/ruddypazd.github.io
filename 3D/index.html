@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=47">
+    <link rel="stylesheet" href="style.css?v=48">
     <script type="importmap">
     {
         "imports": {
@@ -48,6 +48,7 @@
                         <button class="settings__item" type="button" data-hole-open>🌀 Crear puente de Einstein-Rosen</button>
                         <button class="settings__item" type="button" data-note-open>📝 Dejar una nota</button>
                         <button class="settings__item" type="button" data-memory-open>📷 Crear recuerdo</button>
+                        <button class="settings__item" type="button" data-ad-open>🖼️ Poner publicidad</button>
                     </div>
                 </section>
                 <section class="settings__group">
@@ -223,6 +224,25 @@
             <button class="login__back" type="button" data-memory-close>Cerrar</button>
         </form>
     </div>
+    <div class="login login--scroll" data-ad-box role="dialog" aria-modal="true" aria-labelledby="ad-title" hidden>
+        <form class="login__card" data-ad-form autocomplete="off">
+            <p class="totem-panel__tag">Publicidad</p>
+            <h2 id="ad-title">Pon tu publicidad</h2>
+            <p class="login__note">Un cuadro con tu imagen en la galería de <strong data-ad-where>este universo</strong>. Quien lo toque abre tu enlace.</p>
+            <label>Imagen<input name="image" type="file" accept="image/*"></label>
+            <img class="memory__preview" data-ad-preview alt="Vista previa de la imagen" hidden>
+            <p class="login__note" data-ad-info></p>
+            <label>Enlace<input name="url" type="text" inputmode="url" maxlength="500" placeholder="https://mi-negocio.com" required></label>
+            <label>Nombre (opcional)<input name="heading" type="text" maxlength="40" placeholder="Mi negocio"></label>
+            <p class="login__error" data-ad-error hidden></p>
+            <button class="chat__send" type="submit">Poner publicidad</button>
+            <div class="holes" data-my-ads hidden>
+                <h3>Tus publicidades</h3>
+                <ul></ul>
+            </div>
+            <button class="login__back" type="button" data-ad-close>Cerrar</button>
+        </form>
+    </div>
     <div class="totem-panel" data-memory-view hidden role="dialog" aria-modal="true" aria-labelledby="memory-view-author">
         <div class="totem-panel__card profile memory-view">
             <img class="memory-view__photo" data-memory-photo alt="">
@@ -242,6 +262,6 @@
         <p data-scene-desc></p>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=47"></script>
+    <script type="module" src="world.js?v=48"></script>
 </body>
 </html>
