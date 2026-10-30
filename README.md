@@ -6,20 +6,27 @@ Sitio estático (HTML + CSS + JS, sin dependencias) con estética neón / cyber.
 Publicado vía GitHub Pages en https://ruddypazd.github.io
 
 ## Estructura
-- `index.html` — contenido y secciones (hero, sobre mí, skills, experiencia, proyectos, contacto)
-- `style.css` — tema, layout y animaciones
-- `index.js` — fondo de partículas, animaciones al hacer scroll, efecto typing y contadores
+- `/` — el **Mundo 3D** (portada del sitio)
+  - `index.html`, `style.css`, `world.js`, `wormholes.js` — escena three.js
+  - `models/` — personajes `.glb`; `images/` — imágenes compartidas (perfil, cuadros, tótem)
+- `/portafolio/` — el portafolio / currículum
+  - `index.html` — contenido y secciones (hero, sobre mí, skills, experiencia, contacto)
+  - `style.css` — tema, layout y animaciones (también lo usa `/cotizaciones/`)
+  - `index.js` — fondo de partículas, animaciones al hacer scroll, efecto typing y contadores
+  - `phone.js` — llamada de voz con el agente; `firebase.js` — analítica (se carga en ambas páginas)
+- `/cotizaciones/`, `/analu/` — páginas aparte
+- `/3D/` — solo redirige a `/` para no romper enlaces viejos
 
 ## Cómo editar
-Busca los comentarios `<!-- EDITA ... -->` en `index.html` y reemplázalos con tus datos reales.
+Busca los comentarios `<!-- EDITA ... -->` en `portafolio/index.html` y reemplázalos con tus datos reales.
 Para el CV: sube tu PDF (ej. `cv.pdf`) y enlázalo en el botón "Descargar CV".
 
 ## Desarrollo local
-Abre `index.html` en el navegador, o sirve la carpeta:
+Sirve la carpeta (el Mundo 3D necesita servidor por los módulos):
 
 ```bash
 python3 -m http.server 8000
-# luego abre http://localhost:8000
+# luego abre http://localhost:8000 (3D) o http://localhost:8000/portafolio/
 ```
 quita proyectos destacados y en conocmientos y skill quisiera que quites todo y que sea un diagrama avanzado y moderno (responsive) desde el provedor isp en la cabeza como llega al modem, el firewall luego a switch luego dnat al server nginx dmz, en nginx redirecciona 5060 y 5061 al asterisk quetambien vienen del isp, server web (html5, css3. js, reactnative, react), backend (java, python, c#, c++, bash), base de datos (oracle, postgres, casandra, sqlserver, mysql) , server siem wazuh, n8n. todos en servers linux. tambien por fuera de la infra server google gloud, aws, ashure, etc. 
 
