@@ -134,7 +134,8 @@ const poleMat = new THREE.MeshStandardMaterial({ color: 0x141a2e, roughness: 0.4
 // ---------- Galería estilo museo: la pared de la publicidad ----------
 // Una pared al fondo con AD_SLOTS espacios para cuadros. Cada cuadro es una publicidad (imagen +
 // enlace) que alguien puso; el servidor guarda las de cada universo. GALLERY son los cuadros de
-// Roy con que empieza el mundo principal: se muestran mientras no llega la lista del servidor.
+// Roy (sus cotizaciones y proyectos): cuelgan en el mundo de las cotizaciones, al que se entra
+// por un puente fijo frente a esta pared. En el mundo principal la pared queda libre.
 // image: og:image del sitio (si la tiene); fallback: imagen local si la externa no carga.
 const GALLERY = [
     {
@@ -262,12 +263,8 @@ scene.add(gallery);
     wall.position.set(0, 3.75, -0.3);
     wall.receiveShadow = true;
     gallery.add(wall);
-    const sign = makeLabelTexture(1024, 128, (c, w, h) => {
-        c.fillStyle = '#e9dcc0'; c.textAlign = 'center'; c.textBaseline = 'middle';
-        c.font = '600 64px "Space Grotesk", serif';
-        c.fillText('GALERÍA DE PROYECTOS', w / 2, h / 2);
-    });
-    const signMesh = new THREE.Mesh(new THREE.PlaneGeometry(8, 1), new THREE.MeshBasicMaterial({ map: sign, transparent: true, toneMapped: false }));
+    const signMesh = new THREE.Mesh(new THREE.PlaneGeometry(8, 1), new THREE.MeshBasicMaterial({ map: gallerySign('GALERÍA DE PUBLICIDAD'), transparent: true, toneMapped: false }));
+    gallery.userData.sign = signMesh;
     signMesh.position.set(0, 6.6, -0.09);
     gallery.add(signMesh);
     gallery.updateMatrixWorld(true);
@@ -283,6 +280,14 @@ scene.add(gallery);
         spot.target.position.set(slotX(i), PAINT_BOTTOM + PAINT_H / 2 - 0.8, 0);
         gallery.add(spot, spot.target);
     }
+}
+
+function gallerySign(text) {
+    return makeLabelTexture(1024, 128, (c, w, h) => {
+        c.fillStyle = '#e9dcc0'; c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.font = '600 64px "Space Grotesk", serif';
+        c.fillText(text, w / 2, h / 2);
+    });
 }
 
 function makeLabelTexture(w, h, draw) {
@@ -623,7 +628,7 @@ canvas.addEventListener('pointermove', (e) => {
     const hit = billboardAt(e);
     canvas.style.cursor = hit ? 'pointer' : '';
     linkHint.hidden = !hit;
-    if (hit) linkHint.textContent = hit.userData.hint ?? `Abrir cotización: ${hit.userData.title} ↗`;
+    if (hit) linkHint.textContent = hit.userData.hint ?? `Abrir ${hit.userData.title} ↗`;
 });
 
 // Aviso breve (por ejemplo, cómo iniciar la música en iPhone): como los subtítulos, en amarillo.
@@ -637,6 +642,7 @@ function flashHint(text) {
 }
 
 // ---------- Tótem táctil: Medical Center (el sistema se conecta más adelante) ----------
+// Está frente al cuadro de Medical Center, así que solo aparece en el mundo de las cotizaciones.
 const TOTEM_INDEX = GALLERY.findIndex((g) => g.title === 'Medical Center');  // frente a su cuadro
 const totemPanel = document.querySelector('[data-totem-panel]');
 const totemFrame = document.querySelector('[data-totem-frame]');
@@ -706,7 +712,8 @@ totem.lookAt(totem.position.x, 0, 0);
     totem.add(base, column, edge, screen, light);
 }
 scene.add(totem);
-obstacles.push({ x: totem.position.x, z: totem.position.z, r: 0.75 });
+const totemObstacle = { x: totem.position.x, z: totem.position.z, r: 0.75 };
+obstacles.push(totemObstacle);
 document.querySelector('[data-totem-close]').addEventListener('click', () => { totemPanel.hidden = true; });
 totemPanel.addEventListener('click', (e) => { if (e.target === totemPanel) totemPanel.hidden = true; });
 
@@ -2061,6 +2068,21 @@ const dest = buildUniverse(scene.children.filter((o) => o !== actors && o !== ba
         clickable.push(copy);
     }
 }
+// El tótem y los cuadros de Roy son del mundo de las cotizaciones: el mundo principal se queda
+// sin tótem, y en los demás universos el tótem copiado se esconde (ver dressUniverse).
+const COTIZACIONES = 'cotizaciones';
+const destTotem = dest.copies.get(totem);
+const destTotemObstacle = dest.obstacles[obstacles.indexOf(totemObstacle)];
+const destSign = dest.copies.get(gallery.userData.sign);
+const signTextures = { other: destSign.material.map, [COTIZACIONES]: gallerySign('COTIZACIONES Y PROYECTOS') };
+totem.visible = false;
+obstacles.splice(obstacles.indexOf(totemObstacle), 1);
+function dressUniverse(id) {
+    const quotes = id === COTIZACIONES;
+    destTotem.visible = quotes;
+    destTotemObstacle.r = quotes ? totemObstacle.r : 0;
+    destSign.material.map = signTextures[quotes ? COTIZACIONES : 'other'];
+}
 const mirrorCubes = cubes.map((c) => dest.copies.get(c));
 const returnHole = wormholes.makeHole({ scene: dest.scene, x: 0, z: 0 });
 const portals = new Map();   // id -> { data, hole, label }
@@ -2164,7 +2186,7 @@ function goTo(id, { from = null, pos = null } = {}) {
     here.id = id;
     here.scene = target;
         here.obstacles = toMain ? obstacles : dest.obstacles;
-    if (!toMain) dest.setHue(hueFor(id));
+    if (!toMain) { dest.setHue(hueFor(id)); dressUniverse(id); }
 
     const offset = camera.position.clone().sub(controls.target);
     player.position.set(x, 0, z);
@@ -2879,8 +2901,8 @@ function showAdsHere() {
     for (const key of [MAIN, 'other']) emptySlots[key].forEach((m, i) => { m.visible = !taken[key].has(i); });
 }
 
-// Mientras no llega la lista del servidor (o si no hay conexión), los cuadros de Roy.
-GALLERY.forEach((g, i) => addAd({ ...g, id: `local-${i}`, scene: MAIN, slot: i }));
+// Mientras no llega la lista del servidor (o si no hay conexión), los cuadros de Roy en su mundo.
+GALLERY.forEach((g, i) => addAd({ ...g, id: `local-${i}`, scene: COTIZACIONES, slot: i }));
 
 net.on('ads', (m) => {
     const ids = new Set(m.ads.map((x) => x.id));
@@ -3021,7 +3043,6 @@ function botPlaces() {
         centro: new THREE.Vector3(0, 0, 0),
         pelota: ball.position.clone().setY(0),
         galeria: new THREE.Vector3(0, 0, GALLERY_Z - 4),
-        totem: totem.position.clone().setY(0).add(new THREE.Vector3(0, 0, -1.5)),
         video: VIDEO_POS.clone().multiplyScalar(0.85),
     };
     return places;
