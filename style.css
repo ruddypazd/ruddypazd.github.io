@@ -390,3 +390,13 @@ button.login__back { background: none; border: 0; cursor: pointer; font-family: 
 .avatar-card:hover, .avatar-card:focus-visible { border-color: rgba(0, 229, 255, .6); outline: none; }
 .avatar-card[aria-pressed="true"] { border-color: #00e5ff; box-shadow: 0 0 16px rgba(0, 229, 255, .45); }
 .avatar-card[aria-busy="true"] { opacity: .6; cursor: progress; }
+
+/* Personaje IA: listas de personaje e IA, y la casilla de recordar el token */
+[data-bot-form] select {
+    padding: .7rem .9rem; border-radius: .7rem; border: 1px solid rgba(255,255,255,.2);
+    background: rgba(255,255,255,.06); color: #fff; font: inherit; font-size: 16px;
+}
+[data-bot-form] select option { color: #111; }
+.login__card label.bot__check { display: flex; align-items: center; gap: .5rem; }
+.bot__check input { width: 1.1rem; height: 1.1rem; padding: 0; accent-color: #00e5ff; }
+.bot__status { color: #36f1a0; }

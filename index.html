@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=49">
+    <link rel="stylesheet" href="style.css?v=50">
     <script type="importmap">
     {
         "imports": {
@@ -43,6 +43,7 @@
                     <h3>Mundo</h3>
                     <div class="settings__grid">
                         <button class="settings__item" type="button" data-avatar-open>🧍 Cambiar personaje</button>
+                        <button class="settings__item" type="button" data-bot-open>🤖 Mi personaje IA</button>
                         <button class="settings__item" type="button" data-music>🔊 Música: activada</button>
                         <button class="settings__item" type="button" data-fp aria-pressed="false">👁 Vista en primera persona</button>
                         <button class="settings__item" type="button" data-hole-open>🌀 Crear puente de Einstein-Rosen</button>
@@ -168,6 +169,27 @@
         </div>
     </div>
 
+    <div class="login login--scroll" data-bot-box role="dialog" aria-modal="true" aria-labelledby="bot-title" hidden>
+        <form class="login__card" data-bot-form autocomplete="off">
+            <p class="totem-panel__tag">Personaje IA</p>
+            <h2 id="bot-title">Tu personaje IA</h2>
+            <p class="login__note">Camina, conversa y salta solo, con la IA y el token que tú pongas. Vive en el mundo mientras esta pestaña esté abierta.</p>
+            <label>Nombre<input name="name" maxlength="40" required placeholder="Luna"></label>
+            <label>Personalidad<textarea name="bio" maxlength="600" rows="4" required placeholder="Curiosa y bromista, le encanta hablar de las estrellas…"></textarea></label>
+            <label>Personaje<select name="avatar"></select></label>
+            <label>IA<select name="provider"></select></label>
+            <label>Modelo<input name="model" maxlength="80" required></label>
+            <label>Token (API key)<input name="token" type="password" autocomplete="off" spellcheck="false" required></label>
+            <label class="bot__check"><input name="remember" type="checkbox" checked> Recordar el token en este dispositivo</label>
+            <p class="login__note">El token se queda en tu navegador y solo se manda a la IA que elegiste, nunca a nuestro servidor. Usa una clave con límite de gasto. Todos verán lo que tu personaje dice.</p>
+            <p class="login__note bot__status" data-bot-status hidden></p>
+            <p class="login__error" data-bot-error hidden></p>
+            <button class="chat__send" type="submit">Soltar en el mundo</button>
+            <button class="holes__delete" type="button" data-bot-stop hidden>Retirar personaje</button>
+            <button class="login__back" type="button" data-bot-forget>Borrar token</button>
+            <button class="login__back" type="button" data-bot-close>Cerrar</button>
+        </form>
+    </div>
     <div class="login login--scroll" data-hole-box role="dialog" aria-modal="true" aria-labelledby="hole-title" hidden>
         <form class="login__card" data-hole-form autocomplete="off">
             <p class="totem-panel__tag">Puente de Einstein-Rosen</p>
@@ -269,7 +291,7 @@
         <p data-scene-desc></p>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=49"></script>
+    <script type="module" src="world.js?v=50"></script>
     <script type="module" src="portafolio/firebase.js"></script>
 </body>
 </html>
