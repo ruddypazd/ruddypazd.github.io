@@ -3079,6 +3079,7 @@ function botPrompt() {
 async function botAsk({ system, user }) {
     const s = bot.settings;
     const p = BOT_PROVIDERS[s.provider] || BOT_PROVIDERS.openai;
+    const model = s.model || p.model;
     let res;
     if (s.provider === 'anthropic') {
         res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -3089,7 +3090,13 @@ async function botAsk({ system, user }) {
                 'anthropic-version': '2023-06-01',
                 'anthropic-dangerous-direct-browser-access': 'true',
             },
-            body: JSON.stringify({ model: s.model || p.model, max_tokens: 200, system, messages: [{ role: 'user', content: user }] }),
+            // Los modelos 5.x piensan antes de responder y podían gastar todos los tokens en eso
+            // (el personaje se quedaba sin respuesta): esfuerzo bajo y, en Haiku, sin pensar.
+            body: JSON.stringify({
+                model, max_tokens: 1500, system, messages: [{ role: 'user', content: user }],
+                ...(/-5(-|$)|fable|mythos/.test(model) ? { output_config: { effort: 'low' } } : {}),
+                ...(/haiku-5/.test(model) ? { thinking: { type: 'disabled' } } : {}),
+            }),
         });
     } else {
         res = await fetch(p.url, {
@@ -3140,12 +3147,15 @@ async function botThink() {
     bot.busy = true;
     bot.turns++;
     try {
-        botDo(await botAsk(botPrompt()));
+        const act = await botAsk(botPrompt());
+        if (!act.decir && !act.ir_a && !act.saltar) bot.wanderAt = 0;   // la IA no eligió nada: que pasee
+        botDo(act);
         bot.errors = 0;
         botStatus();
     } catch (e) {
         bot.errors++;
         botStatus(`La IA no respondió: ${e.message}`);
+        if (bot.errors === 1) flashHint(`${bot.settings.name}: la IA no respondió (${e.message})`);
         if (e.fatal || bot.errors >= 3) {
             flashHint(`${bot.settings.name} se quedó sin IA: revisa el token en Ajustes.`);
             bot.nextAt = Infinity;   // sigue en el mundo, paseando, pero ya no llama a la IA
@@ -3164,10 +3174,13 @@ function updateBot(dt) {
         bot.nextAt = now + BOT_THINK_EVERY * 1000;
         botThink();
         if (bot.turns >= BOT_MAX_TURNS) botStatus();
-    } else if (!near.length && !bot.goal && !bot.follow && now >= bot.wanderAt) {
-        bot.wanderAt = now + 10000 + Math.random() * 10000;
-        const a = Math.random() * Math.PI * 2, d = Math.random() * 30;
-        bot.goal = new THREE.Vector3(Math.cos(a) * d, 0, Math.sin(a) * d);
+    } else if (!bot.goal && !bot.follow && now >= bot.wanderAt) {
+        // Mientras la IA no lo mande a ningún lado, pasea: lejos si está solo, cerca si hay gente.
+        bot.wanderAt = now + 8000 + Math.random() * 8000;
+        const a = Math.random() * Math.PI * 2;
+        bot.goal = near.length
+            ? bot.pos.clone().add(new THREE.Vector3(Math.cos(a) * 4, 0, Math.sin(a) * 4))
+            : new THREE.Vector3(Math.cos(a), 0, Math.sin(a)).multiplyScalar(Math.random() * 30);
     }
 
     // Camina hacia su meta (o hasta quedar a 2 m de la persona que sigue, mientras siga cerca).
