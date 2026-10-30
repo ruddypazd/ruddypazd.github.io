@@ -1626,7 +1626,7 @@ function formatDate(iso) {
     }).replace('.', '');
 }
 
-function makeNameLabel(name, online, lastSeen, sub = '') {
+function makeNameLabel(name, online, lastSeen, sub = '', isBot = false) {
     const c = document.createElement('canvas');
     c.width = 512; c.height = 192;
     const g = c.getContext('2d');
@@ -1634,8 +1634,9 @@ function makeNameLabel(name, online, lastSeen, sub = '') {
     const w = Math.min(500, g.measureText(name).width + 70);
     g.fillStyle = 'rgba(10, 13, 22, .78)';
     g.beginPath(); g.roundRect((512 - w) / 2, 22, w, 84, 42); g.fill();
-    g.fillStyle = online ? '#36f1a0' : '#6b7290';
-    g.beginPath(); g.arc((512 - w) / 2 + 36, 64, 10, 0, Math.PI * 2); g.fill();
+    // Punto de conexión; en los personajes IA, más grande y amarillo.
+    g.fillStyle = isBot ? '#ffd400' : online ? '#36f1a0' : '#6b7290';
+    g.beginPath(); g.arc((512 - w) / 2 + 36, 64, isBot ? 17 : 10, 0, Math.PI * 2); g.fill();
     g.fillStyle = online ? '#ffffff' : '#a9aec4';
     g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText(name, 256 + 12, 66, w - 70);
@@ -1646,7 +1647,7 @@ function makeNameLabel(name, online, lastSeen, sub = '') {
         const sw = Math.min(500, g.measureText(seen).width + 36);
         g.fillStyle = 'rgba(10, 13, 22, .7)';
         g.beginPath(); g.roundRect((512 - sw) / 2, 116, sw, 48, 24); g.fill();
-        g.fillStyle = online ? '#36f1a0' : '#c3c8da';
+        g.fillStyle = isBot ? '#ffd400' : online ? '#36f1a0' : '#c3c8da';
         g.fillText(seen, 256, 141, sw - 36);
     }
     const tex = new THREE.CanvasTexture(c);
@@ -1725,10 +1726,17 @@ function upsertRemote(p) {
     if (p.avatar && avatarIdOf(p.avatar) !== r.avatarId) { r.avatarId = avatarIdOf(p.avatar); attachAvatar(r); }
     // Personaje IA de alguien: debajo del nombre dice de quién es, en vez de su conexión.
     if (p.is_bot) Object.assign(r, { isBot: true, bio: p.bio || '', owner: p.owner, ownerName: p.owner_name || 'Visitante' });
+    if (r.isBot && !r.ring) {
+        // Círculo en el piso, como el tuyo pero más grande y amarillo: se nota que es una IA.
+        r.ring = new THREE.Mesh(new THREE.RingGeometry(1.15, 1.25, 64), new THREE.MeshBasicMaterial({ color: 0xffd400, transparent: true, opacity: 0.8 }));
+        r.ring.rotation.x = -Math.PI / 2;
+        r.ring.position.y = 0.006;
+        r.group.add(r.ring);
+    }
     const sub = r.isBot ? `IA de ${r.ownerName}` : '';
     if (r.name !== p.name || r.online !== p.online || r.lastSeen !== lastSeen || r.sub !== sub) {
         if (r.label) { r.group.remove(r.label); r.label.material.map.dispose(); r.label.material.dispose(); }
-        r.label = makeNameLabel(p.name || 'Visitante', p.online, lastSeen, sub);
+        r.label = makeNameLabel(p.name || 'Visitante', p.online, lastSeen, sub, r.isBot);
         r.sub = sub;
         r.group.add(r.label);
         r.name = p.name;
@@ -2983,10 +2991,10 @@ net.on('ad_error', (m) => {
 // personaje hace. Vive mientras esta pestaña esté abierta.
 const BOT_KEY = 'rp_ai';
 const BOT_PROVIDERS = {
-    anthropic: { name: 'Claude (Anthropic)', model: 'claude-haiku-5-5', hint: 'sk-ant-…' },
-    openai: { name: 'OpenAI', model: 'gpt-4o-mini', hint: 'sk-…', url: 'https://api.openai.com/v1/chat/completions' },
-    xai: { name: 'Grok (xAI)', model: 'grok-3-mini', hint: 'xai-…', url: 'https://api.x.ai/v1/chat/completions' },
-    openrouter: { name: 'OpenRouter', model: 'openai/gpt-4o-mini', hint: 'sk-or-…', url: 'https://openrouter.ai/api/v1/chat/completions' },
+    openai: { name: 'OpenAI', short: 'ChatGPT', model: 'gpt-4o-mini', hint: 'sk-…', keys: 'https://platform.openai.com/api-keys', url: 'https://api.openai.com/v1/chat/completions' },
+    anthropic: { name: 'Anthropic', short: 'Claude', model: 'claude-haiku-5-5', hint: 'sk-ant-…', keys: 'https://console.anthropic.com/settings/keys' },
+    xai: { name: 'xAI', short: 'Grok', model: 'grok-3-mini', hint: 'xai-…', keys: 'https://console.x.ai/', url: 'https://api.x.ai/v1/chat/completions' },
+    openrouter: { name: 'OpenRouter', short: 'Varios', model: 'openai/gpt-4o-mini', hint: 'sk-or-…', keys: 'https://openrouter.ai/keys', url: 'https://openrouter.ai/api/v1/chat/completions' },
 };
 const BOT_NEAR = 15;          // metros: a quién ve y a quién escucha
 const BOT_THINK_EVERY = 12;   // segundos entre turnos de la IA cuando hay alguien cerca
@@ -3070,7 +3078,7 @@ function botPrompt() {
 
 async function botAsk({ system, user }) {
     const s = bot.settings;
-    const p = BOT_PROVIDERS[s.provider] || BOT_PROVIDERS.anthropic;
+    const p = BOT_PROVIDERS[s.provider] || BOT_PROVIDERS.openai;
     let res;
     if (s.provider === 'anthropic') {
         res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -3250,14 +3258,48 @@ const botBox = document.querySelector('[data-bot-box]');
 const botForm = botBox.querySelector('[data-bot-form]');
 const botError = botBox.querySelector('[data-bot-error]');
 const botStatusEl = botBox.querySelector('[data-bot-status]');
-for (const [id, a] of Object.entries(AVATARS)) botForm.avatar.add(new Option(a.name, id));
-for (const [id, p] of Object.entries(BOT_PROVIDERS)) botForm.provider.add(new Option(p.name, id));
-function syncProvider() {
-    const p = BOT_PROVIDERS[botForm.provider.value];
-    botForm.token.placeholder = p.hint;
-    if (!botForm.model.value || Object.values(BOT_PROVIDERS).some((x) => x.model === botForm.model.value)) botForm.model.value = p.model;
+// Personaje e IA se eligen tocando tarjetas (como en «Cambiar personaje»).
+const botAvatars = botBox.querySelector('[data-bot-avatars]');
+const botProviders = botBox.querySelector('[data-bot-providers]');
+for (const [id, a] of Object.entries(AVATARS)) {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'avatar-card';
+    card.dataset.value = id;
+    card.innerHTML = '<img alt="" loading="lazy"><span></span>';
+    card.querySelector('img').src = a.thumb;
+    card.querySelector('span').textContent = a.name;
+    card.addEventListener('click', () => pickBotAvatar(id));
+    botAvatars.append(card);
 }
-botForm.provider.addEventListener('change', syncProvider);
+for (const [id, p] of Object.entries(BOT_PROVIDERS)) {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'bot__provider';
+    card.dataset.value = id;
+    card.innerHTML = '<strong></strong><small></small>';
+    card.querySelector('strong').textContent = p.short;
+    card.querySelector('small').textContent = p.name;
+    card.addEventListener('click', () => pickBotProvider(id));
+    botProviders.append(card);
+}
+const pressOnly = (list, value) => list.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === value)));
+function pickBotAvatar(id) {
+    botForm.avatar.value = id;
+    pressOnly(botAvatars, id);
+}
+function pickBotProvider(id) {
+    const p = BOT_PROVIDERS[id];
+    // Al cambiar de IA, el modelo por defecto de la nueva (salvo que hayas escrito otro).
+    if (!botForm.model.value || Object.values(BOT_PROVIDERS).some((x) => x.model === botForm.model.value)) botForm.model.value = p.model;
+    botForm.provider.value = id;
+    pressOnly(botProviders, id);
+    botForm.token.placeholder = p.hint;
+    botBox.querySelector('[data-bot-provider-name]').textContent = p.name;
+    const link = botBox.querySelector('[data-bot-key-link]');
+    link.href = p.keys;
+    link.textContent = `Crear un token en la página de ${p.name} ↗`;
+}
 function botStatus(error) {
     botStatusEl.hidden = !bot.on;
     if (bot.on) {
@@ -3275,12 +3317,11 @@ document.querySelector('[data-bot-open]').addEventListener('click', () => {
     const s = getBotSettings();
     botForm.name.value = s.name || '';
     botForm.bio.value = s.bio || '';
-    botForm.avatar.value = avatarIdOf(s.avatar || 'candie');
-    botForm.provider.value = BOT_PROVIDERS[s.provider] ? s.provider : 'anthropic';
+    pickBotAvatar(avatarIdOf(s.avatar || 'candie'));
     botForm.model.value = s.model || '';
+    pickBotProvider(BOT_PROVIDERS[s.provider] ? s.provider : 'openai');
     botForm.token.value = bot.token;
     botForm.remember.checked = s.remember !== false;
-    syncProvider();
     botStatus();
     botBox.hidden = false;
     setTimeout(() => botForm.name.focus(), 50);

@@ -391,12 +391,22 @@ button.login__back { background: none; border: 0; cursor: pointer; font-family: 
 .avatar-card[aria-pressed="true"] { border-color: #00e5ff; box-shadow: 0 0 16px rgba(0, 229, 255, .45); }
 .avatar-card[aria-busy="true"] { opacity: .6; cursor: progress; }
 
-/* Personaje IA: listas de personaje e IA, y la casilla de recordar el token */
-[data-bot-form] select {
-    padding: .7rem .9rem; border-radius: .7rem; border: 1px solid rgba(255,255,255,.2);
-    background: rgba(255,255,255,.06); color: #fff; font: inherit; font-size: 16px;
-}
-[data-bot-form] select option { color: #111; }
+/* Personaje IA: casilla de recordar el token */
 .login__card label.bot__check { display: flex; align-items: center; gap: .5rem; }
 .bot__check input { width: 1.1rem; height: 1.1rem; padding: 0; accent-color: #00e5ff; }
 .bot__status { color: #36f1a0; }
+/* Panel del personaje IA: tarjetas para elegir personaje e IA */
+.bot__field { display: grid; gap: .5rem; margin: 0; padding: 0; border: 0; min-width: 0; }
+.bot__field legend { padding: 0; margin-bottom: .45rem; font-size: .9rem; color: rgba(255,255,255,.8); }
+.bot__avatars { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; }
+.bot__avatars .avatar-card { padding: .4rem; font-size: .8rem; }
+.bot__providers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
+.bot__provider {
+    display: grid; gap: .1rem; padding: .65rem .7rem; text-align: left; cursor: pointer; font: inherit; color: #fff;
+    border-radius: .7rem; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.06);
+}
+.bot__provider small { color: rgba(255,255,255,.6); font-size: .78rem; }
+.bot__provider:hover, .bot__provider:focus-visible { border-color: rgba(255, 212, 0, .6); outline: none; }
+.bot__provider[aria-pressed="true"] { border-color: #ffd400; box-shadow: 0 0 14px rgba(255, 212, 0, .35); }
+.bot__avatars .avatar-card[aria-pressed="true"] { border-color: #ffd400; box-shadow: 0 0 14px rgba(255, 212, 0, .35); }
+[data-bot-form] .login__note a { color: #ffd400; }

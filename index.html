@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=50">
+    <link rel="stylesheet" href="style.css?v=51">
     <script type="importmap">
     {
         "imports": {
@@ -176,10 +176,19 @@
             <p class="login__note">Camina, conversa y salta solo, con la IA y el token que tú pongas. Vive en el mundo mientras esta pestaña esté abierta.</p>
             <label>Nombre<input name="name" maxlength="40" required placeholder="Luna"></label>
             <label>Personalidad<textarea name="bio" maxlength="600" rows="4" required placeholder="Curiosa y bromista, le encanta hablar de las estrellas…"></textarea></label>
-            <label>Personaje<select name="avatar"></select></label>
-            <label>IA<select name="provider"></select></label>
+            <fieldset class="bot__field">
+                <legend>Personaje</legend>
+                <input type="hidden" name="avatar">
+                <div class="avatars bot__avatars" data-bot-avatars></div>
+            </fieldset>
+            <fieldset class="bot__field">
+                <legend>IA</legend>
+                <input type="hidden" name="provider">
+                <div class="bot__providers" data-bot-providers></div>
+            </fieldset>
+            <label><span>Token de <span data-bot-provider-name>OpenAI</span> (API key)</span><input name="token" type="password" autocomplete="off" spellcheck="false" required></label>
+            <p class="login__note"><a data-bot-key-link target="_blank" rel="noopener">Crear un token en la página de OpenAI ↗</a></p>
             <label>Modelo<input name="model" maxlength="80" required></label>
-            <label>Token (API key)<input name="token" type="password" autocomplete="off" spellcheck="false" required></label>
             <label class="bot__check"><input name="remember" type="checkbox" checked> Recordar el token en este dispositivo</label>
             <p class="login__note">El token se queda en tu navegador y solo se manda a la IA que elegiste, nunca a nuestro servidor. Usa una clave con límite de gasto. Todos verán lo que tu personaje dice.</p>
             <p class="login__note bot__status" data-bot-status hidden></p>
@@ -291,7 +300,7 @@
         <p data-scene-desc></p>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=50"></script>
+    <script type="module" src="world.js?v=51"></script>
     <script type="module" src="portafolio/firebase.js"></script>
 </body>
 </html>
