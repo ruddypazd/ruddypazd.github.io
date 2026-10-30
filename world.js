@@ -626,13 +626,14 @@ canvas.addEventListener('pointermove', (e) => {
     if (hit) linkHint.textContent = hit.userData.hint ?? `Abrir cotización: ${hit.userData.title} ↗`;
 });
 
-// Aviso breve en el pie (por ejemplo, cómo iniciar la música en iPhone).
+// Aviso breve (por ejemplo, cómo iniciar la música en iPhone): como los subtítulos, en amarillo.
+const notice = document.querySelector('[data-notice]');
 let hintTimer = 0;
 function flashHint(text) {
-    linkHint.textContent = text;
-    linkHint.hidden = false;
+    notice.firstElementChild.textContent = text;
+    notice.hidden = false;
     clearTimeout(hintTimer);
-    hintTimer = setTimeout(() => { linkHint.hidden = true; }, 5000);
+    hintTimer = setTimeout(() => { notice.hidden = true; }, Math.min(9000, 4000 + text.length * 40));
 }
 
 // ---------- Tótem táctil: Medical Center (el sistema se conecta más adelante) ----------

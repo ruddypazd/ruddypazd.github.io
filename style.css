@@ -209,6 +209,8 @@ body {
 .subs[hidden] { display: none; }
 /* En móvil, por encima del botón «Correr» y el joystick. */
 @media (max-width: 600px) { .subs { bottom: calc(14rem + env(safe-area-inset-bottom)); width: calc(100% - 2rem); } }
+/* Avisos: mismo estilo que los subtítulos, en amarillo y justo encima de ellos. */
+.subs--notice { z-index: 4; color: #ffd400; transform: translate(-50%, calc(-100% - .6rem)); }
 
 /* ---------- Ajustes: agrupa portafolio, hablar, mensaje, música y primera persona ---------- */
 .settings { position: relative; pointer-events: auto; }
