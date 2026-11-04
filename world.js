@@ -7,6 +7,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { createWormholes, buildUniverse, hueFor, HOLE_R } from './wormholes.js?v=47';
+import { createCity } from './city.js?v=55';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
@@ -26,7 +27,8 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05060a);
 scene.fog = new THREE.Fog(0x05060a, 14, 70);
 
-const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
+// far: la ciudad cyberpunk de alrededor llega hasta el cielo, a 240 m.
+const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 300);
 camera.position.set(0, 1.6, 4.2);
 
 const controls = new OrbitControls(camera, canvas);
@@ -2084,6 +2086,10 @@ function dressUniverse(id) {
     destSign.material.map = signTextures[quotes ? COTIZACIONES : 'other'];
 }
 const mirrorCubes = cubes.map((c) => dest.copies.get(c));
+// La ciudad cyberpunk de alrededor (city.js). Se agrega después de copiar el escenario: no se
+// duplica, viaja con Ruddy de una escena a otra (como actors) y toma el tono de cada universo.
+const city = createCity();
+scene.add(city.group);
 const returnHole = wormholes.makeHole({ scene: dest.scene, x: 0, z: 0 });
 const portals = new Map();   // id -> { data, hole, label }
 // Dónde estás: la escena, sus límites y sus obstáculos.
@@ -2183,6 +2189,8 @@ function goTo(id, { from = null, pos = null } = {}) {
 
     const target = toMain ? scene : dest.scene;
     target.add(actors);
+    target.add(city.group);
+    city.setHue(toMain ? 0 : hueFor(id));
     here.id = id;
     here.scene = target;
         here.obstacles = toMain ? obstacles : dest.obstacles;
@@ -3419,6 +3427,7 @@ renderer.setAnimationLoop(() => {
     if (here.id === MAIN) updateBall(dt);
     checkHoles();
     dest.update(t);
+    city.update(t);
     syncPosition();
 
     ring.position.x = player.position.x;
@@ -3450,5 +3459,6 @@ window.addEventListener('resize', () => {
 function resizeWormholes() {
     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
     wormholes.setSize(size.x, size.y);
+    city.setPixelHeight(size.y);
 }
 resizeWormholes();
