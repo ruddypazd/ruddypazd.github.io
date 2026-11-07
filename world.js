@@ -2444,6 +2444,9 @@ function openChart(id, keepNote = false) {
     const auto = REFRESH_NAMES[c.refresh_min] ? `se actualiza solo ${REFRESH_NAMES[c.refresh_min]}` : 'se actualiza al tocar «Actualizar»';
     chartView.querySelector('[data-chart-sub]').textContent =
         `${chartSubtitle(c.data)} · ${c.owner_name || ''} · datos del ${formatDate(c.refreshed_at || c.updated_at)} · ${auto}`;
+    const description = chartView.querySelector('[data-chart-description]');
+    description.textContent = c.description || '';
+    description.hidden = !c.description;
     chartView.querySelector('[data-chart-table]').innerHTML = chartTableHtml(c.data);
     if (!keepNote) { chartViewNote(''); chartRefreshBtn.disabled = false; }
     chartView.hidden = false;
@@ -2715,6 +2718,7 @@ statsBox.querySelector('[data-stats-new]').addEventListener('click', () => {
     syncEditing();
     fillRequestForm(null);
     chartForm.title.value = '';
+    chartForm.description.value = '';
     reqForm.name.focus();
 });
 reqForm.saved.addEventListener('change', () => fillRequestForm(stats.requests.find((r) => r.id === reqForm.saved.value)));
@@ -2783,6 +2787,7 @@ function editChart(c) {
     fillRequestForm(stats.requests.find((r) => r.id === c.request_id));
     stats.pendingPivot = c.pivot;
     chartForm.title.value = c.title;
+    chartForm.description.value = c.description || '';
     chartForm.kind.value = c.kind;
     chartForm.refresh_min.value = String(c.refresh_min || 0);
     syncEditing();
@@ -2904,7 +2909,8 @@ chartForm.addEventListener('submit', (e) => {
     chartForm.querySelector('[type=submit]').disabled = true;
     net.send({
         type: 'stats_chart_save', place,
-        chart: { id: editing?.id, request_id: requestId, title: chartForm.title.value.trim(), kind: chartForm.kind.value,
+        chart: { id: editing?.id, request_id: requestId, title: chartForm.title.value.trim(),
+            description: chartForm.description.value.trim(), kind: chartForm.kind.value,
             refresh_min: Number(chartForm.refresh_min.value), pivot: readPivot() },
     });
 });

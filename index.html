@@ -344,6 +344,7 @@
                 <form class="stats__step" data-stats-chart hidden autocomplete="off">
                     <h3>4 · Gráfico 3D</h3>
                     <label>Título<input name="title" maxlength="60" placeholder="Ventas por sucursal" required></label>
+                    <label>Descripción (opcional)<textarea name="description" rows="3" maxlength="600" placeholder="Explica qué muestra el gráfico, de dónde salen los datos o cómo leerlo."></textarea></label>
                     <div class="stats__row">
                         <label>Tipo<select name="kind"><option value="bars">Barras</option><option value="pie">Torta</option><option value="line">Línea</option></select></label>
                         <label>Actualizar<select name="refresh_min"><option value="0">Nunca</option><option value="5">Cada 5 min</option><option value="15">Cada 15 min</option><option value="30">Cada 30 min</option><option value="60">Cada hora</option><option value="360">Cada 6 horas</option><option value="1440">Cada día</option></select></label>
@@ -375,6 +376,7 @@
             <p class="totem-panel__tag">Estadística</p>
             <h2 id="chart-view-title" data-chart-title></h2>
             <p class="profile__status chart-view__sub" data-chart-sub></p>
+            <p class="chart-view__description" data-chart-description hidden></p>
             <div class="stats__table" data-chart-table></div>
             <p class="login__note chart-view__note" data-chart-note hidden></p>
             <div class="chart-view__actions">
