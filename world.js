@@ -7,7 +7,6 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { createWormholes, buildUniverse, hueFor, HOLE_R } from './wormholes.js?v=47';
-import { createCity } from './city.js?v=55';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
@@ -90,162 +89,16 @@ ring.rotation.x = -Math.PI / 2;
 ring.position.y = 0.005;
 actors.add(ring);
 
-// ---------- Escenario: pilares y cubos neón para orientarse ----------
-const NEON = [0x00e5ff, 0xa060ff, 0xff3da6];
-const pillarGeo = new THREE.BoxGeometry(0.5, 1, 0.5);
-const pillarMat = new THREE.MeshStandardMaterial({ color: 0x141a2e, roughness: 0.4, metalness: 0.5 });
+// ---------- Escenario ----------
+// Solo piso, luz y cielo: todo lo demás que se ve en cada escena viene del servidor.
 const obstacles = [];
 
-for (let i = 0; i < 18; i++) {
-    const angle = (i / 18) * Math.PI * 2 + (i % 2) * 0.17;
-    const dist = 7 + (i % 3) * 5.5;
-    const h = 1.5 + ((i * 7) % 5) * 0.6;
-    const color = NEON[i % 3];
-
-    const pillar = new THREE.Mesh(pillarGeo, pillarMat);
-    pillar.scale.y = h;
-    pillar.position.set(Math.cos(angle) * dist, h / 2, Math.sin(angle) * dist);
-    pillar.castShadow = true;
-    pillar.receiveShadow = true;
-    scene.add(pillar);
-
-    const cap = new THREE.Mesh(
-        new THREE.BoxGeometry(0.54, 0.08, 0.54),
-        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.6 })
-    );
-    cap.position.set(pillar.position.x, h + 0.04, pillar.position.z);
-    scene.add(cap);
-
-    obstacles.push({ x: pillar.position.x, z: pillar.position.z, r: 0.65 });
-}
-
-const cubes = NEON.map((color, i) => {
-    const cube = new THREE.Mesh(
-        new THREE.BoxGeometry(0.6, 0.6, 0.6),
-        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.9, transparent: true, opacity: 0.85 })
-    );
-    const angle = (i / 3) * Math.PI * 2 + 0.5;
-    cube.position.set(Math.cos(angle) * 4.5, 1.2, Math.sin(angle) * 4.5);
-    scene.add(cube);
-    return cube;
-});
-
-const clickable = [];   // cuadros, póster del video y tótem, para el clic
+const clickable = [];   // cuadros y póster del video, para el clic
 const poleMat = new THREE.MeshStandardMaterial({ color: 0x141a2e, roughness: 0.4, metalness: 0.6 });
 
 // ---------- Galería estilo museo: la pared de la publicidad ----------
 // Una pared al fondo con AD_SLOTS espacios para cuadros. Cada cuadro es una publicidad (imagen +
-// enlace) que alguien puso; el servidor guarda las de cada universo. GALLERY son los cuadros de
-// Roy (sus cotizaciones y proyectos): cuelgan en el mundo de las cotizaciones, al que se entra
-// por un puente fijo frente a esta pared. En el mundo principal la pared queda libre.
-// image: og:image del sitio (si la tiene); fallback: imagen local si la externa no carga.
-const GALLERY = [
-    {
-        title: 'ROR Logístico',
-        subtitle: 'Cotización',
-        text: 'Propuesta y cotización de los sistemas de R.O.R Logístico: torre de control, operaciones y seguimiento de envíos.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: 'https://s-r-o-r.github.io/cotizaciones/',
-        image: 'https://s-r-o-r.github.io/assets/og/og-cotizaciones.jpg',
-        fallback: 'images/cotizacion-ror.jpg',
-        colors: ['#06262e', '#0b5363'],
-    },
-    {
-        title: 'Sofía Ltda.',
-        subtitle: 'Cotización',
-        text: 'Propuesta y cotización del sistema para Sofía Ltda.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: 'https://s-s-sofia.github.io/',
-        image: 'https://s-s-sofia.github.io/image/og-image.jpg?v=20261007',
-        fallback: 'images/cotizacion-sofia.jpg',
-        colors: ['#24123d', '#5a2d91'],
-    },
-    {
-        title: 'Medical Center',
-        subtitle: 'Cotización',
-        text: 'Portal de autogestión de la Clínica Medical Center: citas, pagos QR, resultados y atención por WhatsApp.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: 'https://medicalcenterbo.github.io/',
-        image: 'https://medicalcenterbo.github.io/assets/og-image.jpg',
-        fallback: 'images/cotizacion-medical.jpg',
-        colors: ['#0b2e22', '#1d6b4f'],
-    },
-    {
-        title: 'Calistenia Bolivia',
-        subtitle: 'Cotización',
-        text: 'Propuesta y cotización del sitio y sistema de Calistenia Bolivia SRL.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: 'https://calisteniabolivia-srl.github.io/',
-        image: 'https://calisteniabolivia-srl.github.io/images/og/og-home.jpg',
-        fallback: 'images/cotizacion-calistenia.jpg',
-        colors: ['#3a1206', '#8a3412'],
-    },
-    {
-        title: 'Condominio Santa María',
-        subtitle: 'Portal de copropietarios',
-        text: 'Portal de la comunidad del Condominio Santa María 1 en Santa Cruz: planos, censo, finanzas, reuniones y solicitudes.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: 'https://condominio-santa-maria.github.io',
-        image: 'https://condominio-santa-maria.github.io/images/og-image.png',
-        colors: ['#0f3d3a', '#1f6f5c'],
-    },
-    {
-        title: 'iFacturación',
-        subtitle: 'Facturación electrónica',
-        text: 'Sistema de facturación electrónica en línea de iBrokers: emisión de facturas, registro y gestión de cuentas.',
-        devs: 'Roy Ruddy Paz · Strasol SRL',
-        url: 'https://facturacion.ibrokers.cloud',
-        colors: ['#10264f', '#2f5fb3'],
-    },
-    {
-        title: 'SERP',
-        subtitle: 'ERP empresarial',
-        text: 'Sistema de planificación de recursos empresariales de Servisofts: ventas, inventario, finanzas y operación en un solo lugar.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: 'https://serp.servisofts.com',
-        colors: ['#3a0f2e', '#a3246f'],
-    },
-    {
-        title: 'R.O.R Control Tower',
-        subtitle: 'Torre de control logística',
-        text: 'Torre de control de R.O.R Logístico para seguir envíos, operaciones y estados en tiempo real.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: 'https://ct.rorlogistico.com',
-        colors: ['#3d2a0a', '#c27a12'],
-    },
-    {
-        title: 'iCompany',
-        subtitle: 'ERP para broker de seguros',
-        text: 'Sistema ERP para el broker de seguros del Banco Mercantil.',
-        devs: 'Roy Ruddy Paz · Strasol SRL',
-        url: 'https://icompany.segurosmsc.com',
-        colors: ['#06321f', '#0f7a45'],
-    },
-    {
-        title: 'UpLabs AI',
-        subtitle: 'CRM con IA',
-        text: 'CRM completo y multitenant con agentes de IA para llamadas y WhatsApp.',
-        devs: 'Roy Ruddy Paz · UpLabs AI',
-        url: 'https://app.uplabsai.com',
-        colors: ['#0b1440', '#5b2bd6'],
-    },
-    {
-        title: 'App Kolping',
-        subtitle: 'Gestión empresarial',
-        text: 'Sistema de gestión empresarial de Kolping.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: 'https://kolping.servisofts.com',
-        colors: ['#2a0b0b', '#8f1f1f'],
-    },
-    {
-        title: 'Staff Pro USA',
-        subtitle: 'Sistema web',
-        text: 'Sistema web de Staff Pro USA.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: 'https://staffprousa.servisofts.com/',
-        colors: ['#0a1e3a', '#b0242f'],
-    },
-];
+// enlace) que alguien puso; el servidor guarda las de cada universo.
 const AD_SLOTS = 12;
 const PAINT_W = 5.6, PAINT_H = 3.15, PAINT_GAP = 1.2, PAINT_BOTTOM = 2.5;
 const galleryWidth = AD_SLOTS * PAINT_W + (AD_SLOTS - 1) * PAINT_GAP;
@@ -642,82 +495,6 @@ function flashHint(text) {
     clearTimeout(hintTimer);
     hintTimer = setTimeout(() => { notice.hidden = true; }, Math.min(9000, 4000 + text.length * 40));
 }
-
-// ---------- Tótem táctil: Medical Center (el sistema se conecta más adelante) ----------
-// Está frente al cuadro de Medical Center, así que solo aparece en el mundo de las cotizaciones.
-const TOTEM_INDEX = GALLERY.findIndex((g) => g.title === 'Medical Center');  // frente a su cuadro
-const totemPanel = document.querySelector('[data-totem-panel]');
-const totemFrame = document.querySelector('[data-totem-frame]');
-const TOTEM_URL = 'https://medicalcenterbo.github.io/demo/';
-// La página del tótem se carga recién la primera vez que se toca, para no pesar al entrar.
-function openTotem() {
-    if (!totemFrame.src) totemFrame.src = TOTEM_URL;
-    totemPanel.hidden = false;
-}
-const totemScreenCanvas = document.createElement('canvas');
-totemScreenCanvas.width = 512; totemScreenCanvas.height = 860;
-{
-    const c = totemScreenCanvas.getContext('2d');
-    const g = c.createLinearGradient(0, 0, 0, 860);
-    g.addColorStop(0, '#062a36'); g.addColorStop(1, '#0a0d16');
-    c.fillStyle = g; c.fillRect(0, 0, 512, 860);
-    c.strokeStyle = '#00e5ff'; c.lineWidth = 6; c.strokeRect(14, 14, 484, 832);
-    c.fillStyle = '#00e5ff';
-    c.fillRect(216, 150, 80, 220); c.fillRect(146, 220, 220, 80);   // cruz médica
-    c.fillStyle = '#fff'; c.textAlign = 'center';
-    c.font = 'bold 54px "Space Grotesk", sans-serif';
-    c.fillText('MEDICAL', 256, 480); c.fillText('CENTER', 256, 540);
-    c.font = '30px "JetBrains Mono", monospace'; c.fillStyle = 'rgba(255,255,255,.8)';
-    c.fillText('Tótem de atención', 256, 630);
-    c.fillStyle = '#ff3da6'; c.font = 'bold 34px "JetBrains Mono", monospace';
-    c.fillText('☝ Toca la pantalla', 256, 750);
-}
-const totemTex = new THREE.CanvasTexture(totemScreenCanvas);
-totemTex.colorSpace = THREE.SRGBColorSpace;
-{
-    // Pantalla real del tótem; el dibujo de arriba queda si la imagen no carga.
-    const img = new Image();
-    img.onload = () => {
-        const c = totemScreenCanvas.getContext('2d');
-        const k = Math.min(512 / img.width, 860 / img.height);
-        const w = img.width * k, h = img.height * k;
-        c.fillStyle = '#f2f8f7'; c.fillRect(0, 0, 512, 860);
-        c.drawImage(img, (512 - w) / 2, (860 - h) / 2, w, h);
-        totemTex.needsUpdate = true;
-    };
-    img.src = 'images/totem-pantalla.jpg';
-}
-const totem = new THREE.Group();
-// La galería está girada 180°: la x local del cuadro queda invertida en el mundo.
-totem.position.set(-(-galleryWidth / 2 + PAINT_W / 2 + TOTEM_INDEX * (PAINT_W + PAINT_GAP)), 0, GALLERY_Z - 6);
-totem.lookAt(totem.position.x, 0, 0);
-{
-    const base = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.16, 0.7), poleMat);
-    base.position.y = 0.08;
-    const column = new THREE.Mesh(new THREE.BoxGeometry(0.8, 2.1, 0.35), poleMat);
-    column.position.y = 1.2;
-    column.castShadow = true;
-    const edge = new THREE.Mesh(
-        new THREE.BoxGeometry(0.84, 2.14, 0.3),
-        new THREE.MeshStandardMaterial({ color: 0x00e5ff, emissive: 0x00e5ff, emissiveIntensity: 1.8 })
-    );
-    edge.position.set(0, 1.2, -0.04);
-    const screen = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.62, 1.04),
-        new THREE.MeshBasicMaterial({ map: totemTex, toneMapped: false })
-    );
-    screen.position.set(0, 1.45, 0.18);
-    screen.userData = { hint: 'Tótem Medical Center: toca la pantalla', action: openTotem };
-    clickable.push(screen);
-    const light = new THREE.PointLight(0x00e5ff, 6, 5);
-    light.position.set(0, 1.4, 0.8);
-    totem.add(base, column, edge, screen, light);
-}
-scene.add(totem);
-const totemObstacle = { x: totem.position.x, z: totem.position.z, r: 0.75 };
-obstacles.push(totemObstacle);
-document.querySelector('[data-totem-close]').addEventListener('click', () => { totemPanel.hidden = true; });
-totemPanel.addEventListener('click', (e) => { if (e.target === totemPanel) totemPanel.hidden = true; });
 
 // ---------- Ruddy ----------
 // player se mueve y gira; body lleva el balanceo al caminar.
@@ -2062,7 +1839,7 @@ const dest = buildUniverse(scene.children.filter((o) => o !== actors && o !== ba
     // En el otro universo no hay video (la capa del video es del mundo principal): queda el póster.
     dest.copies.get(videoHole).visible = false;
     dest.copies.get(videoPoster).visible = true;
-    // Los cuadros y el tótem también se abren desde allá.
+    // Los cuadros también se abren desde allá.
     for (const o of [...clickable]) {
         const copy = dest.copies.get(o);
         if (!copy || o === videoPoster) continue;
@@ -2070,26 +1847,14 @@ const dest = buildUniverse(scene.children.filter((o) => o !== actors && o !== ba
         clickable.push(copy);
     }
 }
-// El tótem y los cuadros de Roy son del mundo de las cotizaciones: el mundo principal se queda
-// sin tótem, y en los demás universos el tótem copiado se esconde (ver dressUniverse).
+// El cartel de la pared cambia en el mundo de las cotizaciones.
 const COTIZACIONES = 'cotizaciones';
-const destTotem = dest.copies.get(totem);
-const destTotemObstacle = dest.obstacles[obstacles.indexOf(totemObstacle)];
 const destSign = dest.copies.get(gallery.userData.sign);
 const signTextures = { other: destSign.material.map, [COTIZACIONES]: gallerySign('COTIZACIONES Y PROYECTOS') };
-totem.visible = false;
-obstacles.splice(obstacles.indexOf(totemObstacle), 1);
 function dressUniverse(id) {
     const quotes = id === COTIZACIONES;
-    destTotem.visible = quotes;
-    destTotemObstacle.r = quotes ? totemObstacle.r : 0;
     destSign.material.map = signTextures[quotes ? COTIZACIONES : 'other'];
 }
-const mirrorCubes = cubes.map((c) => dest.copies.get(c));
-// La ciudad cyberpunk de alrededor (city.js). Se agrega después de copiar el escenario: no se
-// duplica, viaja con Ruddy de una escena a otra (como actors) y toma el tono de cada universo.
-const city = createCity();
-scene.add(city.group);
 const returnHole = wormholes.makeHole({ scene: dest.scene, x: 0, z: 0 });
 const portals = new Map();   // id -> { data, hole, label }
 // Dónde estás: la escena, sus límites y sus obstáculos.
@@ -2189,8 +1954,6 @@ function goTo(id, { from = null, pos = null } = {}) {
 
     const target = toMain ? scene : dest.scene;
     target.add(actors);
-    target.add(city.group);
-    city.setHue(toMain ? 0 : hueFor(id));
     here.id = id;
     here.scene = target;
         here.obstacles = toMain ? obstacles : dest.obstacles;
@@ -2909,9 +2672,6 @@ function showAdsHere() {
     }
     for (const key of [MAIN, 'other']) emptySlots[key].forEach((m, i) => { m.visible = !taken[key].has(i); });
 }
-
-// Mientras no llega la lista del servidor (o si no hay conexión), los cuadros de Roy en su mundo.
-GALLERY.forEach((g, i) => addAd({ ...g, id: `local-${i}`, scene: COTIZACIONES, slot: i }));
 
 net.on('ads', (m) => {
     const ids = new Set(m.ads.map((x) => x.id));
@@ -4004,7 +3764,6 @@ renderer.setAnimationLoop(() => {
     if (here.id === MAIN) updateBall(dt);
     checkHoles();
     dest.update(t);
-    city.update(t);
     syncPosition();
 
     ring.position.x = player.position.x;
@@ -4013,12 +3772,6 @@ renderer.setAnimationLoop(() => {
     rims.position.copy(player.position);
     key.position.copy(player.position).add(KEY_OFFSET);
     key.target.position.copy(player.position);
-    for (const list of [cubes, mirrorCubes]) list.forEach((c, i) => {
-        c.rotation.x = t * 0.6 + i;
-        c.rotation.y = t * 0.8 + i;
-        c.position.y = 1.2 + Math.sin(t * 1.5 + i * 2) * 0.25;
-    });
-
     controls.update();
     wormholes.render(here.scene, camera, dt, t, otherSide);
     if (here.id === MAIN) cssRenderer.render(cssScene, camera);
@@ -4036,6 +3789,5 @@ window.addEventListener('resize', () => {
 function resizeWormholes() {
     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
     wormholes.setSize(size.x, size.y);
-    city.setPixelHeight(size.y);
 }
 resizeWormholes();
