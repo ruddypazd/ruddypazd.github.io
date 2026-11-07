@@ -316,7 +316,7 @@ body {
 .settings__back:hover { transform: translateX(-2px); }
 
 /* Acciones rápidas (hablar y escribir) */
-.settings__quick { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; margin-bottom: .9rem; }
+.settings__quick { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .6rem; margin-bottom: .9rem; }
 /* Secciones de la raíz */
 .settings__nav { display: grid; gap: .55rem; }
 .settings__tile {

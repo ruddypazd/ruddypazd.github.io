@@ -777,7 +777,7 @@ function updateBubble() {
 // Reutiliza el mismo agente que el teléfono del portafolio. Lo que dice el agente
 // aparece como subtítulos de película y Ruddy mueve la cabeza al ritmo del volumen de su voz.
 const SDK = 'https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.26.0/+esm';
-const talkBtn = document.querySelector('[data-talk]');
+const talkBtn = document.querySelector('[data-talk]');   // se quitó del menú (2026-11-07); el código queda por si vuelve
 const talkStatus = document.querySelector('[data-talk-status]');
 let talkSession = null;
 let talkState = 'idle';   // idle | connecting | live
@@ -806,9 +806,9 @@ const transcript = (() => {
 
 function setTalk(state, text) {
     talkState = state;
-    talkBtn.setAttribute('aria-pressed', String(state !== 'idle'));
-    talkBtn.setAttribute('aria-label', state === 'idle' ? 'Hablar con Ruddy por voz' : 'Colgar');
-    talkBtn.textContent = state === 'idle' ? '📞 Hablar con Ruddy' : '📞 Colgar';
+    talkBtn?.setAttribute('aria-pressed', String(state !== 'idle'));
+    talkBtn?.setAttribute('aria-label', state === 'idle' ? 'Hablar con Ruddy por voz' : 'Colgar');
+    if (talkBtn) talkBtn.textContent = state === 'idle' ? '📞 Hablar con Ruddy' : '📞 Colgar';
     settingsBox.classList.toggle('is-live', state !== 'idle');
     talkStatus.hidden = !text;
     talkStatus.textContent = text || '';
@@ -834,7 +834,7 @@ async function startTalk() {
         if (talkState !== 'connecting') return;  // colgó mientras cargaba
         transcript.start();
         talkSession = await Conversation.startSession({
-            agentId: talkBtn.dataset.agentId,
+            agentId: talkBtn?.dataset.agentId,
             connectionType: 'webrtc',
             onConnect: () => talkState === 'connecting' && setTalk('live', 'En llamada con Ruddy · 📞 para colgar'),
             onMessage: (m) => {
@@ -927,7 +927,7 @@ function updateSubs() {
     }
 }
 
-talkBtn.addEventListener('click', (e) => {
+talkBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
     if (talkState === 'idle') startTalk(); else endTalk('Llamada finalizada');
 });
