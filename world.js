@@ -483,20 +483,83 @@ function toggleRun() {
 onPress(runBtn, toggleRun);
 
 // ---------- Ajustes ----------
+// Menú de ventanas de vidrio: la raíz abre una ventana por sección y las ventanas se apilan
+// (en escritorio una al lado de la otra; en móvil la nueva se desliza encima). menuStack guarda el orden.
 const settingsBox = document.querySelector('[data-settings]');
 const settingsBtn = settingsBox.querySelector('[data-settings-open]');
 const settingsPanel = settingsBox.querySelector('[data-settings-panel]');
-function setSettings(open) {
-    settingsPanel.hidden = !open;
-    settingsBtn.setAttribute('aria-expanded', String(open));
+const menuWins = new Map([...settingsPanel.querySelectorAll('[data-menu-win]')].map((w) => [w.dataset.menuWin, w]));
+const menuStack = ['root'];
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+let menuCloseTimer = 0;
+function layoutMenu() {
+    const depth = menuStack.length - 1;
+    settingsPanel.style.setProperty('--depth', depth);
+    // Las que recién aparecen se muestran primero en su sitio de espera para que la transición se vea.
+    const fresh = menuStack.filter((n) => menuWins.get(n).hidden);
+    fresh.forEach((n) => { menuWins.get(n).hidden = false; });
+    if (fresh.length) void settingsPanel.offsetWidth;
+    for (const [name, win] of menuWins) {
+        const i = menuStack.indexOf(name);
+        const on = i >= 0;
+        win.classList.toggle('is-open', on);
+        win.classList.toggle('is-top', i === depth);
+        win.classList.toggle('is-behind', on && i < depth);
+        win.style.setProperty('--pos', on ? i - depth : 1);
+        win.inert = !on;   // las de atrás siguen tocables: un toque vuelve a ellas (ver el clic en captura)
+    }
+    // En la raíz, la sección abierta queda encendida.
+    settingsPanel.querySelectorAll('[data-menu-go]').forEach((t) => t.setAttribute('aria-current', String(menuStack.includes(t.dataset.menuGo))));
 }
-settingsBtn.addEventListener('click', () => setSettings(settingsPanel.hidden));
-// Captura: el botón de música detiene la propagación.
-settingsPanel.addEventListener('click', () => setSettings(false), true);
+function menuGo(name) {
+    if (!menuWins.has(name) || menuStack.includes(name)) return;
+    menuStack.push(name);
+    layoutMenu();
+    menuWins.get(name).querySelector('.settings__item, .settings__back')?.focus({ preventScroll: true });
+}
+function menuBack(to) {
+    const keep = to ? menuStack.indexOf(to) + 1 : menuStack.length - 1;
+    if (keep < 1 || keep >= menuStack.length) return false;
+    const gone = menuStack.splice(keep);
+    layoutMenu();
+    // La ventana que sale termina su animación antes de ocultarse.
+    setTimeout(() => gone.forEach((n) => { if (!menuStack.includes(n)) menuWins.get(n).hidden = true; }), reduceMotion.matches ? 0 : 420);
+    return true;
+}
+function setSettings(open) {
+    if (open === !settingsPanel.hidden && !settingsPanel.classList.contains('is-closing')) return;
+    clearTimeout(menuCloseTimer);
+    settingsBtn.setAttribute('aria-expanded', String(open));
+    if (open) {
+        menuStack.splice(1);
+        menuWins.forEach((w, n) => { if (n !== 'root') w.hidden = true; });
+        layoutMenu();
+        settingsPanel.classList.remove('is-closing');
+        settingsPanel.hidden = false;
+        return;
+    }
+    if (settingsPanel.hidden) return;
+    settingsPanel.classList.add('is-closing');
+    menuCloseTimer = setTimeout(() => {
+        settingsPanel.hidden = true;
+        settingsPanel.classList.remove('is-closing');
+    }, reduceMotion.matches ? 0 : 230);
+}
+settingsBtn.addEventListener('click', () => setSettings(settingsPanel.hidden || settingsPanel.classList.contains('is-closing')));
+// Captura: cada opción hace lo suyo y el menú se cierra; las secciones abren su ventana.
+settingsPanel.addEventListener('click', (e) => {
+    const t = e.target;
+    const behind = t.closest('.settings__win.is-behind');
+    if (behind) { e.preventDefault(); e.stopPropagation(); menuBack(behind.dataset.menuWin); return; }
+    if (t.closest('.settings__item, [data-menu-close]')) setSettings(false);
+    else if (t.closest('[data-menu-back]')) menuBack();
+    else if (t.closest('[data-menu-go]')) menuGo(t.closest('[data-menu-go]').dataset.menuGo);
+    else if (!t.closest('.settings__win')) setSettings(false);   // tocar el fondo cierra
+}, true);
 document.addEventListener('pointerdown', (e) => {
     if (!settingsBox.contains(e.target)) setSettings(false);
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; document.querySelector('[data-sign-box]').hidden = true; document.querySelector('[data-sign-view]').hidden = true; document.querySelector('[data-bot-box]').hidden = true; document.querySelector('[data-stats-box]').hidden = true; document.querySelector('[data-chart-view]').hidden = true; } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (!settingsPanel.hidden && menuBack()) return; setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; document.querySelector('[data-sign-box]').hidden = true; document.querySelector('[data-sign-view]').hidden = true; document.querySelector('[data-bot-box]').hidden = true; document.querySelector('[data-stats-box]').hidden = true; document.querySelector('[data-chart-view]').hidden = true; } });
 
 // ---------- Primera persona ----------
 const fpBtn = document.querySelector('[data-fp]');

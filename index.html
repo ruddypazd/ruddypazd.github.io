@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=62">
+    <link rel="stylesheet" href="style.css?v=63">
     <script type="importmap">
     {
         "imports": {
@@ -27,43 +27,109 @@
         <div class="settings" data-settings>
             <button class="hud__icon" type="button" data-settings-open aria-label="Ajustes" aria-expanded="false" aria-controls="settings-panel">⚙️</button>
             <div class="settings__panel" id="settings-panel" data-settings-panel hidden role="dialog" aria-modal="true" aria-labelledby="settings-title">
-                <div class="settings__head">
-                    <h2 id="settings-title">Ajustes</h2>
-                    <button class="settings__close" type="button" aria-label="Cerrar ajustes">✕</button>
+                <!-- Menú de ventanas de vidrio: la raíz abre una ventana por sección y se apilan.
+                     Para agregar una opción: otro botón .settings__item (con data-desc) en la ventana que corresponda;
+                     para una sección nueva: otra .settings__win data-menu-win="x" y su .settings__tile data-menu-go="x". -->
+                <div class="settings__stage" data-menu-stage>
+                    <section class="settings__win" data-menu-win="root" aria-labelledby="settings-title">
+                        <header class="settings__head">
+                            <div class="settings__titles">
+                                <p class="settings__crumb"><span class="settings__led" aria-hidden="true"></span>Mundo 3D · Panel</p>
+                                <h2 id="settings-title">Ajustes</h2>
+                            </div>
+                            <button class="settings__close" type="button" data-menu-close aria-label="Cerrar ajustes">✕</button>
+                        </header>
+                        <div class="settings__quick">
+                            <button class="settings__item settings__item--quick" type="button" data-talk data-desc="Llamada de voz" data-agent-id="agent_7001kxsnr66mej8tctnrrcrwtd6c" aria-label="Hablar con Ruddy por voz" aria-pressed="false">📞 Hablar con Ruddy</button>
+                            <button class="settings__item settings__item--quick" type="button" data-chat-open data-desc="Ruddy lo dice" aria-expanded="false">💬 Escribir un mensaje</button>
+                        </div>
+                        <nav class="settings__nav" aria-label="Secciones">
+                            <button class="settings__tile" type="button" data-menu-go="personaje" style="--k:0; --hue:190">
+                                <span class="settings__glyph" aria-hidden="true">🧍</span>
+                                <span class="settings__label">Personaje<small>Avatar, IA y cámara</small></span>
+                                <span class="settings__count">3</span>
+                            </button>
+                            <button class="settings__tile" type="button" data-menu-go="crear" style="--k:1; --hue:270">
+                                <span class="settings__glyph" aria-hidden="true">✨</span>
+                                <span class="settings__label">Crear en el mundo<small>Publicar, puentes y gráficos</small></span>
+                                <span class="settings__count">3</span>
+                            </button>
+                            <button class="settings__tile" type="button" data-menu-go="cuenta" style="--k:2; --hue:320">
+                                <span class="settings__glyph" aria-hidden="true">🪪</span>
+                                <span class="settings__label">Cuenta<small>Tu perfil y sesión</small></span>
+                                <span class="settings__count">2</span>
+                            </button>
+                            <button class="settings__tile" type="button" data-menu-go="sitio" style="--k:3; --hue:150">
+                                <span class="settings__glyph" aria-hidden="true">🧭</span>
+                                <span class="settings__label">Sitio<small>Portafolio y cotizaciones</small></span>
+                                <span class="settings__count">2</span>
+                            </button>
+                        </nav>
+                        <p class="settings__foot" aria-hidden="true"><span>Esc cierra</span><span>‹ vuelve</span></p>
+                    </section>
+
+                    <section class="settings__win" data-menu-win="personaje" aria-labelledby="menu-personaje" hidden style="--hue:190">
+                        <header class="settings__head">
+                            <button class="settings__back" type="button" data-menu-back aria-label="Volver">‹</button>
+                            <div class="settings__titles">
+                                <p class="settings__crumb">Ajustes / Personaje</p>
+                                <h2 id="menu-personaje">Personaje</h2>
+                            </div>
+                            <button class="settings__close" type="button" data-menu-close aria-label="Cerrar ajustes">✕</button>
+                        </header>
+                        <div class="settings__list">
+                            <button class="settings__item" type="button" data-avatar-open data-desc="Elige con quién paseas">🧍 Cambiar personaje</button>
+                            <button class="settings__item" type="button" data-bot-open data-desc="Un personaje con tu propia IA">🤖 Mi personaje IA</button>
+                            <button class="settings__item" type="button" data-fp data-desc="Mira el mundo con sus ojos" aria-pressed="false">👁 Vista en primera persona</button>
+                        </div>
+                    </section>
+
+                    <section class="settings__win" data-menu-win="crear" aria-labelledby="menu-crear" hidden style="--hue:270">
+                        <header class="settings__head">
+                            <button class="settings__back" type="button" data-menu-back aria-label="Volver">‹</button>
+                            <div class="settings__titles">
+                                <p class="settings__crumb">Ajustes / Crear</p>
+                                <h2 id="menu-crear">Crear en el mundo</h2>
+                            </div>
+                            <button class="settings__close" type="button" data-menu-close aria-label="Cerrar ajustes">✕</button>
+                        </header>
+                        <div class="settings__list">
+                            <button class="settings__item" type="button" data-sign-open data-desc="Letrero con texto, imagen o enlace">📌 Publicar</button>
+                            <button class="settings__item" type="button" data-hole-open data-desc="Un portal hacia otro universo">🌀 Crear puente de Einstein-Rosen</button>
+                            <button class="settings__item" type="button" data-stats-open data-desc="Datos de una API en un gráfico 3D">📊 Estadísticas</button>
+                        </div>
+                    </section>
+
+                    <section class="settings__win" data-menu-win="cuenta" aria-labelledby="menu-cuenta" hidden style="--hue:320">
+                        <header class="settings__head">
+                            <button class="settings__back" type="button" data-menu-back aria-label="Volver">‹</button>
+                            <div class="settings__titles">
+                                <p class="settings__crumb">Ajustes / Cuenta</p>
+                                <h2 id="menu-cuenta">Cuenta</h2>
+                            </div>
+                            <button class="settings__close" type="button" data-menu-close aria-label="Cerrar ajustes">✕</button>
+                        </header>
+                        <div class="settings__list">
+                            <button class="settings__item" type="button" data-my-profile data-desc="Nombre, foto y contacto">🪪 Mi perfil</button>
+                            <button class="settings__item settings__item--danger" type="button" data-logout data-desc="Salir en este dispositivo">🚪 Cerrar sesión</button>
+                        </div>
+                    </section>
+
+                    <section class="settings__win" data-menu-win="sitio" aria-labelledby="menu-sitio" hidden style="--hue:150">
+                        <header class="settings__head">
+                            <button class="settings__back" type="button" data-menu-back aria-label="Volver">‹</button>
+                            <div class="settings__titles">
+                                <p class="settings__crumb">Ajustes / Sitio</p>
+                                <h2 id="menu-sitio">Sitio</h2>
+                            </div>
+                            <button class="settings__close" type="button" data-menu-close aria-label="Cerrar ajustes">✕</button>
+                        </header>
+                        <div class="settings__list">
+                            <a class="settings__item" href="portafolio/" data-desc="Proyectos y experiencia">🧑‍💻 Ver portafolio</a>
+                            <a class="settings__item" href="cotizaciones/" data-desc="Precios y servicios">🧾 Cotizaciones</a>
+                        </div>
+                    </section>
                 </div>
-                <!-- Para agregar una opción: otro botón .settings__item en el grupo que corresponda. -->
-                <section class="settings__group">
-                    <h3>Conversar</h3>
-                    <div class="settings__grid">
-                        <button class="settings__item" type="button" data-talk data-agent-id="agent_7001kxsnr66mej8tctnrrcrwtd6c" aria-label="Hablar con Ruddy por voz" aria-pressed="false">📞 Hablar con Ruddy</button>
-                        <button class="settings__item" type="button" data-chat-open aria-expanded="false">💬 Escribir un mensaje</button>
-                    </div>
-                </section>
-                <section class="settings__group">
-                    <h3>Mundo</h3>
-                    <div class="settings__grid">
-                        <button class="settings__item" type="button" data-avatar-open>🧍 Cambiar personaje</button>
-                        <button class="settings__item" type="button" data-bot-open>🤖 Mi personaje IA</button>
-                        <button class="settings__item" type="button" data-fp aria-pressed="false">👁 Vista en primera persona</button>
-                        <button class="settings__item" type="button" data-hole-open>🌀 Crear puente de Einstein-Rosen</button>
-                        <button class="settings__item" type="button" data-sign-open>📌 Publicar</button>
-                        <button class="settings__item" type="button" data-stats-open>📊 Estadísticas</button>
-                    </div>
-                </section>
-                <section class="settings__group">
-                    <h3>Cuenta</h3>
-                    <div class="settings__grid">
-                        <button class="settings__item" type="button" data-my-profile>🪪 Mi perfil</button>
-                        <button class="settings__item" type="button" data-logout>🚪 Cerrar sesión</button>
-                    </div>
-                </section>
-                <section class="settings__group">
-                    <h3>Sitio</h3>
-                    <div class="settings__grid">
-                        <a class="settings__item" href="portafolio/">🧑‍💻 Ver portafolio</a>
-                        <a class="settings__item" href="cotizaciones/">🧾 Cotizaciones</a>
-                    </div>
-                </section>
             </div>
         </div>
     </header>
@@ -363,7 +429,7 @@
         <p data-scene-desc></p>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=62"></script>
+    <script type="module" src="world.js?v=63"></script>
     <script type="module" src="portafolio/firebase.js"></script>
 </body>
 </html>
