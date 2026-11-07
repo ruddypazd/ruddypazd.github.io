@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=60">
+    <link rel="stylesheet" href="style.css?v=61">
     <script type="importmap">
     {
         "imports": {
@@ -219,7 +219,22 @@
             <div class="stats__main" data-stats-main hidden>
                 <form class="stats__step" data-stats-req autocomplete="off">
                     <h3>1 · Petición HTTP</h3>
-                    <label>Petición<select name="saved" data-stats-saved></select></label>
+                    <div class="stats__reqs">
+                        <div class="stats__reqs-head">
+                            <span>Tus peticiones</span>
+                            <span class="stats__reqs-btns">
+                                <button class="login__back stats__add" type="button" data-stats-curl-open aria-expanded="false">Importar cURL</button>
+                                <button class="login__back stats__add" type="button" data-stats-new>+ Nueva petición</button>
+                            </span>
+                        </div>
+                        <div class="stats__curl" data-stats-curl hidden>
+                            <label>Pega el comando curl<textarea name="curl" rows="5" spellcheck="false" placeholder="curl 'https://api.mi-sistema.com/ventas' -H 'Authorization: Bearer …'"></textarea></label>
+                            <button class="chat__send stats__secondary" type="button" data-stats-curl-apply>Armar la petición</button>
+                        </div>
+                        <ul data-stats-req-list></ul>
+                        <select name="saved" data-stats-saved hidden aria-hidden="true" tabindex="-1"></select>
+                        <p class="login__note" data-stats-req-mode>Nueva petición</p>
+                    </div>
                     <label>Nombre<input name="name" maxlength="60" placeholder="Ventas del mes" required></label>
                     <div class="stats__row">
                         <label>Método<select name="method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></label>
@@ -276,6 +291,12 @@
                     <h3>Gráficos en el mundo</h3>
                     <ul></ul>
                 </div>
+                <div class="holes stats__views" data-stats-views hidden>
+                    <h3 data-stats-views-title>Quién tocó tu gráfico</h3>
+                    <p class="login__note" data-stats-views-empty hidden>Todavía nadie lo tocó.</p>
+                    <ol></ol>
+                    <button class="login__back" type="button" data-stats-views-close>Ocultar lista</button>
+                </div>
             </div>
             <p class="login__note bot__status" data-stats-status hidden></p>
             <p class="login__error" data-stats-error hidden></p>
@@ -289,7 +310,11 @@
             <h2 id="chart-view-title" data-chart-title></h2>
             <p class="profile__status chart-view__sub" data-chart-sub></p>
             <div class="stats__table" data-chart-table></div>
-            <button class="chat__send" type="button" data-chart-close>Cerrar</button>
+            <p class="login__note chart-view__note" data-chart-note hidden></p>
+            <div class="chart-view__actions">
+                <button class="chat__send stats__secondary" type="button" data-chart-refresh>↻ Actualizar</button>
+                <button class="chat__send" type="button" data-chart-close>Cerrar</button>
+            </div>
         </div>
     </div>
     <div class="login login--scroll" data-sign-box role="dialog" aria-modal="true" aria-labelledby="sign-title" hidden>
@@ -336,7 +361,7 @@
         <p data-scene-desc></p>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=60"></script>
+    <script type="module" src="world.js?v=61"></script>
     <script type="module" src="portafolio/firebase.js"></script>
 </body>
 </html>

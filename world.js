@@ -2310,7 +2310,7 @@ function addChart(c) {
     const hitH = top + h;
     const hit = new THREE.Mesh(new THREE.BoxGeometry(width, hitH, 1.8), new THREE.MeshBasicMaterial({ visible: false }));
     hit.position.y = hitH / 2;
-    hit.userData = { hint: `Ver los datos de «${c.title}»`, action: () => openChart(c.id) };
+    hit.userData = { hint: `Ver los datos de «${c.title}»`, action: () => tapChart(c.id) };
     group.add(hit);
     clickable.push(hit);
 
@@ -2320,7 +2320,7 @@ function addChart(c) {
     const grow = chartGrowth.get(c.id) ?? 0;
     body.scale.y = Math.max(0.001, grow);
     charts.set(c.id, { data: c, group, body, hits: [hit], grow });
-    if (chartView.dataset.id === c.id && !chartView.hidden) openChart(c.id);
+    if (chartView.dataset.id === c.id && !chartView.hidden) openChart(c.id, true);
 }
 const chartGrowth = new Map();
 
@@ -2360,16 +2360,48 @@ function chartTableHtml(d, colors = true) {
     return `<table><thead><tr><th>${esc(d.rows || '')}</th>${head}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-function openChart(id) {
+const REFRESH_NAMES = { 5: 'cada 5 min', 15: 'cada 15 min', 30: 'cada 30 min', 60: 'cada hora', 360: 'cada 6 horas', 1440: 'cada día' };
+const chartNote = chartView.querySelector('[data-chart-note]');
+const chartRefreshBtn = chartView.querySelector('[data-chart-refresh]');
+function chartViewNote(text) { chartNote.hidden = !text; chartNote.textContent = text || ''; }
+
+// Tocar un gráfico abre su tabla y le avisa al servidor: su dueño ve quién lo tocó y cuándo.
+function tapChart(id) {
+    openChart(id);
+    net.send({ type: 'chart_view', id });
+}
+
+// Muestra el último resultado guardado; «Actualizar» vuelve a pedir los datos en el servidor.
+function openChart(id, keepNote = false) {
     const c = charts.get(id)?.data;
     if (!c) return;
+    if (chartView.dataset.id !== id) keepNote = false;
     chartView.dataset.id = id;
     chartView.querySelector('[data-chart-title]').textContent = c.title;
-    chartView.querySelector('[data-chart-sub]').textContent = `${chartSubtitle(c.data)} · ${c.owner_name || ''} · actualizado ${formatDate(c.updated_at)}`;
+    const auto = REFRESH_NAMES[c.refresh_min] ? `se actualiza solo ${REFRESH_NAMES[c.refresh_min]}` : 'se actualiza al tocar «Actualizar»';
+    chartView.querySelector('[data-chart-sub]').textContent =
+        `${chartSubtitle(c.data)} · ${c.owner_name || ''} · datos del ${formatDate(c.refreshed_at || c.updated_at)} · ${auto}`;
     chartView.querySelector('[data-chart-table]').innerHTML = chartTableHtml(c.data);
+    if (!keepNote) { chartViewNote(''); chartRefreshBtn.disabled = false; }
     chartView.hidden = false;
 }
 chartView.querySelector('[data-chart-close]').addEventListener('click', () => { chartView.hidden = true; });
+chartRefreshBtn.addEventListener('click', () => {
+    if (!net.loggedIn) return chartViewNote('Sin conexión con el servidor. Prueba otra vez en un momento.');
+    chartRefreshBtn.disabled = true;
+    chartViewNote('Pidiendo datos nuevos…');
+    net.send({ type: 'chart_refresh', id: chartView.dataset.id });
+});
+net.on('chart_refresh_wait', (m) => {
+    if (m.id !== chartView.dataset.id) return;
+    chartRefreshBtn.disabled = false;
+    chartViewNote(`Se acaba de actualizar. Prueba otra vez en ${m.seconds} s.`);
+});
+net.on('chart_refresh_error', (m) => {
+    if (m.id !== chartView.dataset.id) return;
+    chartRefreshBtn.disabled = false;
+    chartViewNote(`No se pudo actualizar: ${m.message}`);
+});
 chartView.addEventListener('click', (e) => { if (e.target === chartView) chartView.hidden = true; });
 
 net.on('charts', (m) => {
@@ -2377,7 +2409,11 @@ net.on('charts', (m) => {
     for (const id of [...charts.keys()]) if (!ids.has(id)) removeChart(id);
     m.charts.forEach(addChart);
 });
-net.on('chart', (m) => addChart(m.chart));
+net.on('chart', (m) => {
+    const mine = m.refreshed && m.chart.id === chartView.dataset.id && !chartView.hidden;
+    addChart(m.chart);   // si la tabla está abierta, addChart la vuelve a llenar
+    if (mine) { chartRefreshBtn.disabled = false; chartViewNote('Listo: estos son los datos de ahora.'); }
+});
 net.on('chart_removed', (m) => { removeChart(m.id); chartGrowth.delete(m.id); if (chartView.dataset.id === m.id) chartView.hidden = true; });
 
 // Panel del dueño (Ajustes → Estadísticas).
@@ -2450,17 +2486,174 @@ function fillRequestForm(r) {
     (r?.headers?.length ? r.headers : [{}]).forEach(addHeaderRow);
     syncMethod();
     reqForm.querySelector('[data-stats-delete]').hidden = !r?.id;
+    renderReqList();
     statsResponse.hidden = pivotForm.hidden = chartForm.hidden = true;
     stats.fields = [];
 }
 function syncMethod() { statsBox.querySelector('[data-stats-body-label]').hidden = reqForm.method.value === 'GET'; }
 reqForm.method.addEventListener('change', syncMethod);
 
+// Lista de las peticiones guardadas: tocar una la abre para probarla o editarla; «+ Nueva
+// petición» deja el formulario en blanco y «Guardar» crea otra en vez de cambiar la abierta.
+const reqList = statsBox.querySelector('[data-stats-req-list]');
 function renderSavedSelect() {
     const current = reqForm.saved.value;
     reqForm.saved.replaceChildren(new Option('Nueva petición', ''), ...stats.requests.map((r) => new Option(`${r.name} · ${r.method}`, r.id)));
     reqForm.saved.value = stats.requests.some((r) => r.id === current) ? current : '';
+    renderReqList();
 }
+function renderReqList() {
+    const current = reqForm.saved.value;
+    reqList.replaceChildren(...stats.requests.map((r) => {
+        const li = document.createElement('li');
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'stats__req';
+        b.setAttribute('aria-pressed', String(r.id === current));
+        const name = document.createElement('span');
+        name.textContent = r.name;
+        const info = document.createElement('small');
+        let host = r.url;
+        try { host = new URL(r.url).host + new URL(r.url).pathname; } catch { /* URL rara: se muestra entera */ }
+        const used = stats.charts.filter((c) => c.request_id === r.id).length;
+        info.textContent = `${r.method} ${host}${used ? ` · ${used} gráfico${used > 1 ? 's' : ''}` : ''}`;
+        b.append(name, info);
+        b.addEventListener('click', () => fillRequestForm(r));
+        li.append(b);
+        return li;
+    }));
+    const open = stats.requests.find((r) => r.id === current);
+    statsBox.querySelector('[data-stats-req-mode]').textContent = open
+        ? `Editando «${open.name}». «Guardar» cambia esta petición.`
+        : 'Nueva petición: «Guardar» la agrega a tu lista.';
+}
+// Importar cURL: se pega el comando (p. ej. «Copy as cURL» del navegador o de Postman) y se
+// arma una petición nueva con su método, URL, headers y body, lista para probar y guardar.
+function shellWords(text) {
+    const words = [];
+    let cur = null, i = 0;
+    const src = text.replace(/\\\r?\n/g, ' ').replace(/\^\r?\n/g, ' ');   // líneas cortadas con \ (o ^ en Windows)
+    while (i < src.length) {
+        const ch = src[i];
+        if (/\s/.test(ch)) { if (cur !== null) { words.push(cur); cur = null; } i++; continue; }
+        cur ??= '';
+        if (ch === "'") {
+            const end = src.indexOf("'", i + 1);
+            cur += src.slice(i + 1, end < 0 ? undefined : end);
+            i = end < 0 ? src.length : end + 1;
+        } else if (ch === '$' && src[i + 1] === "'") {   // $'...' con escapes
+            let j = i + 2;
+            while (j < src.length && src[j] !== "'") {
+                if (src[j] === '\\' && j + 1 < src.length) {
+                    const n = src[j + 1];
+                    cur += { n: '\n', t: '\t', r: '\r' }[n] ?? n;
+                    j += 2;
+                } else cur += src[j++];
+            }
+            i = j + 1;
+        } else if (ch === '"') {
+            let j = i + 1;
+            while (j < src.length && src[j] !== '"') {
+                if (src[j] === '\\' && /["\\$`]/.test(src[j + 1] || '')) { cur += src[j + 1]; j += 2; } else cur += src[j++];
+            }
+            i = j + 1;
+        } else if (ch === '\\' && i + 1 < src.length) { cur += src[i + 1]; i += 2; }
+        else { cur += ch; i++; }
+    }
+    if (cur !== null) words.push(cur);
+    return words;
+}
+function parseCurl(text) {
+    const w = shellWords(text.trim());
+    if (!w.length || !/^curl(\.exe)?$/i.test(w[0])) throw new Error('El texto tiene que empezar con curl.');
+    const req = { method: '', url: '', headers: [], body: '' };
+    const data = [];
+    let forceGet = false;
+    const takes = new Set(['-X', '--request', '-H', '--header', '-d', '--data', '--data-raw', '--data-binary', '--data-ascii',
+        '--data-urlencode', '--json', '-u', '--user', '--url', '-A', '--user-agent', '-e', '--referer', '-b', '--cookie',
+        '-o', '--output', '-m', '--max-time', '--connect-timeout', '-x', '--proxy', '-w', '--write-out', '-F', '--form']);
+    for (let i = 1; i < w.length; i++) {
+        let flag = w[i], val = null;
+        const eq = flag.startsWith('--') ? flag.indexOf('=') : -1;
+        if (eq > 0) { val = flag.slice(eq + 1); flag = flag.slice(0, eq); }
+        else if (/^-[XHdueAb]./.test(flag)) { val = flag.slice(2); flag = flag.slice(0, 2); }   // -XPOST, -H'…'
+        if (flag.startsWith('-') && takes.has(flag) && val === null) val = w[++i] ?? '';
+        switch (flag) {
+            case '-X': case '--request': req.method = val.toUpperCase(); break;
+            case '-H': case '--header': {
+                const k = val.indexOf(':');
+                if (k > 0) req.headers.push({ name: val.slice(0, k).trim(), value: val.slice(k + 1).trim() });
+                break;
+            }
+            case '-d': case '--data': case '--data-raw': case '--data-binary': case '--data-ascii': case '--data-urlencode':
+                data.push(val); break;
+            case '--json':
+                data.push(val);
+                if (!req.headers.some((h) => /^content-type$/i.test(h.name))) req.headers.push({ name: 'Content-Type', value: 'application/json' });
+                if (!req.headers.some((h) => /^accept$/i.test(h.name))) req.headers.push({ name: 'Accept', value: 'application/json' });
+                break;
+            case '-u': case '--user': req.headers.push({ name: 'Authorization', value: `Basic ${btoa(unescape(encodeURIComponent(val)))}` }); break;
+            case '-A': case '--user-agent': req.headers.push({ name: 'User-Agent', value: val }); break;
+            case '-e': case '--referer': req.headers.push({ name: 'Referer', value: val }); break;
+            case '-b': case '--cookie': req.headers.push({ name: 'Cookie', value: val }); break;
+            case '-G': case '--get': forceGet = true; break;
+            case '-F': case '--form': throw new Error('Los formularios con archivos (-F) no se pueden importar.');
+            case '--url': req.url = val; break;
+            default:
+                if (!flag.startsWith('-') && !req.url) req.url = flag;
+        }
+    }
+    if (!req.url) throw new Error('No encontré la URL en el comando.');
+    if (!/^https?:\/\//i.test(req.url)) req.url = `https://${req.url}`;
+    const body = data.join('&');
+    if (forceGet && body) { req.url += (req.url.includes('?') ? '&' : '?') + body; }
+    else req.body = body;
+    req.method = req.method || (req.body ? 'POST' : 'GET');
+    let name = 'Petición importada';
+    try {
+        const u = new URL(req.url);
+        name = u.pathname.split('/').filter(Boolean).pop() || u.host;
+    } catch { /* se queda el nombre genérico */ }
+    req.name = name.slice(0, 60);
+    return req;
+}
+const curlBox = statsBox.querySelector('[data-stats-curl]');
+const curlOpen = statsBox.querySelector('[data-stats-curl-open]');
+curlOpen.addEventListener('click', () => {
+    curlBox.hidden = !curlBox.hidden;
+    curlOpen.setAttribute('aria-expanded', String(!curlBox.hidden));
+    if (!curlBox.hidden) curlBox.querySelector('textarea').focus();
+});
+statsBox.querySelector('[data-stats-curl-apply]').addEventListener('click', () => {
+    const area = curlBox.querySelector('textarea');
+    let req;
+    try { req = parseCurl(area.value); } catch (err) { return statsMessage(err.message); }
+    stats.editing = null;
+    syncEditing();
+    fillRequestForm(null);   // siempre una petición nueva: «Guardar» la agrega a tu lista
+    reqForm.name.value = req.name;
+    reqForm.method.value = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) ? req.method : 'GET';
+    reqForm.url.value = req.url;
+    reqForm.body.value = req.body;
+    statsHeaders.replaceChildren();
+    (req.headers.length ? req.headers : [{}]).forEach((h) => {
+        addHeaderRow({ name: h.name });
+        if (h.value) statsHeaders.lastElementChild.querySelectorAll('input')[1].value = h.value;
+    });
+    syncMethod();
+    area.value = '';
+    curlBox.hidden = true;
+    curlOpen.setAttribute('aria-expanded', 'false');
+    statsMessage('', `Listo: ${req.method} con ${req.headers.length} header${req.headers.length === 1 ? '' : 's'}. Pruébala y toca «Guardar».`);
+});
+
+statsBox.querySelector('[data-stats-new]').addEventListener('click', () => {
+    stats.editing = null;
+    syncEditing();
+    fillRequestForm(null);
+    chartForm.title.value = '';
+    reqForm.name.focus();
+});
 reqForm.saved.addEventListener('change', () => fillRequestForm(stats.requests.find((r) => r.id === reqForm.saved.value)));
 statsBox.querySelector('[data-stats-add-header]').addEventListener('click', () => addHeaderRow());
 
@@ -2477,6 +2670,7 @@ function renderChartsList() {
             const b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = text;
             b.addEventListener('click', () => fn(b)); btns.append(b);
         };
+        mk(`Visitas (${c.views || 0})`, () => net.send({ type: 'stats_chart_views', id: c.id }));
         mk('Editar', () => editChart(c));
         mk('Actualizar', () => { statsMessage('', 'Actualizando…'); net.send({ type: 'stats_chart_refresh', id: c.id }); });
         mk('Borrar', (b) => {
@@ -2675,11 +2869,31 @@ net.on('stats_state', (m) => {
             statsHeaders.replaceChildren();
             (saved.headers.length ? saved.headers : [{}]).forEach(addHeaderRow);
         }
+        renderReqList();
     }
     renderChartsList();
     syncEditing();
     if (!statsStatus.hidden && /Actualizando/.test(statsStatus.textContent)) statsMessage('', 'Listo.');
 });
+// Lista de quién tocó un gráfico: una fila por toque, lo más reciente arriba.
+const viewsBox = statsBox.querySelector('[data-stats-views]');
+net.on('stats_chart_views', (m) => {
+    viewsBox.querySelector('[data-stats-views-title]').textContent = `Quién tocó «${m.title}» (${m.views.length})`;
+    viewsBox.querySelector('[data-stats-views-empty]').hidden = m.views.length > 0;
+    viewsBox.querySelector('ol').replaceChildren(...m.views.map((v) => {
+        const li = document.createElement('li');
+        const who = document.createElement('span');
+        who.textContent = v.name || 'Visitante';
+        const when = document.createElement('small');
+        when.textContent = formatDate(v.at);
+        li.append(who, when);
+        return li;
+    }));
+    viewsBox.hidden = false;
+    viewsBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+});
+viewsBox.querySelector('[data-stats-views-close]').addEventListener('click', () => { viewsBox.hidden = true; });
+
 net.on('stats_saved', (m) => {
     // El estado llega justo después: ahí se elige esta petición y se ocultan los valores escritos.
     stats.selectAfter = m.id;
