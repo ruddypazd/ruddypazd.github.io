@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=64">
+    <link rel="stylesheet" href="style.css?v=65">
     <script type="importmap">
     {
         "imports": {
@@ -273,8 +273,8 @@
     </div>
     <div class="login login--scroll" data-stats-box role="dialog" aria-modal="true" aria-labelledby="stats-title" hidden>
         <div class="login__card stats">
-            <p class="totem-panel__tag">Estadísticas</p>
-            <h2 id="stats-title">Gráficos 3D con tus datos</h2>
+            <p class="totem-panel__tag" data-stats-intro>Estadísticas</p>
+            <h2 id="stats-title" data-stats-intro>Gráficos 3D con tus datos</h2>
             <form class="stats__auth" data-stats-auth autocomplete="off">
                 <p class="login__note" data-stats-auth-note>Tus peticiones y sus credenciales se guardan y se ejecutan en el servidor, protegidas con tu propia clave. Los demás solo ven los números de tus gráficos.</p>
                 <label><span data-stats-key-label>Tu clave de estadísticas</span><input name="key" type="password" autocomplete="current-password" spellcheck="false" required></label>
@@ -283,50 +283,105 @@
                 <button class="chat__send" type="submit">Entrar</button>
                 <button class="login__back" type="button" data-stats-forgot hidden>Olvidé mi clave</button>
             </form>
+            <!-- Estadísticas en pantallas: lista → petición → datos y tabla → gráfico. «‹» vuelve a la anterior. -->
             <div class="stats__main" data-stats-main hidden>
-                <form class="stats__step" data-stats-req autocomplete="off">
-                    <h3>1 · Petición HTTP</h3>
-                    <div class="stats__reqs">
-                        <div class="stats__reqs-head">
-                            <span>Tus peticiones</span>
-                            <span class="stats__reqs-btns">
-                                <button class="login__back stats__add" type="button" data-stats-curl-open aria-expanded="false">Importar cURL</button>
-                                <button class="login__back stats__add" type="button" data-stats-new>+ Nueva petición</button>
-                            </span>
+                <section class="stats__screen" data-stats-screen="home">
+                    <header class="stats__head">
+                        <div class="settings__titles">
+                            <p class="settings__crumb">Estadísticas</p>
+                            <h3 class="stats__title">Tus peticiones HTTP</h3>
                         </div>
-                        <div class="stats__curl" data-stats-curl hidden>
-                            <label>Pega el comando curl<textarea name="curl" rows="5" spellcheck="false" placeholder="curl 'https://api.mi-sistema.com/ventas' -H 'Authorization: Bearer …'"></textarea></label>
-                            <button class="chat__send stats__secondary" type="button" data-stats-curl-apply>Armar la petición</button>
+                    </header>
+                    <div class="stats__reqs-btns">
+                        <button class="chat__send" type="button" data-stats-new>+ Nueva petición</button>
+                        <button class="chat__send stats__secondary" type="button" data-stats-curl-open aria-expanded="false">Importar cURL</button>
+                    </div>
+                    <div class="stats__curl" data-stats-curl hidden>
+                        <label>Pega el comando curl<textarea name="curl" rows="5" spellcheck="false" placeholder="curl 'https://api.mi-sistema.com/ventas' -H 'Authorization: Bearer …'"></textarea></label>
+                        <button class="chat__send stats__secondary" type="button" data-stats-curl-apply>Armar la petición</button>
+                    </div>
+                    <ul class="stats__reqs" data-stats-req-list></ul>
+                    <button class="stats__req stats__req--link" type="button" data-stats-go-charts>
+                        <span>📈 Tus gráficos en el mundo</span>
+                        <small data-stats-charts-count>Ninguno todavía</small>
+                    </button>
+                </section>
+
+                <section class="stats__screen" data-stats-screen="detail" hidden>
+                    <header class="stats__head">
+                        <button class="settings__back stats__back" type="button" data-stats-back aria-label="Volver">‹</button>
+                        <div class="settings__titles">
+                            <p class="settings__crumb">Estadísticas / Petición</p>
+                            <h3 class="stats__title" data-stats-title-detail>Petición</h3>
                         </div>
-                        <ul data-stats-req-list></ul>
+                    </header>
+                    <dl class="stats__facts" data-stats-detail></dl>
+                    <div class="stats__menu">
+                        <button class="chat__send" type="button" data-stats-fetch>⇣ Traer la data</button>
+                        <button class="chat__send" type="button" data-stats-make-chart>📊 Crear gráfico</button>
+                        <button class="chat__send stats__secondary" type="button" data-stats-edit>✎ Editar</button>
+                        <button class="holes__delete" type="button" data-stats-delete>Eliminar</button>
+                    </div>
+                    <div class="holes" data-stats-detail-charts hidden>
+                        <h3>Gráficos con esta petición</h3>
+                        <ul></ul>
+                    </div>
+                </section>
+
+                <section class="stats__screen" data-stats-screen="edit" hidden>
+                    <header class="stats__head">
+                        <button class="settings__back stats__back" type="button" data-stats-back aria-label="Volver">‹</button>
+                        <div class="settings__titles">
+                            <p class="settings__crumb">Estadísticas / Editar</p>
+                            <h3 class="stats__title" data-stats-title-edit>Nueva petición</h3>
+                        </div>
+                    </header>
+                    <form class="stats__step" data-stats-req autocomplete="off">
                         <select name="saved" data-stats-saved hidden aria-hidden="true" tabindex="-1"></select>
-                        <p class="login__note" data-stats-req-mode>Nueva petición</p>
-                    </div>
-                    <label>Nombre<input name="name" maxlength="60" placeholder="Ventas del mes" required></label>
-                    <div class="stats__row">
-                        <label>Método<select name="method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></label>
-                        <label>URL<input name="url" type="text" inputmode="url" maxlength="2000" placeholder="https://api.mi-sistema.com/ventas" spellcheck="false" required></label>
-                    </div>
-                    <fieldset class="bot__field">
-                        <legend>Headers</legend>
-                        <div class="stats__headers" data-stats-headers></div>
-                        <button class="login__back stats__add" type="button" data-stats-add-header>+ Agregar header</button>
-                    </fieldset>
-                    <label data-stats-body-label hidden>Body<textarea name="body" rows="4" maxlength="20000" spellcheck="false" placeholder='{"desde": "2026-01-01"}'></textarea></label>
-                    <label>Ruta de los registros (opcional)<input name="records_path" maxlength="200" placeholder="data.items" spellcheck="false"></label>
-                    <div class="stats__actions">
-                        <button class="chat__send" type="submit">Probar</button>
-                        <button class="chat__send stats__secondary" type="button" data-stats-save>Guardar</button>
-                        <button class="holes__delete" type="button" data-stats-delete hidden>Borrar</button>
-                    </div>
-                </form>
+                        <label>Nombre<input name="name" maxlength="60" placeholder="Ventas del mes" required></label>
+                        <div class="stats__row">
+                            <label>Método<select name="method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></label>
+                            <label>URL<input name="url" type="text" inputmode="url" maxlength="2000" placeholder="https://api.mi-sistema.com/ventas" spellcheck="false" required></label>
+                        </div>
+                        <fieldset class="bot__field">
+                            <legend>Headers</legend>
+                            <div class="stats__headers" data-stats-headers></div>
+                            <button class="login__back stats__add" type="button" data-stats-add-header>+ Agregar header</button>
+                        </fieldset>
+                        <label data-stats-body-label hidden>Body<textarea name="body" rows="4" maxlength="20000" spellcheck="false" placeholder='{"desde": "2026-01-01"}'></textarea></label>
+                        <label>Ruta de los registros (opcional)<input name="records_path" maxlength="200" placeholder="data.items" spellcheck="false"></label>
+                        <div class="stats__actions">
+                            <button class="chat__send" type="button" data-stats-save>Guardar</button>
+                            <button class="chat__send stats__secondary" type="submit">Probar</button>
+                        </div>
+                    </form>
+                </section>
+
+                <section class="stats__screen" data-stats-screen="data" hidden>
+                    <header class="stats__head">
+                        <button class="settings__back stats__back" type="button" data-stats-back aria-label="Volver">‹</button>
+                        <div class="settings__titles">
+                            <p class="settings__crumb">Estadísticas / Datos</p>
+                            <h3 class="stats__title" data-stats-title-data>La data</h3>
+                        </div>
+                    </header>
                 <section class="stats__step" data-stats-response hidden>
-                    <h3>2 · Respuesta</h3>
                     <p class="login__note" data-stats-summary></p>
                     <details class="stats__raw"><summary>Ver la respuesta</summary><pre data-stats-raw></pre></details>
                 </section>
+                    <button class="chat__send" type="button" data-stats-to-chart hidden>📊 Crear un gráfico con esta data ›</button>
+                </section>
+
+                <section class="stats__screen" data-stats-screen="chart" hidden>
+                    <header class="stats__head">
+                        <button class="settings__back stats__back" type="button" data-stats-back aria-label="Volver">‹</button>
+                        <div class="settings__titles">
+                            <p class="settings__crumb">Estadísticas / Gráfico</p>
+                            <h3 class="stats__title" data-stats-title-chart>Gráfico 3D</h3>
+                        </div>
+                    </header>
                 <form class="stats__step" data-stats-pivot hidden>
-                    <h3>3 · Tabla dinámica</h3>
+                    <h3>Tabla dinámica</h3>
                     <div class="stats__row">
                         <label>Filas (agrupar por)<select name="rows"></select></label>
                         <label>Fechas<select name="date"><option value="">Tal cual</option><option value="day">Por día</option><option value="month">Por mes</option><option value="year">Por año</option></select></label>
@@ -343,7 +398,6 @@
                     <div class="stats__table" data-stats-table></div>
                 </form>
                 <form class="stats__step" data-stats-chart hidden autocomplete="off">
-                    <h3>4 · Gráfico 3D</h3>
                     <label>Título<input name="title" maxlength="60" placeholder="Ventas por sucursal" required></label>
                     <label>Descripción (opcional)<textarea name="description" rows="3" maxlength="600" placeholder="Explica qué muestra el gráfico, de dónde salen los datos o cómo leerlo."></textarea></label>
                     <div class="stats__row">
@@ -355,16 +409,34 @@
                     <button class="chat__send" type="submit">Poner el gráfico delante de mí</button>
                     <button class="login__back" type="button" data-stats-cancel-edit hidden>Cancelar edición</button>
                 </form>
-                <div class="holes" data-stats-charts hidden>
-                    <h3>Gráficos en el mundo</h3>
-                    <ul></ul>
-                </div>
-                <div class="holes stats__views" data-stats-views hidden>
-                    <h3 data-stats-views-title>Quién tocó tu gráfico</h3>
-                    <p class="login__note" data-stats-views-empty hidden>Todavía nadie lo tocó.</p>
-                    <ol></ol>
-                    <button class="login__back" type="button" data-stats-views-close>Ocultar lista</button>
-                </div>
+                </section>
+
+                <section class="stats__screen" data-stats-screen="charts" hidden>
+                    <header class="stats__head">
+                        <button class="settings__back stats__back" type="button" data-stats-back aria-label="Volver">‹</button>
+                        <div class="settings__titles">
+                            <p class="settings__crumb">Estadísticas / Gráficos</p>
+                            <h3 class="stats__title">Tus gráficos en el mundo</h3>
+                        </div>
+                    </header>
+                    <div class="holes" data-stats-charts>
+                        <ul></ul>
+                    </div>
+                </section>
+
+                <section class="stats__screen" data-stats-screen="views" hidden>
+                    <header class="stats__head">
+                        <button class="settings__back stats__back" type="button" data-stats-back aria-label="Volver">‹</button>
+                        <div class="settings__titles">
+                            <p class="settings__crumb">Estadísticas / Visitas</p>
+                            <h3 class="stats__title" data-stats-views-title>Quién tocó tu gráfico</h3>
+                        </div>
+                    </header>
+                    <div class="holes stats__views" data-stats-views>
+                        <p class="login__note" data-stats-views-empty hidden>Todavía nadie lo tocó.</p>
+                        <ol></ol>
+                    </div>
+                </section>
             </div>
             <p class="login__note bot__status" data-stats-status hidden></p>
             <p class="login__error" data-stats-error hidden></p>
@@ -475,7 +547,7 @@
         <p data-scene-desc></p>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=64"></script>
+    <script type="module" src="world.js?v=65"></script>
     <script type="module" src="portafolio/firebase.js"></script>
 </body>
 </html>
