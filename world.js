@@ -4,7 +4,6 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { createWormholes, buildUniverse, hueFor, HOLE_R } from './wormholes.js?v=47';
 
@@ -14,7 +13,6 @@ const loaderText = document.querySelector('[data-loader-text]');
 const modelNote = document.querySelector('[data-model-note]');
 
 // ---------- Renderer, escena y cámara ----------
-// alpha: el letrero de video abre un hueco transparente para ver el iframe que está detrás.
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -93,58 +91,23 @@ actors.add(ring);
 // Solo piso, luz y cielo: todo lo demás que se ve en cada escena viene del servidor.
 const obstacles = [];
 
-const clickable = [];   // cuadros y póster del video, para el clic
+const clickable = [];   // cuadros y demás objetos que se abren con un clic
 const poleMat = new THREE.MeshStandardMaterial({ color: 0x141a2e, roughness: 0.4, metalness: 0.6 });
 
-// ---------- Galería estilo museo: la pared de la publicidad ----------
-// Una pared al fondo con AD_SLOTS espacios para cuadros. Cada cuadro es una publicidad (imagen +
-// enlace) que alguien puso; el servidor guarda las de cada universo.
+// ---------- Galería: los espacios de la publicidad ----------
+// AD_SLOTS lugares en fila al fondo. Cada cuadro es una publicidad (imagen + enlace) que alguien
+// puso y que el servidor guarda; no hay pared fija: si no hay publicidad, no se ve nada.
 const AD_SLOTS = 12;
 const PAINT_W = 5.6, PAINT_H = 3.15, PAINT_GAP = 1.2, PAINT_BOTTOM = 2.5;
 const galleryWidth = AD_SLOTS * PAINT_W + (AD_SLOTS - 1) * PAINT_GAP;
 const slotX = (i) => -galleryWidth / 2 + PAINT_W / 2 + i * (PAINT_W + PAINT_GAP);
-// La pared mira al centro del mundo. Cuantos más cuadros, más ancha: se acerca al
+// La fila mira al centro del mundo. Cuantos más cuadros, más ancha: se acerca al
 // centro lo justo para que sus extremos sigan dentro del mundo.
 const GALLERY_Z = Math.min(40, Math.sqrt((WORLD_RADIUS - 1) ** 2 - (galleryWidth / 2 + 2) ** 2));
 const gallery = new THREE.Group();
 gallery.position.set(0, 0, GALLERY_Z);
 gallery.rotation.y = Math.PI;       // los cuadros miran hacia -z
 scene.add(gallery);
-{
-    const wall = new THREE.Mesh(
-        new THREE.BoxGeometry(galleryWidth + 4, 7.5, 0.4),
-        new THREE.MeshStandardMaterial({ color: 0x1c1a24, roughness: 0.9 })
-    );
-    wall.position.set(0, 3.75, -0.3);
-    wall.receiveShadow = true;
-    gallery.add(wall);
-    const signMesh = new THREE.Mesh(new THREE.PlaneGeometry(8, 1), new THREE.MeshBasicMaterial({ map: gallerySign('GALERÍA DE PUBLICIDAD'), transparent: true, toneMapped: false }));
-    gallery.userData.sign = signMesh;
-    signMesh.position.set(0, 6.6, -0.09);
-    gallery.add(signMesh);
-    gallery.updateMatrixWorld(true);
-    const p = new THREE.Vector3();
-    for (let x = -galleryWidth / 2 - 2; x <= galleryWidth / 2 + 2.01; x += 0.6) {
-        gallery.localToWorld(p.set(x, 0, -0.3));
-        obstacles.push({ x: p.x, z: p.z, r: 0.6 });
-    }
-    // Foco de museo sobre cada espacio (cuadro y ficha), haya o no publicidad.
-    for (let i = 0; i < AD_SLOTS; i++) {
-        const spot = new THREE.SpotLight(0xfff1d6, 60, 12, Math.PI / 5, 0.5, 1.2);
-        spot.position.set(slotX(i), PAINT_BOTTOM + PAINT_H + 1.8, 2.4);
-        spot.target.position.set(slotX(i), PAINT_BOTTOM + PAINT_H / 2 - 0.8, 0);
-        gallery.add(spot, spot.target);
-    }
-}
-
-function gallerySign(text) {
-    return makeLabelTexture(1024, 128, (c, w, h) => {
-        c.fillStyle = '#e9dcc0'; c.textAlign = 'center'; c.textBaseline = 'middle';
-        c.font = '600 64px "Space Grotesk", serif';
-        c.fillText(text, w / 2, h / 2);
-    });
-}
-
 function makeLabelTexture(w, h, draw) {
     const cv = document.createElement('canvas');
     cv.width = w; cv.height = h;
@@ -244,207 +207,6 @@ function makePainting(item) {
     piece.add(plaqueMesh);
     return { piece, hits: [canvasMesh] };
 }
-
-// ---------- Letrero de video (YouTube) a lo lejos: su audio es la música de fondo ----------
-// Un iframe no puede ser textura de WebGL. Se dibuja con CSS3DRenderer detrás del canvas y
-// un plano "agujero" en la escena deja ver el video, así Ruddy y los pilares lo tapan bien.
-// Arranca con este video y sigue con el resto de la lista de Roy, que se repite al terminar.
-const VIDEO_ID = 'xwtdhWltSIg';
-const PLAYLIST_ID = 'PLyyYs_E5nqBuSV2ARl6aTLMKOsRc3ms3Q';
-let videoTitle = 'Música de fondo';   // se cambia por el título real cuando YouTube lo avisa
-const VIDEO_W = 16;                    // ancho en metros (16:9); grande porque está lejos
-const VIDEO_H = VIDEO_W * 9 / 16;
-const VIDEO_PX = 1280;                 // ancho del iframe en píxeles CSS
-const VIDEO_BOTTOM = 2;
-const VIDEO_POS = new THREE.Vector3(0, 0, -48);
-
-const cssRenderer = new CSS3DRenderer();
-cssRenderer.setSize(window.innerWidth, window.innerHeight);
-cssRenderer.domElement.className = 'video-layer';
-document.body.prepend(cssRenderer.domElement);
-const cssScene = new THREE.Scene();
-
-// iOS no reproduce solo un iframe de YouTube (ni mudo), así que ahí arranca con sonido
-// cuando se toca su botón play; en el resto arranca mudo y suena con el primer gesto.
-const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent)
-    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const ytFrame = document.createElement('iframe');
-ytFrame.src = `https://www.youtube.com/embed/${VIDEO_ID}?enablejsapi=1${IS_IOS ? '' : '&autoplay=1&mute=1'}&loop=1`
-    + `&list=${PLAYLIST_ID}&controls=0&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3`
-    + `&origin=${encodeURIComponent(location.origin)}`;
-ytFrame.title = 'Video de fondo del Mundo 3D';
-ytFrame.allow = 'autoplay; encrypted-media';
-ytFrame.style.cssText = IS_IOS ? 'width:100%;aspect-ratio:16/9;border:0;background:#000;display:block'
-    : `width:${VIDEO_PX}px;height:${VIDEO_PX * 9 / 16}px;border:0;background:#000`;
-// En iPhone el play de YouTube hay que tocarlo dentro del iframe, y Safari no siempre
-// entrega el toque a un iframe con transformaciones 3D. Ahí el reproductor vive en una
-// tarjeta 2D que se abre al tocar el cartel y se oculta en cuanto suena; el cartel muestra
-// el póster del video.
-const ytCard = document.createElement('div');
-ytCard.className = 'yt-card';
-ytCard.innerHTML = '<p class="yt-card__text">Toca ▶ para empezar la música</p>';
-const ytCardClose = document.createElement('button');
-ytCardClose.type = 'button';
-ytCardClose.className = 'yt-card__close';
-ytCardClose.textContent = 'Cerrar';
-if (IS_IOS) {
-    ytCard.append(ytFrame, ytCardClose);
-    document.body.append(ytCard);
-}
-const videoObject = new CSS3DObject(IS_IOS ? document.createElement('div') : ytFrame);
-videoObject.scale.setScalar(VIDEO_W / VIDEO_PX);
-
-const videoBoard = new THREE.Group();
-videoBoard.position.copy(VIDEO_POS);
-videoBoard.lookAt(0, 0, 0);
-const videoCenterY = VIDEO_BOTTOM + VIDEO_H / 2;
-const videoFrame = new THREE.Mesh(
-    new THREE.BoxGeometry(VIDEO_W + 0.4, VIDEO_H + 0.4, 0.14),
-    new THREE.MeshStandardMaterial({ color: 0xff3da6, emissive: 0xff3da6, emissiveIntensity: 2.2, fog: false })
-);
-videoFrame.position.y = videoCenterY;
-const videoHole = new THREE.Mesh(
-    new THREE.PlaneGeometry(VIDEO_W, VIDEO_H),
-    new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 0, blending: THREE.NoBlending, fog: false, toneMapped: false })
-);
-videoHole.position.set(0, videoCenterY, 0.08);
-videoBoard.add(videoFrame, videoHole);
-for (const side of [-1, 1]) {
-    const pole = new THREE.Mesh(new THREE.BoxGeometry(0.3, VIDEO_BOTTOM + 0.2, 0.3), poleMat);
-    pole.position.set(side * (VIDEO_W / 2 - 1), (VIDEO_BOTTOM + 0.2) / 2, -0.14);
-    videoBoard.add(pole);
-}
-const videoGlow = new THREE.PointLight(0xff3da6, 45, 20);
-videoGlow.position.set(0, VIDEO_BOTTOM, 2.5);
-videoBoard.add(videoGlow);
-scene.add(videoBoard);
-videoBoard.updateMatrixWorld(true);
-videoHole.getWorldPosition(videoObject.position);
-videoObject.quaternion.copy(videoBoard.quaternion);
-if (!IS_IOS) cssScene.add(videoObject);
-{
-    const p = new THREE.Vector3();
-    for (let x = -VIDEO_W / 2; x <= VIDEO_W / 2 + 0.01; x += 0.6) {
-        videoBoard.localToWorld(p.set(x, 0, 0));
-        obstacles.push({ x: p.x, z: p.z, r: 0.5 });
-    }
-}
-
-// El video arranca mudo (el navegador lo permite) y se le activa el sonido con el primer
-// gesto. Se controla con la API de mensajes del reproductor de YouTube.
-let ytReady = false;
-function ytCommand(func, args = []) {
-    ytFrame.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), '*');
-}
-ytFrame.addEventListener('load', () => {
-    ytFrame.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 'mundo3d' }), '*');
-    ytCommand('addEventListener', ['onError']);
-});
-// Hay videos que su dueño no deja insertar en otras páginas (errores 101 y 150) o que ya no
-// existen (100): se salta al siguiente de la lista y, si fallan varios, suena el video de antes.
-const FALLBACK_VIDEO_ID = '22y0yNXSbQI';
-let ytErrors = 0;
-function onVideoError() {
-    ytErrors += 1;
-    if (ytErrors <= 3) ytCommand('nextVideo');
-    else if (ytErrors === 4) ytCommand('loadPlaylist', [[FALLBACK_VIDEO_ID]]);
-    if (ytErrors <= 4) setTimeout(() => ytCommand('playVideo'), 800);
-}
-// La capa del video vive detrás del canvas. Solo si hace falta tocar el play de YouTube
-// (iPhone, o si el navegador bloqueó el autoplay) pasa delante hasta que se reproduce.
-let ytPlaying = null;
-function setVideoWaiting(waiting) {
-    if (IS_IOS) ytCard.classList.toggle('is-open', waiting);
-    else cssRenderer.domElement.classList.toggle('is-waiting', waiting);
-}
-ytCardClose.addEventListener('click', () => setVideoWaiting(false));
-
-// Mientras el video no se reproduce, un póster luminoso tapa el hueco: así el cartel no
-// queda oscuro y avisa que se toca para escuchar la música.
-function drawPoster(ctx, w, h, thumb, playing = false) {
-    const g = ctx.createLinearGradient(0, 0, w, h);
-    g.addColorStop(0, '#1a0f2e'); g.addColorStop(0.55, '#3a1240'); g.addColorStop(1, '#0b2a3a');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-    if (thumb) {
-        ctx.globalAlpha = 0.75; ctx.drawImage(thumb, 0, 0, w, h); ctx.globalAlpha = 1;
-        ctx.fillStyle = 'rgba(5, 6, 10, .25)'; ctx.fillRect(0, 0, w, h);
-    }
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-    if (playing) {
-        ctx.font = 'bold 64px "Space Grotesk", sans-serif';
-        ctx.fillText('♪ Sonando ahora', w / 2, h / 2 + 150);
-    } else {
-        ctx.beginPath(); ctx.arc(w / 2, h / 2 - 40, 110, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 61, 166, .92)'; ctx.fill();
-        ctx.beginPath(); ctx.moveTo(w / 2 - 35, h / 2 - 105); ctx.lineTo(w / 2 + 65, h / 2 - 40); ctx.lineTo(w / 2 - 35, h / 2 + 25);
-        ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill();
-        ctx.font = 'bold 64px "Space Grotesk", sans-serif';
-        ctx.fillText('Toca para escuchar la música', w / 2, h / 2 + 150);
-    }
-    ctx.font = '36px "JetBrains Mono", monospace'; ctx.fillStyle = 'rgba(255,255,255,.8)';
-    ctx.fillText(videoTitle, w / 2, h / 2 + 215, w - 80);
-}
-const posterCanvas = document.createElement('canvas');
-posterCanvas.width = 1280; posterCanvas.height = 720;
-const posterCtx = posterCanvas.getContext('2d');
-let posterThumb = null;
-drawPoster(posterCtx, 1280, 720);
-const posterTex = new THREE.CanvasTexture(posterCanvas);
-posterTex.colorSpace = THREE.SRGBColorSpace;
-{
-    const thumb = new Image();
-    thumb.crossOrigin = 'anonymous';
-    thumb.onload = () => { posterThumb = thumb; drawPoster(posterCtx, 1280, 720, thumb, !!ytPlaying); posterTex.needsUpdate = true; };
-    thumb.src = `https://i.ytimg.com/vi/${VIDEO_ID}/hqdefault.jpg`;
-}
-const videoPoster = new THREE.Mesh(
-    new THREE.PlaneGeometry(VIDEO_W, VIDEO_H),
-    new THREE.MeshBasicMaterial({ map: posterTex, toneMapped: false, fog: false })
-);
-videoPoster.position.set(0, videoCenterY, 0.1);
-videoBoard.add(videoPoster);
-clickable.push(videoPoster);
-let waitTimer = 0;
-videoPoster.userData = {
-    hint: 'Toca para escuchar la música ▶',
-    action() {
-        startMusic();
-        ytCommand('playVideo');
-        clearTimeout(waitTimer);
-        // iPhone solo arranca si se toca el play del propio video.
-        waitTimer = setTimeout(() => {
-            if (ytPlaying) return;
-            if (!IS_IOS) videoPoster.visible = false;
-            setVideoWaiting(true);
-            if (!IS_IOS) flashHint('Toca ▶ en el video para empezar la música');
-        }, IS_IOS ? 0 : 1200);
-    },
-};
-window.addEventListener('message', (e) => {
-    if (e.source !== ytFrame.contentWindow) return;
-    if (!ytReady) { ytReady = true; music.sync(); }
-    let data;
-    try { data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch { return; }
-    // Con la lista cambia la canción: el cartel muestra la que está sonando.
-    const title = data?.info?.videoData?.title;
-    if (title && title !== videoTitle) {
-        videoTitle = title;
-        drawPoster(posterCtx, 1280, 720, posterThumb, !!ytPlaying);
-        posterTex.needsUpdate = true;
-    }
-    if (data?.event === 'onError') return onVideoError();
-    const state = data?.info?.playerState ?? (data?.event === 'onStateChange' ? data.info : undefined);
-    if (typeof state !== 'number') return;
-    const playing = state === 1 || state === 3;  // reproduciendo o cargando
-    if (playing === ytPlaying) return;
-    ytPlaying = playing;
-    if (IS_IOS) {
-        drawPoster(posterCtx, 1280, 720, posterThumb, playing);
-        posterTex.needsUpdate = true;
-    } else videoPoster.visible = !playing;
-    if (playing) setVideoWaiting(false);
-    if (playing) { if (musicOn) startMusic(); else music.sync(); }
-});
 
 // Clic o toque (sin arrastrar) sobre un cartel: abre su cotización.
 const raycaster = new THREE.Raycaster();
@@ -720,41 +482,6 @@ function toggleRun() {
 }
 onPress(runBtn, toggleRun);
 
-// Música de fondo: el audio del video de YouTube. "Pausar" la silencia sin detener el video.
-const music = {
-    paused: true,
-    play() { this.paused = false; this.sync(); return Promise.resolve(); },
-    pause() { this.paused = true; this.sync(); },
-    sync() {
-        if (!ytReady) return;
-        ytCommand('playVideo');
-        if (this.paused) ytCommand('mute');
-        else { ytCommand('unMute'); ytCommand('setVolume', [45]); }
-    },
-};
-const musicBtn = document.querySelector('[data-music]');
-let musicOn = true;
-function syncMusicBtn() {
-    musicBtn.textContent = musicOn ? '🔊 Música: activada' : '🔇 Música: apagada';
-    musicBtn.setAttribute('aria-label', musicOn ? 'Silenciar música' : 'Activar música');
-    musicBtn.setAttribute('aria-pressed', String(musicOn));
-}
-function startMusic() {
-    if (musicOn && music.paused) music.play().catch(() => {});
-}
-musicBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    musicOn = !musicOn;
-    if (musicOn) startMusic(); else music.pause();
-    syncMusicBtn();
-});
-syncMusicBtn();
-window.addEventListener('pointerdown', startMusic);
-window.addEventListener('keydown', startMusic);
-document.addEventListener('visibilitychange', () => {
-    if (document.hidden) music.pause(); else startMusic();
-});
-
 // ---------- Ajustes ----------
 const settingsBox = document.querySelector('[data-settings]');
 const settingsBtn = settingsBox.querySelector('[data-settings-open]');
@@ -860,7 +587,7 @@ function updatePlayer(dt) {
         const prev = player.position.clone();
         player.position.addScaledVector(move, speed * dt);
 
-        // Límites del mundo y choques con los pilares.
+        // Límites del mundo y choques con los obstáculos.
         const r = Math.hypot(player.position.x, player.position.z);
         if (r > here.radius) player.position.multiplyScalar(here.radius / r);
         for (const o of here.obstacles) {
@@ -993,7 +720,6 @@ let talkSession = null;
 let talkState = 'idle';   // idle | connecting | live
 let speaking = false;
 let voiceLevel = 0;       // volumen suavizado de la voz del agente, 0..1
-let musicWasOn = false;
 
 // La transcripción de la llamada viaja por el socket del mundo (ver «Personas en el mundo»).
 // Cada línea (tuya o de Ruddy) se envía como {type:"call_transcript", ...}; si el socket
@@ -1035,14 +761,9 @@ function endTalk(text) {
     clearSubs();
     setTalk('idle', text);
     if (text) setTimeout(() => talkState === 'idle' && setTalk('idle'), 3500);
-    if (musicWasOn) { musicOn = true; startMusic(); syncMusicBtn(); }
-    musicWasOn = false;
 }
 
 async function startTalk() {
-    // La música taparía la voz: se pausa durante la conversación.
-    musicWasOn = musicOn;
-    if (musicOn) { musicOn = false; music.pause(); syncMusicBtn(); }
     setTalk('connecting', 'Llamando a Ruddy… permite el micrófono');
     try {
         const { Conversation } = await import(SDK);
@@ -1707,120 +1428,6 @@ function updateRemotes(dt) {
     }
 }
 
-// ---------- Pelota ----------
-// Rueda y rebota con física sencilla. Quien la toca con su Ruddy manda el estado al resto,
-// que lo adopta; los choques con los demás se simulan aquí sin enviar nada (los manda su dueño).
-const BALL_R = 0.35;
-const ball = new THREE.Mesh(
-    new THREE.SphereGeometry(BALL_R, 32, 20),
-    new THREE.MeshStandardMaterial({ map: (() => {
-        const c = document.createElement('canvas');
-        c.width = 256; c.height = 128;
-        const g = c.getContext('2d');
-        g.fillStyle = '#f4f6ff'; g.fillRect(0, 0, 256, 128);
-        g.fillStyle = '#ff3da6'; g.fillRect(0, 44, 256, 40);
-        g.fillStyle = '#00e5ff'; for (const x of [32, 160]) { g.beginPath(); g.arc(x, 64, 18, 0, Math.PI * 2); g.fill(); }
-        const t = new THREE.CanvasTexture(c);
-        t.colorSpace = THREE.SRGBColorSpace;
-        return t;
-    })(), roughness: 0.45, emissive: 0x220a18 })
-);
-ball.castShadow = true;
-ball.position.set(0, BALL_R, 5);
-scene.add(ball);
-const ballVel = new THREE.Vector3();
-const prevPlayer = new THREE.Vector3().copy(player.position);
-let ballSentAt = 0;
-let ballRestSent = true;
-
-function sendBall() {
-    ballSentAt = performance.now();
-    ballRestSent = ballVel.lengthSq() < 0.0004;
-    const { x, y, z } = ball.position;
-    net.send({ type: 'ball', x, y, z, vx: ballVel.x, vy: ballVel.y, vz: ballVel.z });
-}
-
-// Empuja la pelota si una persona (pos, con velocidad vel) la toca. Devuelve true si la tocó.
-function pushBall(pos, vel) {
-    const dx = ball.position.x - pos.x;
-    const dz = ball.position.z - pos.z;
-    const d = Math.hypot(dx, dz);
-    const reach = BALL_R + 0.38;
-    if (d >= reach || d === 0 || ball.position.y > 1.6) return false;
-    const nx = dx / d, nz = dz / d;
-    ball.position.x = pos.x + nx * reach;
-    ball.position.z = pos.z + nz * reach;
-    const toward = vel.x * nx + vel.z * nz;          // qué tanto camina hacia la pelota
-    const kick = Math.max(0, toward) * 1.6 + 0.6;
-    const along = ballVel.x * nx + ballVel.z * nz;
-    if (along < kick) {
-        ballVel.x += nx * (kick - along);
-        ballVel.z += nz * (kick - along);
-        if (toward > 4) ballVel.y = Math.max(ballVel.y, 2.2);   // corriendo, la levanta un poco
-    }
-    return true;
-}
-
-const tmpVel = new THREE.Vector3();
-function updateBall(dt) {
-    // Choques: mi Ruddy (y lo aviso) y los demás (solo aquí).
-    tmpVel.copy(player.position).sub(prevPlayer).divideScalar(Math.max(dt, 1e-3));
-    prevPlayer.copy(player.position);
-    if (pushBall(player.position, tmpVel) && performance.now() - ballSentAt > 120) sendBall();
-    for (const r of remotes.values()) {
-        if (!r.group.visible) continue;   // está en otra escena
-        tmpVel.copy(r.target).sub(r.group.position).multiplyScalar(6);
-        pushBall(r.group.position, tmpVel);
-    }
-
-    // Gravedad, rebote, roce con el piso.
-    ballVel.y -= 9.8 * dt;
-    ball.position.addScaledVector(ballVel, dt);
-    if (ball.position.y < BALL_R) {
-        ball.position.y = BALL_R;
-        ballVel.y = ballVel.y < -1 ? -ballVel.y * 0.55 : 0;
-        const f = Math.max(0, 1 - 0.9 * dt);
-        ballVel.x *= f; ballVel.z *= f;
-        if (Math.hypot(ballVel.x, ballVel.z) < 0.05) { ballVel.x = 0; ballVel.z = 0; }
-    }
-    // Bordes del mundo y pilares: rebota.
-    const r = Math.hypot(ball.position.x, ball.position.z);
-    if (r > WORLD_RADIUS) {
-        const nx = ball.position.x / r, nz = ball.position.z / r;
-        ball.position.x = nx * WORLD_RADIUS; ball.position.z = nz * WORLD_RADIUS;
-        const vn = ballVel.x * nx + ballVel.z * nz;
-        if (vn > 0) { ballVel.x -= 1.7 * vn * nx; ballVel.z -= 1.7 * vn * nz; }
-    }
-    for (const o of obstacles) {
-        const dx = ball.position.x - o.x, dz = ball.position.z - o.z;
-        const d = Math.hypot(dx, dz);
-        const min = o.r - 0.3 + BALL_R;
-        if (d < min && d > 0) {
-            const nx = dx / d, nz = dz / d;
-            ball.position.x = o.x + nx * min; ball.position.z = o.z + nz * min;
-            const vn = ballVel.x * nx + ballVel.z * nz;
-            if (vn < 0) { ballVel.x -= 1.7 * vn * nx; ballVel.z -= 1.7 * vn * nz; }
-        }
-    }
-    // Rueda: gira según lo que avanza.
-    const speed = Math.hypot(ballVel.x, ballVel.z);
-    if (speed > 0.01) {
-        tmpVel.set(ballVel.z, 0, -ballVel.x).normalize();
-        ball.rotateOnWorldAxis(tmpVel, (speed * dt) / BALL_R);
-    }
-    // Cuando se detiene después de mi toque, mando dónde quedó.
-    if (!ballRestSent && speed === 0 && Math.abs(ballVel.y) < 0.01 && performance.now() - ballSentAt > 300) sendBall();
-}
-
-// Estado que manda otra persona (o el servidor al entrar): se adopta tal cual.
-net.on('ball', (m) => {
-    if (![m.x, m.y, m.z, m.vx, m.vy, m.vz].every(Number.isFinite)) return;
-    ball.position.set(m.x, Math.max(BALL_R, m.y), m.z);
-    ballVel.set(m.vx, m.vy, m.vz);
-    ballRestSent = true;
-});
-
-
 // ---------- Agujeros de gusano ----------
 // Cualquiera crea uno (Ajustes → Crear agujero de gusano) con nombre y descripción, delante de
 // donde está. Al meterse en uno, Ruddy pasa a otra escena: lo ven los que están ahí y deja de
@@ -1834,26 +1441,13 @@ const ARM_DIST = 3.5;      // y hay que alejarse esto para que vuelva a funciona
 const LABEL_DIST = 24;     // el cartel con el nombre se ve desde esta distancia
 const wormholes = createWormholes(renderer);
 // Se copia el escenario tal como está al cargar: todavía no hay puentes, notas ni recuerdos.
-const dest = buildUniverse(scene.children.filter((o) => o !== actors && o !== ball), obstacles);
-{
-    // En el otro universo no hay video (la capa del video es del mundo principal): queda el póster.
-    dest.copies.get(videoHole).visible = false;
-    dest.copies.get(videoPoster).visible = true;
-    // Los cuadros también se abren desde allá.
-    for (const o of [...clickable]) {
-        const copy = dest.copies.get(o);
-        if (!copy || o === videoPoster) continue;
-        copy.userData = o.userData;
-        clickable.push(copy);
-    }
-}
-// El cartel de la pared cambia en el mundo de las cotizaciones.
-const COTIZACIONES = 'cotizaciones';
-const destSign = dest.copies.get(gallery.userData.sign);
-const signTextures = { other: destSign.material.map, [COTIZACIONES]: gallerySign('COTIZACIONES Y PROYECTOS') };
-function dressUniverse(id) {
-    const quotes = id === COTIZACIONES;
-    destSign.material.map = signTextures[quotes ? COTIZACIONES : 'other'];
+const dest = buildUniverse(scene.children.filter((o) => o !== actors), obstacles);
+// Los cuadros también se abren desde allá.
+for (const o of [...clickable]) {
+    const copy = dest.copies.get(o);
+    if (!copy) continue;
+    copy.userData = o.userData;
+    clickable.push(copy);
 }
 const returnHole = wormholes.makeHole({ scene: dest.scene, x: 0, z: 0 });
 const portals = new Map();   // id -> { data, hole, label }
@@ -1957,12 +1551,11 @@ function goTo(id, { from = null, pos = null } = {}) {
     here.id = id;
     here.scene = target;
         here.obstacles = toMain ? obstacles : dest.obstacles;
-    if (!toMain) { dest.setHue(hueFor(id)); dressUniverse(id); }
+    if (!toMain) dest.setHue(hueFor(id));
 
     const offset = camera.position.clone().sub(controls.target);
     player.position.set(x, 0, z);
     player.rotation.y = ry;
-    prevPlayer.copy(player.position);   // que el salto no cuente como una patada a la pelota
     if (firstPerson) setFirstPerson(true);
     else {
         // Al cruzar, la cámara mira a Ruddy de frente con el agujero detrás (se ve que acaba de
@@ -1974,7 +1567,6 @@ function goTo(id, { from = null, pos = null } = {}) {
         controls.update();
     }
     holeArmed = false;
-    cssRenderer.domElement.style.visibility = toMain ? '' : 'hidden';
     banner.hidden = toMain;
     if (!toMain) {
         fillBanner(portals.get(id)?.data || { name: 'Puente de Einstein-Rosen' });
@@ -3385,9 +2977,7 @@ const bot = {
 function botPlaces() {
     const places = {
         centro: new THREE.Vector3(0, 0, 0),
-        pelota: ball.position.clone().setY(0),
         galeria: new THREE.Vector3(0, 0, GALLERY_Z - 4),
-        video: VIDEO_POS.clone().multiplyScalar(0.85),
     };
     return places;
 }
@@ -3761,7 +3351,6 @@ renderer.setAnimationLoop(() => {
     updateBot(dt);
     updateRemotes(dt);
     updateCharts(dt);
-    if (here.id === MAIN) updateBall(dt);
     checkHoles();
     dest.update(t);
     syncPosition();
@@ -3774,7 +3363,6 @@ renderer.setAnimationLoop(() => {
     key.target.position.copy(player.position);
     controls.update();
     wormholes.render(here.scene, camera, dt, t, otherSide);
-    if (here.id === MAIN) cssRenderer.render(cssScene, camera);
     updateBubble();
     updateHoleLabels();
 });
@@ -3783,7 +3371,6 @@ window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    cssRenderer.setSize(window.innerWidth, window.innerHeight);
     resizeWormholes();
 });
 function resizeWormholes() {
