@@ -2310,7 +2310,7 @@ function addChart(c) {
     const hitH = top + h;
     const hit = new THREE.Mesh(new THREE.BoxGeometry(width, hitH, 1.8), new THREE.MeshBasicMaterial({ visible: false }));
     hit.position.y = hitH / 2;
-    hit.userData = { hint: `Ver los datos de «${c.title}»`, action: () => openChart(c.id) };
+    hit.userData = { hint: `Ver los datos de «${c.title}»`, action: () => tapChart(c.id) };
     group.add(hit);
     clickable.push(hit);
 
@@ -2364,6 +2364,12 @@ const REFRESH_NAMES = { 5: 'cada 5 min', 15: 'cada 15 min', 30: 'cada 30 min', 6
 const chartNote = chartView.querySelector('[data-chart-note]');
 const chartRefreshBtn = chartView.querySelector('[data-chart-refresh]');
 function chartViewNote(text) { chartNote.hidden = !text; chartNote.textContent = text || ''; }
+
+// Tocar un gráfico abre su tabla y le avisa al servidor: su dueño ve quién lo tocó y cuándo.
+function tapChart(id) {
+    openChart(id);
+    net.send({ type: 'chart_view', id });
+}
 
 // Muestra el último resultado guardado; «Actualizar» vuelve a pedir los datos en el servidor.
 function openChart(id, keepNote = false) {
@@ -2664,6 +2670,7 @@ function renderChartsList() {
             const b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = text;
             b.addEventListener('click', () => fn(b)); btns.append(b);
         };
+        mk(`Visitas (${c.views || 0})`, () => net.send({ type: 'stats_chart_views', id: c.id }));
         mk('Editar', () => editChart(c));
         mk('Actualizar', () => { statsMessage('', 'Actualizando…'); net.send({ type: 'stats_chart_refresh', id: c.id }); });
         mk('Borrar', (b) => {
@@ -2868,6 +2875,25 @@ net.on('stats_state', (m) => {
     syncEditing();
     if (!statsStatus.hidden && /Actualizando/.test(statsStatus.textContent)) statsMessage('', 'Listo.');
 });
+// Lista de quién tocó un gráfico: una fila por toque, lo más reciente arriba.
+const viewsBox = statsBox.querySelector('[data-stats-views]');
+net.on('stats_chart_views', (m) => {
+    viewsBox.querySelector('[data-stats-views-title]').textContent = `Quién tocó «${m.title}» (${m.views.length})`;
+    viewsBox.querySelector('[data-stats-views-empty]').hidden = m.views.length > 0;
+    viewsBox.querySelector('ol').replaceChildren(...m.views.map((v) => {
+        const li = document.createElement('li');
+        const who = document.createElement('span');
+        who.textContent = v.name || 'Visitante';
+        const when = document.createElement('small');
+        when.textContent = formatDate(v.at);
+        li.append(who, when);
+        return li;
+    }));
+    viewsBox.hidden = false;
+    viewsBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+});
+viewsBox.querySelector('[data-stats-views-close]').addEventListener('click', () => { viewsBox.hidden = true; });
+
 net.on('stats_saved', (m) => {
     // El estado llega justo después: ahí se elige esta petición y se ocultan los valores escritos.
     stats.selectAfter = m.id;
