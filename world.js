@@ -559,7 +559,7 @@ settingsPanel.addEventListener('click', (e) => {
 document.addEventListener('pointerdown', (e) => {
     if (!settingsBox.contains(e.target)) setSettings(false);
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (!settingsPanel.hidden && menuBack()) return; setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; document.querySelector('[data-sign-box]').hidden = true; document.querySelector('[data-sign-view]').hidden = true; document.querySelector('[data-bot-box]').hidden = true; document.querySelector('[data-stats-box]').hidden = true; document.querySelector('[data-chart-view]').hidden = true; } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (!settingsPanel.hidden && menuBack()) return; setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; document.querySelector('[data-sign-box]').hidden = true; document.querySelector('[data-sign-view]').hidden = true; document.querySelector('[data-bot-box]').hidden = true; document.querySelector('[data-stats-box]').hidden = true; document.querySelector('[data-chart-view]').hidden = true; document.querySelector('[data-items-box]').hidden = true; document.querySelector('[data-item-view]').hidden = true; document.querySelector('[data-totem-panel]').hidden = true; } });
 
 // ---------- Primera persona ----------
 const fpBtn = document.querySelector('[data-fp]');
@@ -653,7 +653,7 @@ function updatePlayer(dt) {
         // Límites del mundo y choques con los obstáculos.
         const r = Math.hypot(player.position.x, player.position.z);
         if (r > here.radius) player.position.multiplyScalar(here.radius / r);
-        for (const o of here.obstacles) {
+        for (const o of here.obstacles.length ? [...here.obstacles, ...itemObstacles] : itemObstacles) {
             const dx = player.position.x - o.x;
             const dz = player.position.z - o.z;
             const d = Math.hypot(dx, dz);
@@ -827,6 +827,7 @@ function endTalk(text) {
 }
 
 async function startTalk() {
+    stopVideo();   // la música del letrero de video taparía la voz
     setTalk('connecting', 'Llamando a Ruddy… permite el micrófono');
     try {
         const { Conversation } = await import(SDK);
@@ -1640,6 +1641,7 @@ function goTo(id, { from = null, pos = null } = {}) {
     for (const r of remotes.values()) showRemote(r);
     showSignsHere();
     showChartsHere();
+    showItemsHere();
     lastSent.at = 0;   // los demás se enteran enseguida
 }
 
@@ -2174,6 +2176,696 @@ net.on('sign_error', (m) => {
     signMessage(m.message);
 });
 
+
+// ---------- Ítems ----------
+// Objetos que cualquiera pone desde Ajustes → Ítems: la pelota, pilares y cubos neón, el tótem de
+// Medical Center, el letrero de video con música, una pared de museo y la ciudad cyberpunk. El
+// servidor los guarda con su dueño (solo él los quita) y la escena donde están.
+const ITEM_CATALOG = [
+    { kind: 'ball', icon: '⚽', name: 'Pelota', desc: 'Rueda y rebota. Todos la pueden patear.', dist: 1.6 },
+    { kind: 'pillar', icon: '🗼', name: 'Pilar neón', desc: 'Columna con tapa de luz, para orientarse.', dist: 2, colors: true },
+    { kind: 'cube', icon: '🧊', name: 'Cubo flotante', desc: 'Cubo de luz que gira y flota.', dist: 2, colors: true },
+    { kind: 'totem', icon: '🏥', name: 'Tótem Medical Center', desc: 'Pantalla táctil que abre el tótem de la clínica.', dist: 2 },
+    { kind: 'video', icon: '📺', name: 'Letrero de video', desc: 'Pantalla grande con música de YouTube.', dist: 6.5, youtube: true },
+    { kind: 'wall', icon: '🖼', name: 'Pared de museo', desc: 'Pared con focos para poner letreros delante.', dist: 4 },
+    { kind: 'city', icon: '🌃', name: 'Ciudad cyberpunk', desc: 'Rascacielos y autos voladores alrededor de todo el lugar. Una por lugar.', dist: 0 },
+];
+const itemKind = (k) => ITEM_CATALOG.find((c) => c.kind === k);
+const NEON = [0x00e5ff, 0xa060ff, 0xff3da6];
+const items = new Map();       // id -> { data, piece, hits, obstacles, ball? }
+const itemObstacles = [];      // los de la escena donde estás (se suman a here.obstacles)
+const itemView = document.querySelector('[data-item-view]');
+
+function disposePiece(piece) {
+    piece.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        const mats = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
+        for (const m of mats) {
+            if (m.userData.shared) continue;
+            if (m.map && !m.map.userData.shared) m.map.dispose();
+            m.dispose();
+        }
+    });
+}
+const sharedMat = (m) => { m.userData.shared = true; return m; };
+const itemPoleMat = sharedMat(new THREE.MeshStandardMaterial({ color: 0x141a2e, roughness: 0.4, metalness: 0.6 }));
+
+// Puntos de choque a lo largo de una línea local (x de -w/2 a w/2) de la pieza.
+function lineObstacles(piece, w, r, z = 0) {
+    piece.updateMatrixWorld(true);
+    const out = [];
+    const p = new THREE.Vector3();
+    for (let x = -w / 2; x <= w / 2 + 0.01; x += 0.6) {
+        piece.localToWorld(p.set(x, 0, z));
+        out.push({ x: p.x, z: p.z, r });
+    }
+    return out;
+}
+
+function buildPillar(it) {
+    const piece = new THREE.Group();
+    const color = NEON[it.color || 0];
+    const h = 1.5 + Math.floor(hueFor(it.id) * 5) * 0.6;
+    const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.5, h, 0.5),
+        new THREE.MeshStandardMaterial({ color: 0x141a2e, roughness: 0.4, metalness: 0.5 }));
+    pillar.position.y = h / 2;
+    pillar.castShadow = true;
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.08, 0.54),
+        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.6 }));
+    cap.position.y = h + 0.04;
+    piece.add(pillar, cap);
+    return { piece, hits: [pillar, cap], obstacles: [{ x: it.x, z: it.z, r: 0.65 }] };
+}
+
+function buildCube(it) {
+    const piece = new THREE.Group();
+    const color = NEON[it.color || 0];
+    const cube = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6),
+        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.9, transparent: true, opacity: 0.85 }));
+    cube.position.y = 1.2;
+    piece.add(cube);
+    const phase = hueFor(it.id) * 10;
+    const update = (dt, t) => {
+        cube.rotation.x = t * 0.6 + phase;
+        cube.rotation.y = t * 0.8 + phase;
+        cube.position.y = 1.2 + Math.sin(t * 1.5 + phase * 2) * 0.25;
+    };
+    return { piece, hits: [cube], obstacles: [], update };
+}
+
+// Tótem táctil de Medical Center: la pantalla abre la página del tótem.
+const totemPanel = document.querySelector('[data-totem-panel]');
+const totemFrame = document.querySelector('[data-totem-frame]');
+const TOTEM_URL = 'https://medicalcenterbo.github.io/demo/';
+function openTotem() {
+    if (!totemFrame.src) totemFrame.src = TOTEM_URL;   // se carga recién la primera vez
+    totemPanel.hidden = false;
+}
+document.querySelector('[data-totem-close]').addEventListener('click', () => { totemPanel.hidden = true; });
+totemPanel.addEventListener('click', (e) => { if (e.target === totemPanel) totemPanel.hidden = true; });
+let totemTex = null;
+function getTotemTexture() {
+    if (totemTex) return totemTex;
+    const cv = document.createElement('canvas');
+    cv.width = 512; cv.height = 860;
+    const c = cv.getContext('2d');
+    const g = c.createLinearGradient(0, 0, 0, 860);
+    g.addColorStop(0, '#062a36'); g.addColorStop(1, '#0a0d16');
+    c.fillStyle = g; c.fillRect(0, 0, 512, 860);
+    c.strokeStyle = '#00e5ff'; c.lineWidth = 6; c.strokeRect(14, 14, 484, 832);
+    c.fillStyle = '#00e5ff';
+    c.fillRect(216, 150, 80, 220); c.fillRect(146, 220, 220, 80);   // cruz médica
+    c.fillStyle = '#fff'; c.textAlign = 'center';
+    c.font = 'bold 54px "Space Grotesk", sans-serif';
+    c.fillText('MEDICAL', 256, 480); c.fillText('CENTER', 256, 540);
+    c.font = '30px "JetBrains Mono", monospace'; c.fillStyle = 'rgba(255,255,255,.8)';
+    c.fillText('Tótem de atención', 256, 630);
+    c.fillStyle = '#ff3da6'; c.font = 'bold 34px "JetBrains Mono", monospace';
+    c.fillText('☝ Toca la pantalla', 256, 750);
+    totemTex = new THREE.CanvasTexture(cv);
+    totemTex.colorSpace = THREE.SRGBColorSpace;
+    totemTex.userData.shared = true;
+    // Pantalla real del tótem; el dibujo de arriba queda si la imagen no carga.
+    const img = new Image();
+    img.onload = () => {
+        const k = Math.min(512 / img.width, 860 / img.height);
+        const w = img.width * k, h = img.height * k;
+        c.fillStyle = '#f2f8f7'; c.fillRect(0, 0, 512, 860);
+        c.drawImage(img, (512 - w) / 2, (860 - h) / 2, w, h);
+        totemTex.needsUpdate = true;
+    };
+    img.src = 'images/totem-pantalla.jpg';
+    return totemTex;
+}
+function buildTotem(it) {
+    const piece = new THREE.Group();
+    const base = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.16, 0.7), itemPoleMat);
+    base.position.y = 0.08;
+    const column = new THREE.Mesh(new THREE.BoxGeometry(0.8, 2.1, 0.35), itemPoleMat);
+    column.position.y = 1.2;
+    column.castShadow = true;
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(0.84, 2.14, 0.3),
+        new THREE.MeshStandardMaterial({ color: 0x00e5ff, emissive: 0x00e5ff, emissiveIntensity: 1.8 }));
+    edge.position.set(0, 1.2, -0.04);
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 1.04),
+        new THREE.MeshBasicMaterial({ map: getTotemTexture(), toneMapped: false }));
+    screen.position.set(0, 1.45, 0.18);
+    screen.userData = { hint: 'Tótem Medical Center: toca la pantalla', action: openTotem };
+    piece.add(base, column, edge, screen);
+    return { piece, hits: [screen, column, edge], ownActions: [screen], obstacles: [{ x: it.x, z: it.z, r: 0.75 }] };
+}
+
+// Pared de museo: sin luces reales (cada luz nueva hace más pesada toda la escena), los focos
+// son lámparas que brillan y un cono suave de luz sobre la pared.
+const WALL_W = 8, WALL_H = 5;
+function buildWall(it) {
+    const piece = new THREE.Group();
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(WALL_W, WALL_H, 0.3),
+        new THREE.MeshStandardMaterial({ color: 0x1c1a24, roughness: 0.9 }));
+    wall.position.set(0, WALL_H / 2, -0.15);
+    wall.receiveShadow = true;
+    wall.castShadow = true;
+    piece.add(wall);
+    const lampMat = new THREE.MeshStandardMaterial({ color: 0xfff1d6, emissive: 0xfff1d6, emissiveIntensity: 2 });
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0xfff1d6, transparent: true, opacity: 0.035, blending: THREE.AdditiveBlending, depthWrite: false });
+    for (const x of [-WALL_W / 4, WALL_W / 4]) {
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.6), itemPoleMat);
+        arm.position.set(x, WALL_H - 0.2, 0.3);
+        const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.16, 0.22, 16), lampMat);
+        lamp.position.set(x, WALL_H - 0.3, 0.6);
+        const glow = new THREE.Mesh(new THREE.ConeGeometry(1.2, WALL_H - 0.4, 24, 1, true), glowMat);
+        glow.position.set(x, (WALL_H - 0.4) / 2, 0.35);
+        piece.add(arm, lamp, glow);
+    }
+    piece.position.set(it.x, 0, it.z);
+    piece.rotation.y = it.ry || 0;
+    return { piece, hits: [wall], obstacles: lineObstacles(piece, WALL_W + 0.4, 0.55, -0.15) };
+}
+
+// ---------- Pelota ----------
+// Rueda y rebota con física sencilla. Quien la toca con su personaje manda el estado al resto,
+// que lo adopta; los choques con los demás se simulan aquí sin enviar nada (los manda su dueño).
+const BALL_R = 0.35;
+let ballMat = null;
+function getBallMaterial() {
+    if (ballMat) return ballMat;
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 128;
+    const g = c.getContext('2d');
+    g.fillStyle = '#f4f6ff'; g.fillRect(0, 0, 256, 128);
+    g.fillStyle = '#ff3da6'; g.fillRect(0, 44, 256, 40);
+    g.fillStyle = '#00e5ff'; for (const x of [32, 160]) { g.beginPath(); g.arc(x, 64, 18, 0, Math.PI * 2); g.fill(); }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.userData.shared = true;
+    ballMat = sharedMat(new THREE.MeshStandardMaterial({ map: t, roughness: 0.45, emissive: 0x220a18 }));
+    return ballMat;
+}
+function buildBall(it) {
+    const piece = new THREE.Group();
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(BALL_R, 32, 20), getBallMaterial());
+    mesh.castShadow = true;
+    piece.add(mesh);
+    const ball = { mesh, vel: new THREE.Vector3(), sentAt: 0, restSent: true };
+    const s = it.ball;
+    if (s && [s.x, s.y, s.z].every(Number.isFinite)) mesh.position.set(s.x - it.x, Math.max(BALL_R, s.y), s.z - it.z);
+    else mesh.position.set(0, BALL_R, 0);
+    return { piece, hits: [mesh], obstacles: [], ball, noRotate: true };
+}
+
+// ---------- Letrero de video (YouTube) ----------
+// Un iframe no puede ser textura de WebGL. En el mundo principal se dibuja con CSS3DRenderer
+// detrás del canvas y un plano "agujero" deja ver el video (así las personas lo tapan bien). En
+// los otros universos y en iPhone el video suena en una tarjeta 2D. Suena uno a la vez: se
+// enciende y se apaga tocando el cartel.
+const DEFAULT_VIDEO = 'xwtdhWltSIg';
+const DEFAULT_LIST = 'PLyyYs_E5nqBuSV2ARl6aTLMKOsRc3ms3Q';
+const VIDEO_W = 8, VIDEO_H = VIDEO_W * 9 / 16, VIDEO_BOTTOM = 1.6, VIDEO_PX = 1280;
+const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const ytCard = document.createElement('div');
+ytCard.className = 'yt-card';
+ytCard.innerHTML = '<p class="yt-card__text">Toca ▶ si la música no empieza</p>';
+const ytCardClose = document.createElement('button');
+ytCardClose.type = 'button';
+ytCardClose.className = 'yt-card__close';
+ytCardClose.textContent = 'Cerrar';
+ytCard.append(ytCardClose);
+document.body.append(ytCard);
+let css3d = null;      // { renderer, scene, object } (se crea con el primer video)
+let playingVideo = null;   // { id, frame, mode: 'css' | 'card', playing }
+let videoTitles = new Map();
+
+function drawPoster(e) {
+    const { ctx, thumb } = e.poster;
+    const w = 1280, h = 720;
+    const g = ctx.createLinearGradient(0, 0, w, h);
+    g.addColorStop(0, '#1a0f2e'); g.addColorStop(0.55, '#3a1240'); g.addColorStop(1, '#0b2a3a');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    if (thumb) {
+        ctx.globalAlpha = 0.75; ctx.drawImage(thumb, 0, 0, w, h); ctx.globalAlpha = 1;
+        ctx.fillStyle = 'rgba(5, 6, 10, .25)'; ctx.fillRect(0, 0, w, h);
+    }
+    const on = playingVideo?.id === e.data.id;
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+    ctx.font = 'bold 64px "Space Grotesk", sans-serif';
+    if (on) ctx.fillText('♪ Sonando ahora · toca para parar', w / 2, h / 2 + 150, w - 80);
+    else {
+        ctx.beginPath(); ctx.arc(w / 2, h / 2 - 40, 110, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 61, 166, .92)'; ctx.fill();
+        ctx.beginPath(); ctx.moveTo(w / 2 - 35, h / 2 - 105); ctx.lineTo(w / 2 + 65, h / 2 - 40); ctx.lineTo(w / 2 - 35, h / 2 + 25);
+        ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill();
+        ctx.font = 'bold 64px "Space Grotesk", sans-serif';
+        ctx.fillText('Toca para escuchar la música', w / 2, h / 2 + 150, w - 80);
+    }
+    ctx.font = '36px "JetBrains Mono", monospace'; ctx.fillStyle = 'rgba(255,255,255,.8)';
+    ctx.fillText(videoTitles.get(e.data.id) || 'Música de YouTube', w / 2, h / 2 + 215, w - 80);
+    e.poster.tex.needsUpdate = true;
+}
+
+function buildVideo(it) {
+    const piece = new THREE.Group();
+    const centerY = VIDEO_BOTTOM + VIDEO_H / 2;
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(VIDEO_W + 0.3, VIDEO_H + 0.3, 0.12),
+        new THREE.MeshStandardMaterial({ color: 0xff3da6, emissive: 0xff3da6, emissiveIntensity: 2.2 }));
+    frame.position.y = centerY;
+    const hole = new THREE.Mesh(new THREE.PlaneGeometry(VIDEO_W, VIDEO_H),
+        new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 0, blending: THREE.NoBlending, toneMapped: false }));
+    hole.position.set(0, centerY, 0.07);
+    hole.visible = false;
+    const cv = document.createElement('canvas');
+    cv.width = 1280; cv.height = 720;
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const posterMesh = new THREE.Mesh(new THREE.PlaneGeometry(VIDEO_W, VIDEO_H), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+    posterMesh.position.set(0, centerY, 0.08);
+    posterMesh.userData = { hint: 'Toca para escuchar la música ▶', action: () => toggleVideo(it.id) };
+    piece.add(frame, hole, posterMesh);
+    for (const side of [-1, 1]) {
+        const pole = new THREE.Mesh(new THREE.BoxGeometry(0.22, VIDEO_BOTTOM + 0.2, 0.22), itemPoleMat);
+        pole.position.set(side * (VIDEO_W / 2 - 0.8), (VIDEO_BOTTOM + 0.2) / 2, -0.12);
+        piece.add(pole);
+    }
+    const built = { piece, hits: [posterMesh, frame], ownActions: [posterMesh], hole, posterMesh, poster: { ctx: cv.getContext('2d'), tex, thumb: null } };
+    built.data = it;
+    drawPoster(built);
+    const thumb = new Image();
+    thumb.crossOrigin = 'anonymous';
+    thumb.onload = () => { built.poster.thumb = thumb; drawPoster(built); };
+    const thumbId = it.video || (it.list ? '' : DEFAULT_VIDEO);
+    if (thumbId) thumb.src = `https://i.ytimg.com/vi/${thumbId}/hqdefault.jpg`;
+    piece.position.set(it.x, 0, it.z);
+    piece.rotation.y = it.ry || 0;
+    built.obstacles = lineObstacles(piece, VIDEO_W - 1.6, 0.4, -0.12).filter((_, i, a) => i === 0 || i === a.length - 1);
+    return built;
+}
+
+function videoSrc(it, autoplay) {
+    const video = it.video || (it.list ? '' : DEFAULT_VIDEO);
+    const list = it.list || (it.video ? '' : DEFAULT_LIST);
+    const q = new URLSearchParams({ enablejsapi: '1', autoplay: autoplay ? '1' : '0', loop: '1', controls: '0', playsinline: '1', rel: '0', modestbranding: '1', iv_load_policy: '3', origin: location.origin });
+    if (list) q.set('list', list);
+    return `https://www.youtube.com/embed/${video || 'videoseries'}?${q}`;
+}
+
+function setVideoWaiting(waiting) {
+    if (!playingVideo) return;
+    if (playingVideo.mode === 'card') ytCard.classList.toggle('is-open', waiting);
+    else css3d.renderer.domElement.classList.toggle('is-waiting', waiting);
+}
+ytCardClose.addEventListener('click', () => ytCard.classList.remove('is-open'));
+
+async function ensureCss3d() {
+    if (css3d) return css3d;
+    const { CSS3DRenderer, CSS3DObject } = await import('three/addons/renderers/CSS3DRenderer.js');
+    const r = new CSS3DRenderer();
+    r.setSize(window.innerWidth, window.innerHeight);
+    r.domElement.className = 'video-layer';
+    document.body.prepend(r.domElement);
+    css3d = { renderer: r, scene: new THREE.Scene(), CSS3DObject, object: null };
+    return css3d;
+}
+
+function stopVideo() {
+    if (!playingVideo) return;
+    const e = items.get(playingVideo.id);
+    playingVideo.frame.remove();
+    if (css3d?.object) { css3d.scene.remove(css3d.object); css3d.object = null; css3d.renderer.domElement.classList.remove('is-waiting'); }
+    ytCard.classList.remove('is-open');
+    clearTimeout(playingVideo.timer);
+    playingVideo = null;
+    if (e) { e.hole.visible = false; e.posterMesh.visible = true; drawPoster(e); }
+}
+
+async function toggleVideo(id) {
+    const wasThis = playingVideo?.id === id;
+    stopVideo();
+    if (wasThis) return;
+    const e = items.get(id);
+    if (!e) return;
+    const mode = IS_IOS || e.data.scene !== MAIN ? 'card' : 'css';
+    const frame = document.createElement('iframe');
+    frame.src = videoSrc(e.data, true);
+    frame.title = 'Música del letrero de video';
+    frame.allow = 'autoplay; encrypted-media';
+    playingVideo = { id, frame, mode, playing: false };
+    if (mode === 'card') {
+        frame.style.cssText = 'width:100%;aspect-ratio:16/9;border:0;background:#000;display:block';
+        ytCard.insertBefore(frame, ytCardClose);
+        if (IS_IOS) ytCard.classList.add('is-open');   // en iPhone hay que tocar el play del video
+    } else {
+        frame.style.cssText = `width:${VIDEO_PX}px;height:${VIDEO_PX * 9 / 16}px;border:0;background:#000`;
+        const c = await ensureCss3d();
+        if (playingVideo?.frame !== frame) return;
+        c.object = new c.CSS3DObject(frame);
+        c.object.scale.setScalar(VIDEO_W / VIDEO_PX);
+        e.piece.updateMatrixWorld(true);
+        e.hole.getWorldPosition(c.object.position);
+        c.object.quaternion.copy(e.piece.quaternion);
+        c.scene.add(c.object);
+        e.hole.visible = true;
+    }
+    frame.addEventListener('load', () => {
+        frame.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 'item-video' }), '*');
+        frame.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'setVolume', args: [45] }), '*');
+    });
+    drawPoster(e);
+    // Si el navegador no la deja sonar sola, el video pasa delante para tocar su play.
+    playingVideo.timer = setTimeout(() => {
+        if (!playingVideo || playingVideo.frame !== frame || playingVideo.playing) return;
+        if (mode === 'css') e.posterMesh.visible = false;
+        setVideoWaiting(true);
+        flashHint('Toca ▶ en el video para empezar la música');
+    }, 2000);
+}
+window.addEventListener('message', (ev) => {
+    if (!playingVideo || ev.source !== playingVideo.frame.contentWindow) return;
+    let data;
+    try { data = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data; } catch { return; }
+    const e = items.get(playingVideo.id);
+    const title = data?.info?.videoData?.title;
+    if (title && e && title !== videoTitles.get(e.data.id)) { videoTitles.set(e.data.id, title); drawPoster(e); }
+    const state = data?.info?.playerState ?? (data?.event === 'onStateChange' ? data.info : undefined);
+    if (typeof state !== 'number') return;
+    const playing = state === 1 || state === 3;
+    if (playing === playingVideo.playing) return;
+    playingVideo.playing = playing;
+    if (playingVideo.mode === 'css' && e) e.posterMesh.visible = !playing;
+    if (playing) setVideoWaiting(false);
+});
+// Al irse de la pestaña o al llamar a Ruddy, la música se apaga.
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopVideo(); });
+
+// ---------- Ciudad cyberpunk ----------
+// Una sola ciudad (city.js, se carga recién cuando hace falta) que se muestra en las escenas que
+// tienen el ítem; toma el tono de cada universo.
+let city = null, cityLoading = null;
+function updateCity() {
+    const wanted = [...items.values()].some((e) => e.data.kind === 'city' && e.data.scene === here.id);
+    if (!wanted) { city?.group.parent?.remove(city.group); return; }
+    if (!city) {
+        cityLoading ||= import('./city.js?v=64').then(({ createCity }) => {
+            city = createCity();
+            city.setPixelHeight(renderer.getDrawingBufferSize(new THREE.Vector2()).y);
+            updateCity();
+        });
+        return;
+    }
+    here.scene.add(city.group);
+    city.setHue(here.id === MAIN ? 0 : hueFor(here.id));
+}
+function buildCity() {
+    return { piece: new THREE.Group(), hits: [], obstacles: [] };
+}
+
+const BUILDERS = { ball: buildBall, pillar: buildPillar, cube: buildCube, totem: buildTotem, video: buildVideo, wall: buildWall, city: buildCity };
+
+function addItem(it) {
+    if (!BUILDERS[it.kind]) return;
+    removeItem(it.id, true);
+    const built = BUILDERS[it.kind](it);
+    built.data = it;
+    const { piece } = built;
+    piece.position.set(it.x, 0, it.z);
+    piece.rotation.y = built.noRotate ? 0 : (it.ry || 0);
+    (it.scene === MAIN ? scene : dest.scene).add(piece);
+    const own = built.ownActions || [];
+    for (const hit of built.hits) {
+        if (!own.includes(hit)) hit.userData = { hint: `${itemKind(it.kind).name} de ${ownerOf(it)}`, action: () => openItem(it.id) };
+        clickable.push(hit);
+    }
+    items.set(it.id, built);
+    piece.visible = it.scene === here.id;
+}
+
+function removeItem(id, quiet) {
+    const e = items.get(id);
+    if (!e) return;
+    if (playingVideo?.id === id) stopVideo();
+    e.piece.parent?.remove(e.piece);
+    disposePiece(e.piece);
+    for (const hit of e.hits) clickable.splice(clickable.indexOf(hit), 1);
+    items.delete(id);
+    if (itemView.dataset.id === id) itemView.hidden = true;
+    if (!quiet) { showItemsHere(); refreshMyItems(); }
+}
+
+// Solo los de la escena donde estás; sus choques se suman a los de la escena.
+function showItemsHere() {
+    itemObstacles.length = 0;
+    for (const e of items.values()) {
+        const shown = e.data.scene === here.id;
+        e.piece.visible = shown;
+        if (shown) itemObstacles.push(...e.obstacles);
+    }
+    if (playingVideo && items.get(playingVideo.id)?.data.scene !== here.id) stopVideo();
+    updateCity();
+}
+
+function openItem(id) {
+    const e = items.get(id);
+    if (!e) return;
+    const it = e.data;
+    const k = itemKind(it.kind);
+    itemView.dataset.id = id;
+    const q = (n) => itemView.querySelector(`[data-item-${n}]`);
+    q('icon').textContent = k.icon;
+    q('name').textContent = k.name;
+    q('desc').textContent = k.desc;
+    q('author').textContent = ownerOf(it);
+    q('created').textContent = formatDate(it.created_at) || 'Sin dato';
+    const del = q('delete');
+    del.hidden = !net.myId || it.owner_id !== net.myId;
+    del.textContent = 'Quitar ítem';
+    delete del.dataset.confirm;
+    itemView.hidden = false;
+}
+itemView.querySelector('[data-item-close]').addEventListener('click', () => { itemView.hidden = true; });
+itemView.addEventListener('click', (e) => { if (e.target === itemView) itemView.hidden = true; });
+itemView.querySelector('[data-item-delete]').addEventListener('click', (e) => {
+    const del = e.currentTarget;
+    if (!del.dataset.confirm) { del.dataset.confirm = '1'; del.textContent = '¿Quitar? Toca otra vez'; return; }
+    net.send({ type: 'item_delete', id: itemView.dataset.id });
+});
+
+// Física de las pelotas de la escena donde estás.
+const prevPlayerPos = new THREE.Vector3().copy(player.position);
+const tmpBallVel = new THREE.Vector3();
+function sendBall(e) {
+    const b = e.ball;
+    b.sentAt = performance.now();
+    b.restSent = b.vel.lengthSq() < 0.0004;
+    // La pelota vive dentro de su pieza, que está en (x, z) y sin girar.
+    net.send({ type: 'item_ball', id: e.data.id, x: e.data.x + b.mesh.position.x, y: b.mesh.position.y, z: e.data.z + b.mesh.position.z, vx: b.vel.x, vy: b.vel.y, vz: b.vel.z });
+}
+// Empuja la pelota si una persona (pos, con velocidad vel) la toca. Devuelve true si la tocó.
+function pushBall(e, pos, vel) {
+    const b = e.ball, p = b.mesh.position;
+    const dx = e.data.x + p.x - pos.x;
+    const dz = e.data.z + p.z - pos.z;
+    const d = Math.hypot(dx, dz);
+    const reach = BALL_R + 0.38;
+    if (d >= reach || d === 0 || p.y > 1.6) return false;
+    const nx = dx / d, nz = dz / d;
+    p.x = pos.x + nx * reach - e.data.x;
+    p.z = pos.z + nz * reach - e.data.z;
+    const toward = vel.x * nx + vel.z * nz;
+    const kick = Math.max(0, toward) * 1.6 + 0.6;
+    const along = b.vel.x * nx + b.vel.z * nz;
+    if (along < kick) {
+        b.vel.x += nx * (kick - along);
+        b.vel.z += nz * (kick - along);
+        if (toward > 4) b.vel.y = Math.max(b.vel.y, 2.2);   // corriendo, la levanta un poco
+    }
+    return true;
+}
+function updateBall(e, dt, myVel) {
+    const b = e.ball, p = b.mesh.position;
+    if (pushBall(e, player.position, myVel) && performance.now() - b.sentAt > 120) sendBall(e);
+    for (const r of remotes.values()) {
+        if (!r.group.visible) continue;   // está en otra escena
+        tmpBallVel.copy(r.target).sub(r.group.position).multiplyScalar(6);
+        pushBall(e, r.group.position, tmpBallVel);
+    }
+    b.vel.y -= 9.8 * dt;
+    p.addScaledVector(b.vel, dt);
+    if (p.y < BALL_R) {
+        p.y = BALL_R;
+        b.vel.y = b.vel.y < -1 ? -b.vel.y * 0.55 : 0;
+        const f = Math.max(0, 1 - 0.9 * dt);
+        b.vel.x *= f; b.vel.z *= f;
+        if (Math.hypot(b.vel.x, b.vel.z) < 0.05) { b.vel.x = 0; b.vel.z = 0; }
+    }
+    // Bordes del mundo y obstáculos: rebota (en coordenadas del mundo).
+    let wx = e.data.x + p.x, wz = e.data.z + p.z;
+    const r = Math.hypot(wx, wz);
+    if (r > here.radius) {
+        const nx = wx / r, nz = wz / r;
+        wx = nx * here.radius; wz = nz * here.radius;
+        const vn = b.vel.x * nx + b.vel.z * nz;
+        if (vn > 0) { b.vel.x -= 1.7 * vn * nx; b.vel.z -= 1.7 * vn * nz; }
+    }
+    for (const list of [here.obstacles, itemObstacles]) for (const o of list) {
+        const dx = wx - o.x, dz = wz - o.z;
+        const d = Math.hypot(dx, dz);
+        const min = o.r - 0.3 + BALL_R;
+        if (d < min && d > 0) {
+            const nx = dx / d, nz = dz / d;
+            wx = o.x + nx * min; wz = o.z + nz * min;
+            const vn = b.vel.x * nx + b.vel.z * nz;
+            if (vn < 0) { b.vel.x -= 1.7 * vn * nx; b.vel.z -= 1.7 * vn * nz; }
+        }
+    }
+    p.x = wx - e.data.x; p.z = wz - e.data.z;
+    // Rueda: gira según lo que avanza (en el espacio de la pieza, que puede estar girada).
+    const speed = Math.hypot(b.vel.x, b.vel.z);
+    if (speed > 0.01) {
+        tmpBallVel.set(b.vel.z, 0, -b.vel.x).normalize();
+        b.mesh.rotateOnWorldAxis(tmpBallVel, (speed * dt) / BALL_R);
+    }
+    if (!b.restSent && speed === 0 && Math.abs(b.vel.y) < 0.01 && performance.now() - b.sentAt > 300) sendBall(e);
+}
+function updateItems(dt, t) {
+    const myVel = tmpBallVelMine.copy(player.position).sub(prevPlayerPos).divideScalar(Math.max(dt, 1e-3));
+    prevPlayerPos.copy(player.position);
+    for (const e of items.values()) {
+        if (e.data.scene !== here.id) continue;
+        if (e.update) e.update(dt, t);
+        if (e.ball) updateBall(e, dt, myVel);
+    }
+    city?.update(t);
+    if (css3d?.object && here.id === MAIN) css3d.renderer.render(css3d.scene, camera);
+}
+const tmpBallVelMine = new THREE.Vector3();
+// Estado que manda otra persona: se adopta tal cual.
+net.on('item_ball', (m) => {
+    const e = items.get(m.id);
+    if (!e?.ball || ![m.x, m.y, m.z, m.vx, m.vy, m.vz].every(Number.isFinite)) return;
+    e.ball.mesh.position.set(m.x - e.data.x, Math.max(BALL_R, m.y), m.z - e.data.z);
+    e.ball.vel.set(m.vx, m.vy, m.vz);
+    e.ball.restSent = true;
+});
+
+net.on('items', (m) => {
+    const ids = new Set(m.items.map((x) => x.id));
+    for (const id of [...items.keys()]) if (!ids.has(id)) removeItem(id, true);
+    m.items.forEach(addItem);
+    showItemsHere();
+    refreshMyItems();
+});
+net.on('item_removed', (m) => removeItem(m.id));
+
+// Ajustes → Ítems: el catálogo y los tuyos.
+const itemsBox = document.querySelector('[data-items-box]');
+const itemsForm = itemsBox.querySelector('[data-items-form]');
+const itemsGrid = itemsBox.querySelector('[data-items-catalog]');
+const itemsError = itemsBox.querySelector('[data-items-error]');
+const itemsColors = itemsBox.querySelector('[data-items-colors]');
+const itemsYoutube = itemsBox.querySelector('[data-items-youtube]');
+const myItems = itemsBox.querySelector('[data-my-items]');
+let chosenKind = 'ball';
+let placing = false;
+function itemsMessage(text) {
+    itemsError.hidden = !text;
+    itemsError.textContent = text || '';
+}
+itemsGrid.replaceChildren(...ITEM_CATALOG.map((k) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'items__card';
+    b.dataset.kind = k.kind;
+    b.innerHTML = '<span class="items__icon"></span><strong></strong><small></small>';
+    b.querySelector('.items__icon').textContent = k.icon;
+    b.querySelector('strong').textContent = k.name;
+    b.querySelector('small').textContent = k.desc;
+    b.addEventListener('click', () => chooseKind(k.kind));
+    return b;
+}));
+function chooseKind(kind) {
+    chosenKind = kind;
+    const k = itemKind(kind);
+    for (const b of itemsGrid.children) b.setAttribute('aria-pressed', String(b.dataset.kind === kind));
+    itemsColors.hidden = !k.colors;
+    itemsYoutube.hidden = !k.youtube;
+    itemsForm.querySelector('[type=submit]').textContent = kind === 'city' ? 'Poner la ciudad aquí' : `Poner ${k.name.toLowerCase()} delante de mí`;
+    itemsMessage('');
+}
+function refreshMyItems() {
+    const mine = [...items.values()].filter((e) => net.myId && e.data.owner_id === net.myId);
+    myItems.hidden = !mine.length;
+    myItems.querySelector('ul').replaceChildren(...mine.map((e) => {
+        const it = e.data;
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        const k = itemKind(it.kind);
+        name.textContent = `${k.icon} ${k.name} · ${sceneLabel(it.scene)}`;
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'holes__delete';
+        del.textContent = 'Quitar';
+        del.addEventListener('click', () => {
+            if (del.dataset.confirm) return net.send({ type: 'item_delete', id: it.id });
+            del.dataset.confirm = '1';
+            del.textContent = '¿Quitar? Toca otra vez';
+        });
+        li.append(name, del);
+        return li;
+    }));
+}
+function openItemsBox() {
+    if (!getProfile()) return showLogin();
+    chooseKind(chosenKind);
+    refreshMyItems();
+    itemsBox.hidden = false;
+}
+document.querySelector('[data-items-open]').addEventListener('click', openItemsBox);
+itemsBox.querySelector('[data-items-close]').addEventListener('click', () => { itemsBox.hidden = true; });
+itemsForm.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    if (!net.loggedIn) return itemsMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
+    const k = itemKind(chosenKind);
+    if (k.kind === 'city' && [...items.values()].some((e) => e.data.kind === 'city' && e.data.scene === here.id)) {
+        return itemsMessage('Este lugar ya tiene una ciudad.');
+    }
+    // Delante de ti en la dirección de la cámara, mirando hacia ti.
+    camera.getWorldDirection(forward);
+    const yaw = Math.atan2(forward.x, forward.z);
+    let x = player.position.x + Math.sin(yaw) * k.dist;
+    let z = player.position.z + Math.cos(yaw) * k.dist;
+    // Que no quede fuera del mundo: si está cerca del borde, se acerca al centro.
+    const r = Math.hypot(x, z), max = here.radius - 1;
+    if (r > max) { x *= max / r; z *= max / r; }
+    placing = true;
+    itemsMessage('');
+    itemsForm.querySelector('[type=submit]').disabled = true;
+    net.send({
+        type: 'item_create',
+        kind: k.kind,
+        color: Number(itemsForm.color.value) || 0,
+        youtube: k.youtube ? itemsForm.youtube.value.trim() : undefined,
+        scene: here.id,
+        x, z,
+        ry: yaw + Math.PI,
+    });
+});
+net.on('item', (m) => {
+    addItem(m.item);
+    showItemsHere();
+    refreshMyItems();
+    if (placing && m.item.owner_id === net.myId) {
+        placing = false;
+        itemsForm.querySelector('[type=submit]').disabled = false;
+        itemsBox.hidden = true;
+        const k = itemKind(m.item.kind);
+        flashHint(m.item.kind === 'city' ? 'La ciudad ya rodea este lugar. Todos la ven' : `${k.name} quedó delante de ti. Todos lo ven y solo tú lo puedes quitar`);
+    }
+});
+net.on('item_error', (m) => {
+    placing = false;
+    itemsForm.querySelector('[type=submit]').disabled = false;
+    itemsMessage(m.message);
+    if (itemsBox.hidden) flashHint(m.message);
+});
 
 // ---------- Estadísticas: gráficos 3D ----------
 // Roy (con la clave de estadísticas) arma peticiones HTTP a sus sistemas, elige campos en una
@@ -3053,6 +3745,14 @@ function botPlaces() {
         centro: new THREE.Vector3(0, 0, 0),
         galeria: new THREE.Vector3(0, 0, GALLERY_Z - 4),
     };
+    // La pelota más cercana del mundo principal, si alguien puso una.
+    let best = Infinity;
+    for (const e of items.values()) {
+        if (!e.ball || e.data.scene !== MAIN) continue;
+        const p = new THREE.Vector3(e.data.x + e.ball.mesh.position.x, 0, e.data.z + e.ball.mesh.position.z);
+        const d = p.distanceTo(bot.pos);
+        if (d < best) { best = d; places.pelota = p; }
+    }
     return places;
 }
 // Quién está cerca del personaje: las personas del mundo principal y tú (si estás ahí).
@@ -3425,6 +4125,7 @@ renderer.setAnimationLoop(() => {
     updateBot(dt);
     updateRemotes(dt);
     updateCharts(dt);
+    updateItems(dt, t);
     checkHoles();
     dest.update(t);
     syncPosition();
@@ -3445,10 +4146,12 @@ window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    css3d?.renderer.setSize(window.innerWidth, window.innerHeight);
     resizeWormholes();
 });
 function resizeWormholes() {
     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
     wormholes.setSize(size.x, size.y);
+    city?.setPixelHeight(size.y);
 }
 resizeWormholes();
