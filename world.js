@@ -496,7 +496,7 @@ settingsPanel.addEventListener('click', () => setSettings(false), true);
 document.addEventListener('pointerdown', (e) => {
     if (!settingsBox.contains(e.target)) setSettings(false);
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; document.querySelector('[data-note-box]').hidden = true; document.querySelector('[data-note-view]').hidden = true; document.querySelector('[data-memory-box]').hidden = true; document.querySelector('[data-memory-view]').hidden = true; document.querySelector('[data-ad-box]').hidden = true; document.querySelector('[data-bot-box]').hidden = true; document.querySelector('[data-stats-box]').hidden = true; document.querySelector('[data-chart-view]').hidden = true; } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; document.querySelector('[data-sign-box]').hidden = true; document.querySelector('[data-sign-view]').hidden = true; document.querySelector('[data-bot-box]').hidden = true; document.querySelector('[data-stats-box]').hidden = true; document.querySelector('[data-chart-view]').hidden = true; } });
 
 // ---------- Primera persona ----------
 const fpBtn = document.querySelector('[data-fp]');
@@ -1575,9 +1575,7 @@ function goTo(id, { from = null, pos = null } = {}) {
         bannerTimer = setTimeout(() => banner.classList.add('is-compact'), 7000);
     }
     for (const r of remotes.values()) showRemote(r);
-    showNotesHere();
-    showMemoriesHere();
-    showAdsHere();
+    showSignsHere();
     showChartsHere();
     lastSent.at = 0;   // los demás se enteran enseguida
 }
@@ -1721,252 +1719,125 @@ net.on('portal', (m) => {
 net.on('portal_error', (m) => { creating = false; holeMessage(m.message); });
 
 
-// ---------- Notas ----------
-// Cualquiera deja una nota donde está (en el mundo o dentro de un agujero de gusano) con una
-// fecha de vencimiento. Se ve como un letrero; al tocarlo se lee entera con su autor, cuándo
-// se creó y cuándo vence. Al vencer desaparece para todos.
+// ---------- Letreros ----------
+// Todo lo que alguien publica en el mundo es un letrero: un mismo objeto con título, texto,
+// imagen y enlace, todos opcionales, y un dueño (el único que puede borrarlo). Se publica delante
+// de quien lo crea y puede tener fecha de vencimiento. Con imagen se ve como un cartel grande con
+// su placa; sin imagen, como una nota. Los que traen un espacio de galería (slot), como los cuadros
+// de Roy en el mundo de las cotizaciones, se ven como un cuadro con su ficha.
+// Los universos comparten dest.scene, así que cada letrero se muestra solo en el suyo.
+const API_BASE = WS_URL.replace(/^ws/, 'http').replace(/\/ws$/, '');
+const PHOTO_MAX_PX = 1280;
+const PHOTO_TARGET_BYTES = 320_000;
 const NOTE_W = 0.9, NOTE_H = 1.05, NOTE_BOTTOM = 0.7;
-const notes = new Map();   // id -> { data, group, panel }
-const noteView = document.querySelector('[data-note-view]');
+const MEM_MAX_W = 2.4, MEM_MAX_H = 1.7, MEM_BOTTOM = 0.95, PLAQUE_H = 0.5;
+const signs = new Map();   // id -> { data, piece, hits }
+const signView = document.querySelector('[data-sign-view]');
+const photoLoader = new THREE.TextureLoader().setCrossOrigin('anonymous');
+const adGalleries = { [MAIN]: gallery, other: dest.copies.get(gallery) };
+const signImageUrl = (src) => (src && src.startsWith('/') ? API_BASE + src : src);
+const hostOf = (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } };
+const kb = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.round(n / 1000)} KB`);
+const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const inGallery = (s) => Number.isInteger(s.slot);
+const ownerOf = (s) => s.owner_name || 'Visitante';
+function signColors(id) {
+    const h = Math.round(hueFor(id) * 360);
+    return [`hsl(${h} 55% 12%)`, `hsl(${h} 55% 32%)`];
+}
+// Texto en líneas de hasta maxW px; corta con «…» si pasa de maxLines.
+function wrapLines(c, text, maxW, maxLines) {
+    const lines = [];
+    for (const para of (text || '').split('\n')) {
+        let line = '';
+        for (const word of para.replace(/\s+/g, ' ').split(' ').filter(Boolean)) {
+            const test = line ? `${line} ${word}` : word;
+            if (c.measureText(test).width > maxW && line) { lines.push(line); line = word; } else line = test;
+        }
+        lines.push(line);
+    }
+    while (lines.length && !lines[lines.length - 1]) lines.pop();
+    if (lines.length > maxLines) {
+        lines.length = maxLines;
+        lines[maxLines - 1] = lines[maxLines - 1].replace(/\s*\S*$/, '') + '…';
+    }
+    return lines;
+}
 
-function drawNote(c, w, h, n) {
+// Sin imagen, delante de ti: una nota con su título, su texto y su enlace.
+function drawNoteSign(c, w, h, s) {
     const g = c.createLinearGradient(0, 0, 0, h);
     g.addColorStop(0, '#fff6c9'); g.addColorStop(1, '#ffe48a');
     c.fillStyle = g; c.fillRect(0, 0, w, h);
     c.fillStyle = '#ff3da6'; c.fillRect(0, 0, w, 14);
-    c.fillStyle = '#5a3c00'; c.textAlign = 'left'; c.textBaseline = 'alphabetic';
-    c.font = 'bold 34px "Space Grotesk", sans-serif';
-    c.fillText(`📝 ${n.owner_name || 'Visitante'}`, 30, 66, w - 60);
-    c.fillStyle = '#2a2206'; c.font = '32px "Space Grotesk", sans-serif';
-    // Hasta 8 líneas; el resto se lee al abrirla.
-    const words = n.text.replace(/\s+/g, ' ').split(' ');
-    const lines = [];
-    let line = '';
-    for (const word of words) {
-        const test = line ? `${line} ${word}` : word;
-        if (c.measureText(test).width > w - 60 && line) { lines.push(line); line = word; }
-        else line = test;
+    c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+    c.fillStyle = '#5a3c00'; c.font = 'bold 30px "Space Grotesk", sans-serif';
+    c.fillText(`📌 ${ownerOf(s)}`, 30, 60, w - 60);
+    let y = 112;
+    if (s.title) {
+        c.fillStyle = '#2a2206'; c.font = 'bold 38px "Space Grotesk", sans-serif';
+        for (const l of wrapLines(c, s.title, w - 60, 2)) { c.fillText(l, 30, y, w - 60); y += 44; }
+        y += 6;
     }
-    if (line) lines.push(line);
-    const shown = lines.slice(0, 8);
-    if (lines.length > 8) shown[7] = shown[7].replace(/\s*\S*$/, '') + '…';
-    shown.forEach((l, i) => c.fillText(l, 30, 124 + i * 42, w - 60));
-    c.fillStyle = '#7a5a12'; c.font = '24px "JetBrains Mono", monospace';
-    c.fillText(`Vence ${formatDate(n.expires_at)}`, 30, h - 28, w - 60);
+    c.fillStyle = '#2a2206'; c.font = '30px "Space Grotesk", sans-serif';
+    const room = Math.max(1, Math.floor((h - 70 - (s.url ? 44 : 0) - y + 30) / 40));
+    for (const l of wrapLines(c, s.text, w - 60, room)) { c.fillText(l, 30, y, w - 60); y += 40; }
+    if (s.url) {
+        c.fillStyle = '#0b4fa8'; c.font = 'bold 26px "JetBrains Mono", monospace';
+        c.fillText(`🔗 ${hostOf(s.url)}`, 30, h - 66, w - 60);
+    }
+    c.fillStyle = '#7a5a12'; c.font = '22px "JetBrains Mono", monospace';
+    c.fillText(s.expires_at ? `Vence ${formatDate(s.expires_at)}` : formatDate(s.created_at), 30, h - 26, w - 60);
 }
 
-function addNote(n) {
-    removeNote(n.id);
+function buildNoteSign(s) {
     const group = new THREE.Group();
-    group.position.set(n.x, 0, n.z);
-    group.rotation.y = n.ry || 0;
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, NOTE_BOTTOM + NOTE_H / 2, 0.06), poleMat);
     post.position.set(0, (NOTE_BOTTOM + NOTE_H / 2) / 2, -0.03);
-    const tex = makeLabelTexture(512, 600, (c, w, h) => drawNote(c, w, h, n));
     const panel = new THREE.Mesh(
         new THREE.PlaneGeometry(NOTE_W, NOTE_H),
-        new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, side: THREE.DoubleSide })
+        new THREE.MeshBasicMaterial({ map: makeLabelTexture(512, 600, (c, w, h) => drawNoteSign(c, w, h, s)), toneMapped: false, side: THREE.DoubleSide })
     );
     panel.position.y = NOTE_BOTTOM + NOTE_H / 2;
-    panel.userData = { hint: `Leer la nota de ${n.owner_name || 'Visitante'}`, action: () => openNote(n.id) };
     group.add(post, panel);
-    (n.scene === MAIN ? scene : dest.scene).add(group);
-    clickable.push(panel);
-    notes.set(n.id, { data: n, group, panel });
-    group.visible = n.scene === here.id;
-    refreshMyNotes();
+    return { piece: group, hits: [panel] };
 }
 
-function removeNote(id) {
-    const e = notes.get(id);
-    if (!e) return;
-    e.group.parent?.remove(e.group);
-    e.panel.material.map.dispose(); e.panel.material.dispose(); e.panel.geometry.dispose();
-    clickable.splice(clickable.indexOf(e.panel), 1);
-    notes.delete(id);
-    if (noteView.dataset.id === id) noteView.hidden = true;
-    refreshMyNotes();
-}
-
-// Solo las de la escena donde estás (todas las escenas de destino comparten la misma plantilla).
-function showNotesHere() {
-    for (const e of notes.values()) e.group.visible = e.data.scene === here.id;
-}
-
-function openNote(id) {
-    const n = notes.get(id)?.data;
-    if (!n) return;
-    noteView.dataset.id = id;
-    noteView.querySelector('[data-note-author]').textContent = n.owner_name || 'Visitante';
-    noteView.querySelector('[data-note-text]').textContent = n.text;
-    noteView.querySelector('[data-note-created]').textContent = formatDate(n.created_at) || 'Sin dato';
-    noteView.querySelector('[data-note-expires]').textContent = formatDate(n.expires_at) || 'Sin dato';
-    const del = noteView.querySelector('[data-note-delete]');
-    del.hidden = !net.myId || n.owner_id !== net.myId;
-    del.textContent = 'Borrar nota';
-    delete del.dataset.confirm;
-    noteView.hidden = false;
-}
-noteView.querySelector('[data-note-close]').addEventListener('click', () => { noteView.hidden = true; });
-noteView.addEventListener('click', (e) => { if (e.target === noteView) noteView.hidden = true; });
-noteView.querySelector('[data-note-delete]').addEventListener('click', (e) => {
-    const del = e.currentTarget;
-    if (!del.dataset.confirm) { del.dataset.confirm = '1'; del.textContent = '¿Borrar? Toca otra vez'; return; }
-    net.send({ type: 'note_delete', id: noteView.dataset.id });
-});
-
-// Las vencidas se quitan solas, aunque nadie avise.
-setInterval(() => {
-    const now = new Date().toISOString();
-    for (const [id, e] of notes) if (e.data.expires_at <= now) removeNote(id);
-}, 30000);
-
-net.on('notes', (m) => {
-    const ids = new Set(m.notes.map((n) => n.id));
-    for (const id of [...notes.keys()]) if (!ids.has(id)) removeNote(id);
-    m.notes.forEach(addNote);
-});
-net.on('note_removed', (m) => removeNote(m.id));
-
-// Dejar una nota (Ajustes → Dejar una nota).
-const noteBox = document.querySelector('[data-note-box]');
-const noteForm = noteBox.querySelector('[data-note-form]');
-const noteError = noteBox.querySelector('[data-note-error]');
-const myNotes = noteBox.querySelector('[data-my-notes]');
-let noting = false;
-const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-function noteMessage(text) {
-    noteError.hidden = !text;
-    noteError.textContent = text || '';
-}
-function refreshMyNotes() {
-    const mine = [...notes.values()].filter((e) => net.myId && e.data.owner_id === net.myId);
-    myNotes.hidden = !mine.length;
-    myNotes.querySelector('ul').replaceChildren(...mine.map((e) => {
-        const li = document.createElement('li');
-        const name = document.createElement('span');
-        name.textContent = `${e.data.text.slice(0, 40)}${e.data.text.length > 40 ? '…' : ''} · vence ${formatDate(e.data.expires_at)}`;
-        const del = document.createElement('button');
-        del.type = 'button';
-        del.className = 'holes__delete';
-        del.textContent = 'Borrar';
-        del.addEventListener('click', () => {
-            if (del.dataset.confirm) return net.send({ type: 'note_delete', id: e.data.id });
-            del.dataset.confirm = '1';
-            del.textContent = '¿Borrar? Toca otra vez';
-        });
-        li.append(name, del);
-        return li;
-    }));
-}
-document.querySelector('[data-note-open]').addEventListener('click', () => {
-    if (!getProfile()) return showLogin();
-    const today = new Date();
-    const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-    noteForm.expires.min = isoDay(tomorrow);
-    noteForm.expires.max = isoDay(new Date(today.getFullYear() + 1, today.getMonth(), today.getDate()));
-    if (!noteForm.expires.value) noteForm.expires.value = isoDay(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7));
-    noteMessage('');
-    refreshMyNotes();
-    noteBox.hidden = false;
-    setTimeout(() => noteForm.text.focus(), 50);
-});
-noteBox.querySelector('[data-note-close]').addEventListener('click', () => { noteBox.hidden = true; });
-noteForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (!net.loggedIn) return noteMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
-    if (!noteForm.expires.value) return noteMessage('Elige la fecha de vencimiento.');
-    // Vence al final del día elegido (hora de quien la escribe).
-    const expires = new Date(`${noteForm.expires.value}T23:59:59`);
-    // 1,6 m delante de Ruddy en la dirección de la cámara, mirando hacia él.
-    camera.getWorldDirection(forward);
-    const yaw = Math.atan2(forward.x, forward.z);
-    noting = true;
-    noteMessage('');
-    net.send({
-        type: 'note_create',
-        text: noteForm.text.value.trim(),
-        expires_at: expires.toISOString(),
-        x: player.position.x + Math.sin(yaw) * 1.6,
-        z: player.position.z + Math.cos(yaw) * 1.6,
-        ry: yaw + Math.PI,
-        scene: here.id,
-    });
-});
-net.on('note', (m) => {
-    addNote(m.note);
-    if (noting && m.note.owner_id === net.myId) {
-        noting = false;
-        noteBox.hidden = true;
-        noteForm.text.value = '';
-        flashHint('Tu nota quedó delante de ti. Todos pueden leerla hasta que venza');
-    }
-});
-net.on('note_error', (m) => { noting = false; noteMessage(m.message); });
-
-
-// ---------- Recuerdos ----------
-// Un letrero grande con una foto y un texto, en el lugar donde está quien lo crea (como las
-// notas, pero sin vencimiento). La foto se achica y se comprime aquí antes de subirla: las del
-// iPhone pesan varios MB y en el letrero basta con ~1280 px.
-const API_BASE = WS_URL.replace(/^ws/, 'http').replace(/\/ws$/, '');
-const PHOTO_MAX_PX = 1280;
-const PHOTO_TARGET_BYTES = 320_000;
-const MEM_MAX_W = 2.4, MEM_MAX_H = 1.7, MEM_BOTTOM = 0.95, PLAQUE_H = 0.5;
-const memories = new Map();   // id -> { data, group, hits }
-const memoryView = document.querySelector('[data-memory-view]');
-const photoLoader = new THREE.TextureLoader().setCrossOrigin('anonymous');
-const photoUrl = (id) => `${API_BASE}/api/photos/${id}.jpg`;
-
-function addMemory(m) {
-    removeMemory(m.id);
+// Con imagen, delante de ti: la imagen enmarcada y debajo una placa con el título y el texto.
+function buildPhotoSign(s) {
     const group = new THREE.Group();
-    group.position.set(m.x, 0, m.z);
-    group.rotation.y = m.ry || 0;
-    const aspect = m.w / m.h || 4 / 3;
+    const aspect = s.w / s.h || 4 / 3;
     const pw = Math.min(MEM_MAX_W, MEM_MAX_H * aspect);
     const ph = pw / aspect;
     const photoY = MEM_BOTTOM + PLAQUE_H + 0.12 + ph / 2;
-
     const frame = new THREE.Mesh(new THREE.BoxGeometry(pw + 0.18, ph + 0.18, 0.08), frameMat);
     frame.position.set(0, photoY, -0.05);
     frame.castShadow = true;
     const photoMat = new THREE.MeshBasicMaterial({ color: 0x222633, toneMapped: false });
     const photo = new THREE.Mesh(new THREE.PlaneGeometry(pw, ph), photoMat);
     photo.position.y = photoY;
-    photoLoader.load(photoUrl(m.id), (tex) => {
+    photoLoader.load(signImageUrl(s.image), (tex) => {
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
         photoMat.map = tex;
         photoMat.color.set(0xffffff);
         photoMat.needsUpdate = true;
     });
-
-    // Placa con el texto, debajo de la foto.
     const plaqueW = Math.max(pw, 1.6);
     const plaqueTex = makeLabelTexture(1024, Math.round(1024 * PLAQUE_H / plaqueW), (c, w, h) => {
         c.fillStyle = '#14112a'; c.fillRect(0, 0, w, h);
         c.strokeStyle = '#ffb070'; c.lineWidth = 6; c.strokeRect(6, 6, w - 12, h - 12);
         c.fillStyle = '#fff'; c.textAlign = 'center';
         c.font = '600 40px "Space Grotesk", sans-serif';
-        const lines = [];
-        let line = '';
-        for (const word of (m.text || '').replace(/\s+/g, ' ').split(' ').filter(Boolean)) {
-            const test = line ? `${line} ${word}` : word;
-            if (c.measureText(test).width > w - 80 && line) { lines.push(line); line = word; } else line = test;
-        }
-        if (line) lines.push(line);
-        const maxLines = Math.max(1, Math.floor((h - 70) / 48));
-        const shown = lines.slice(0, maxLines);
-        if (lines.length > maxLines) shown[maxLines - 1] += '…';
+        const body = [s.title, s.text].filter(Boolean).join(' · ') || (s.url ? hostOf(s.url) : '');
+        const shown = wrapLines(c, body.replace(/\s+/g, ' '), w - 80, Math.max(1, Math.floor((h - 70) / 48)));
         const top = (h - 44 - shown.length * 48) / 2 + 36;
         shown.forEach((l, i) => c.fillText(l, w / 2, top + i * 48, w - 80));
         c.font = '26px "JetBrains Mono", monospace'; c.fillStyle = '#ffd2a6';
-        c.fillText(`Recuerdo de ${m.owner_name || 'Visitante'} · ${formatDate(m.created_at)}`, w / 2, h - 26, w - 80);
+        c.fillText(`${s.url ? '🔗 ' : ''}De ${ownerOf(s)} · ${formatDate(s.created_at)}`, w / 2, h - 26, w - 80);
     });
     const plaque = new THREE.Mesh(new THREE.PlaneGeometry(plaqueW, PLAQUE_H), new THREE.MeshBasicMaterial({ map: plaqueTex, toneMapped: false }));
     plaque.position.y = MEM_BOTTOM + PLAQUE_H / 2;
-
     const postH = photoY + ph / 2 + 0.09;
     for (const side of [-1, 1]) {
         const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, postH, 0.08), poleMat);
@@ -1974,67 +1845,112 @@ function addMemory(m) {
         group.add(post);
     }
     group.add(frame, photo, plaque);
-    const hint = `Ver el recuerdo de ${m.owner_name || 'Visitante'}`;
-    for (const hit of [photo, plaque]) {
-        hit.userData = { hint, action: () => openMemory(m.id) };
+    return { piece: group, hits: [photo, plaque] };
+}
+
+// En un espacio de galería: un cuadro con su ficha (los de Roy traen subtítulo, créditos y colores).
+function buildGallerySign(s) {
+    const text = s.text || (s.url ? hostOf(s.url) : '');
+    const { piece, hits } = makePainting({
+        title: s.title || (s.text ? s.text.trim().split('\n')[0].slice(0, 40) : hostOf(s.url || '')),
+        subtitle: s.subtitle || (s.url ? hostOf(s.url) : 'Letrero'),
+        text: s.title ? text : (s.url ? hostOf(s.url) : ''),
+        credit: s.devs ? `Desarrollo: ${s.devs}` : `Publicado por ${ownerOf(s)} · ${formatDate(s.created_at)}`,
+        url: s.url,
+        image: signImageUrl(s.image),
+        fallback: s.fallback,
+        colors: s.colors?.length === 2 ? s.colors : signColors(s.id),
+    });
+    piece.position.x = slotX(s.slot);
+    return { piece, hits };
+}
+
+function addSign(s) {
+    removeSign(s.id, true);
+    let built;
+    if (inGallery(s)) {
+        built = buildGallerySign(s);
+        adGalleries[s.scene === MAIN ? MAIN : 'other'].add(built.piece);
+    } else {
+        built = s.image ? buildPhotoSign(s) : buildNoteSign(s);
+        built.piece.position.set(s.x, 0, s.z);
+        built.piece.rotation.y = s.ry || 0;
+        (s.scene === MAIN ? scene : dest.scene).add(built.piece);
+    }
+    const { piece, hits } = built;
+    // Un cuadro con enlace lo abre directo (como siempre en la galería); lo demás abre el letrero.
+    for (const hit of hits) {
+        if (!(inGallery(s) && s.url)) hit.userData = { hint: s.title ? `Ver «${s.title}»` : `Ver el letrero de ${ownerOf(s)}`, action: () => openSign(s.id) };
         clickable.push(hit);
     }
-    (m.scene === MAIN ? scene : dest.scene).add(group);
-    group.visible = m.scene === here.id;
-    memories.set(m.id, { data: m, group, hits: [photo, plaque] });
-    refreshMyMemories();
+    signs.set(s.id, { data: s, piece, hits });
+    piece.visible = s.scene === here.id;
 }
 
-function removeMemory(id) {
-    const e = memories.get(id);
+function removeSign(id, quiet) {
+    const e = signs.get(id);
     if (!e) return;
-    e.group.parent?.remove(e.group);
-    e.group.traverse((o) => {
+    e.piece.parent?.remove(e.piece);
+    e.piece.traverse((o) => {
         if (!o.isMesh) return;
         o.geometry.dispose();
-        if (o.material !== frameMat && o.material !== poleMat) { o.material.map?.dispose(); o.material.dispose(); }
+        if (![frameMat, matMat, poleMat].includes(o.material)) { o.material.map?.dispose(); o.material.dispose(); }
     });
     for (const hit of e.hits) clickable.splice(clickable.indexOf(hit), 1);
-    memories.delete(id);
-    if (memoryView.dataset.id === id) memoryView.hidden = true;
-    refreshMyMemories();
+    signs.delete(id);
+    if (signView.dataset.id === id) signView.hidden = true;
+    if (!quiet) { showSignsHere(); refreshMySigns(); }
 }
 
-function showMemoriesHere() {
-    for (const e of memories.values()) e.group.visible = e.data.scene === here.id;
+// Solo los de la escena donde estás.
+function showSignsHere() {
+    for (const e of signs.values()) e.piece.visible = e.data.scene === here.id;
 }
 
-function openMemory(id) {
-    const m = memories.get(id)?.data;
-    if (!m) return;
-    memoryView.dataset.id = id;
-    const img = memoryView.querySelector('[data-memory-photo]');
-    img.src = photoUrl(m.id);
-    img.alt = m.text || `Recuerdo de ${m.owner_name || 'Visitante'}`;
-    memoryView.querySelector('[data-memory-author]').textContent = m.owner_name || 'Visitante';
-    memoryView.querySelector('[data-memory-text]').textContent = m.text || '';
-    memoryView.querySelector('[data-memory-text]').hidden = !m.text;
-    memoryView.querySelector('[data-memory-created]').textContent = formatDate(m.created_at) || 'Sin dato';
-    const del = memoryView.querySelector('[data-memory-delete]');
-    del.hidden = !net.myId || m.owner_id !== net.myId;
-    del.textContent = 'Borrar recuerdo';
+function openSign(id) {
+    const s = signs.get(id)?.data;
+    if (!s) return;
+    signView.dataset.id = id;
+    const q = (k) => signView.querySelector(`[data-sign-${k}]`);
+    const img = q('photo');
+    img.hidden = !s.image;
+    if (s.image) { img.src = signImageUrl(s.image); img.alt = s.title || s.text || `Letrero de ${ownerOf(s)}`; }
+    q('author').textContent = ownerOf(s);
+    q('heading').textContent = s.title || '';
+    q('heading').hidden = !s.title;
+    q('text').textContent = s.text || '';
+    q('text').hidden = !s.text;
+    q('link').hidden = !s.url;
+    if (s.url) { q('link').href = s.url; q('link').textContent = `Abrir ${hostOf(s.url)} ↗`; }
+    q('created').textContent = formatDate(s.created_at) || 'Sin dato';
+    q('expires').textContent = s.expires_at ? formatDate(s.expires_at) : 'No vence';
+    const del = q('delete');
+    del.hidden = !net.myId || s.owner_id !== net.myId;
+    del.textContent = 'Borrar letrero';
     delete del.dataset.confirm;
-    memoryView.hidden = false;
+    signView.hidden = false;
 }
-memoryView.querySelector('[data-memory-close]').addEventListener('click', () => { memoryView.hidden = true; });
-memoryView.addEventListener('click', (e) => { if (e.target === memoryView) memoryView.hidden = true; });
-memoryView.querySelector('[data-memory-delete]').addEventListener('click', (e) => {
+signView.querySelector('[data-sign-close]').addEventListener('click', () => { signView.hidden = true; });
+signView.addEventListener('click', (e) => { if (e.target === signView) signView.hidden = true; });
+signView.querySelector('[data-sign-delete]').addEventListener('click', (e) => {
     const del = e.currentTarget;
     if (!del.dataset.confirm) { del.dataset.confirm = '1'; del.textContent = '¿Borrar? Toca otra vez'; return; }
-    net.send({ type: 'memory_delete', id: memoryView.dataset.id });
+    net.send({ type: 'sign_delete', id: signView.dataset.id });
 });
 
-net.on('memories', (m) => {
-    const ids = new Set(m.memories.map((x) => x.id));
-    for (const id of [...memories.keys()]) if (!ids.has(id)) removeMemory(id);
-    m.memories.forEach(addMemory);
+// Los vencidos se quitan solos, aunque nadie avise.
+setInterval(() => {
+    const now = new Date().toISOString();
+    for (const [id, e] of signs) if (e.data.expires_at && e.data.expires_at <= now) removeSign(id);
+}, 30000);
+
+net.on('signs', (m) => {
+    const ids = new Set(m.signs.map((x) => x.id));
+    for (const id of [...signs.keys()]) if (!ids.has(id)) removeSign(id, true);
+    m.signs.forEach(addSign);
+    refreshMySigns();
 });
-net.on('memory_removed', (m) => removeMemory(m.id));
+net.on('sign_removed', (m) => removeSign(m.id));
 
 // Achica la foto a PHOTO_MAX_PX y baja la calidad JPEG hasta que pese ~300 KB.
 async function compressPhoto(file) {
@@ -2068,34 +1984,38 @@ async function compressPhoto(file) {
     }
 }
 
-// Crear un recuerdo (Ajustes → Crear recuerdo).
-const memoryBox = document.querySelector('[data-memory-box]');
-const memoryForm = memoryBox.querySelector('[data-memory-form]');
-const memoryError = memoryBox.querySelector('[data-memory-error]');
-const memoryPreview = memoryBox.querySelector('[data-memory-preview]');
-const memoryInfo = memoryBox.querySelector('[data-memory-info]');
-const myMemories = memoryBox.querySelector('[data-my-memories]');
-let pendingPhoto = null;
-let remembering = false;
-const kb = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.round(n / 1000)} KB`);
-function memoryMessage(text) {
-    memoryError.hidden = !text;
-    memoryError.textContent = text || '';
+// Publicar (Ajustes → Publicar).
+const signBox = document.querySelector('[data-sign-box]');
+const signForm = signBox.querySelector('[data-sign-form]');
+const signError = signBox.querySelector('[data-sign-error]');
+const signPreview = signBox.querySelector('[data-sign-preview]');
+const signInfo = signBox.querySelector('[data-sign-info]');
+const signExpires = signBox.querySelector('[data-sign-expiry]');
+const mySigns = signBox.querySelector('[data-my-signs]');
+let pendingImage = null;
+let publishing = false;
+function signMessage(text) {
+    signError.hidden = !text;
+    signError.textContent = text || '';
 }
-function refreshMyMemories() {
-    const mine = [...memories.values()].filter((e) => net.myId && e.data.owner_id === net.myId);
-    myMemories.hidden = !mine.length;
-    myMemories.querySelector('ul').replaceChildren(...mine.map((e) => {
+function sceneLabel(scene) {
+    return scene === MAIN ? 'Universo principal' : (portals.get(scene)?.data.name || 'Otro universo');
+}
+function refreshMySigns() {
+    const mine = [...signs.values()].filter((e) => net.myId && e.data.owner_id === net.myId);
+    mySigns.hidden = !mine.length;
+    mySigns.querySelector('ul').replaceChildren(...mine.map((e) => {
+        const s = e.data;
         const li = document.createElement('li');
         const name = document.createElement('span');
-        const t = e.data.text || 'Sin texto';
-        name.textContent = `${t.slice(0, 40)}${t.length > 40 ? '…' : ''} · ${formatDate(e.data.created_at)}`;
+        const t = s.title || s.text || (s.url ? hostOf(s.url) : 'Imagen');
+        name.textContent = `${t.slice(0, 40)}${t.length > 40 ? '…' : ''} · ${inGallery(s) ? 'galería, ' : ''}${sceneLabel(s.scene)}`;
         const del = document.createElement('button');
         del.type = 'button';
         del.className = 'holes__delete';
         del.textContent = 'Borrar';
         del.addEventListener('click', () => {
-            if (del.dataset.confirm) return net.send({ type: 'memory_delete', id: e.data.id });
+            if (del.dataset.confirm) return net.send({ type: 'sign_delete', id: s.id });
             del.dataset.confirm = '1';
             del.textContent = '¿Borrar? Toca otra vez';
         });
@@ -2103,270 +2023,94 @@ function refreshMyMemories() {
         return li;
     }));
 }
-document.querySelector('[data-memory-open]').addEventListener('click', () => {
+function openSignBox() {
     if (!getProfile()) return showLogin();
-    memoryMessage('');
-    refreshMyMemories();
-    memoryBox.hidden = false;
-});
-memoryBox.querySelector('[data-memory-close]').addEventListener('click', () => { memoryBox.hidden = true; });
-memoryForm.photo.addEventListener('change', async () => {
-    const file = memoryForm.photo.files[0];
-    pendingPhoto = null;
-    memoryPreview.hidden = true;
-    memoryMessage('');
-    if (!file) { memoryInfo.textContent = ''; return; }
-    memoryInfo.textContent = 'Preparando la foto…';
+    const today = new Date();
+    signForm.expires.min = isoDay(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1));
+    signForm.expires.max = isoDay(new Date(today.getFullYear() + 1, today.getMonth(), today.getDate()));
+    if (!signForm.expires.value) signForm.expires.value = isoDay(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7));
+    signExpires.hidden = !signForm.expiring.checked;
+    signMessage('');
+    refreshMySigns();
+    signBox.hidden = false;
+}
+document.querySelector('[data-sign-open]').addEventListener('click', openSignBox);
+signBox.querySelector('[data-sign-close]').addEventListener('click', () => { signBox.hidden = true; });
+signForm.expiring.addEventListener('change', () => { signExpires.hidden = !signForm.expiring.checked; });
+signForm.image.addEventListener('change', async () => {
+    const file = signForm.image.files[0];
+    pendingImage = null;
+    signPreview.hidden = true;
+    signMessage('');
+    if (!file) { signInfo.textContent = ''; return; }
+    signInfo.textContent = 'Preparando la imagen…';
     try {
         const p = await compressPhoto(file);
-        if (memoryForm.photo.files[0] !== file) return;   // eligió otra mientras tanto
-        pendingPhoto = p;
-        memoryPreview.src = p.dataUrl;
-        memoryPreview.hidden = false;
-        memoryInfo.textContent = `Lista: ${p.w}×${p.h}, ${kb(p.size)} (antes ${kb(p.original)})`;
+        if (signForm.image.files[0] !== file) return;   // eligió otra mientras tanto
+        pendingImage = p;
+        signPreview.src = p.dataUrl;
+        signPreview.hidden = false;
+        signInfo.textContent = `Lista: ${p.w}×${p.h}, ${kb(p.size)} (antes ${kb(p.original)})`;
     } catch {
-        memoryInfo.textContent = '';
-        memoryMessage('No se pudo leer esa foto. Prueba con otra.');
+        signInfo.textContent = '';
+        signMessage('No se pudo leer esa imagen. Prueba con otra.');
     }
 });
-memoryForm.addEventListener('submit', (e) => {
+signForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    if (!pendingPhoto) return memoryMessage('Elige una foto.');
-    if (!net.loggedIn) return memoryMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
-    // 2,4 m delante de Ruddy en la dirección de la cámara, mirando hacia él.
+    const title = signForm.heading.value.trim();
+    const text = signForm.text.value.trim();
+    if (signForm.image.files[0] && !pendingImage) return signMessage('Espera a que la imagen esté lista.');
+    if (!title && !text && !pendingImage) return signMessage('Escribe un texto o elige una imagen.');
+    let url = signForm.url.value.trim();
+    if (url && !/^https?:\/\//i.test(url)) url = `https://${url}`;
+    if (url && !/^https?:\/\/[^\s/$.?#][^\s]*$/i.test(url)) return signMessage('Ese enlace no se ve bien. Por ejemplo: https://mi-negocio.com');
+    let expires = null;
+    if (signForm.expiring.checked) {
+        if (!signForm.expires.value) return signMessage('Elige la fecha de vencimiento.');
+        expires = new Date(`${signForm.expires.value}T23:59:59`).toISOString();   // al final de ese día
+    }
+    if (!net.loggedIn) return signMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
+    // Delante de ti en la dirección de la cámara, mirando hacia ti (más lejos si es grande).
     camera.getWorldDirection(forward);
     const yaw = Math.atan2(forward.x, forward.z);
-    remembering = true;
-    memoryMessage('');
-    memoryForm.querySelector('[type=submit]').disabled = true;
+    const dist = pendingImage ? 2.4 : 1.6;
+    publishing = true;
+    signMessage('');
+    signForm.querySelector('[type=submit]').disabled = true;
     net.send({
-        type: 'memory_create',
-        text: memoryForm.text.value.trim(),
-        photo: pendingPhoto.dataUrl,
-        w: pendingPhoto.w,
-        h: pendingPhoto.h,
-        x: player.position.x + Math.sin(yaw) * 2.4,
-        z: player.position.z + Math.cos(yaw) * 2.4,
+        type: 'sign_create',
+        title, text, url,
+        photo: pendingImage?.dataUrl,
+        w: pendingImage?.w,
+        h: pendingImage?.h,
+        expires_at: expires,
+        scene: here.id,
+        x: player.position.x + Math.sin(yaw) * dist,
+        z: player.position.z + Math.cos(yaw) * dist,
         ry: yaw + Math.PI,
-        scene: here.id,
     });
 });
-net.on('memory', (m) => {
-    addMemory(m.memory);
-    if (remembering && m.memory.owner_id === net.myId) {
-        remembering = false;
-        memoryForm.querySelector('[type=submit]').disabled = false;
-        memoryBox.hidden = true;
-        memoryForm.reset();
-        pendingPhoto = null;
-        memoryPreview.hidden = true;
-        memoryInfo.textContent = '';
-        flashHint('Tu recuerdo quedó delante de ti');
+net.on('sign', (m) => {
+    addSign(m.sign);
+    refreshMySigns();
+    if (publishing && m.sign.owner_id === net.myId) {
+        publishing = false;
+        signForm.querySelector('[type=submit]').disabled = false;
+        signBox.hidden = true;
+        signForm.reset();
+        pendingImage = null;
+        signPreview.hidden = true;
+        signInfo.textContent = '';
+        flashHint('Tu letrero quedó delante de ti. Todos pueden verlo');
     }
 });
-net.on('memory_error', (m) => {
-    remembering = false;
-    memoryForm.querySelector('[type=submit]').disabled = false;
-    memoryMessage(m.message);
+net.on('sign_error', (m) => {
+    publishing = false;
+    signForm.querySelector('[type=submit]').disabled = false;
+    signMessage(m.message);
 });
 
-// ---------- Publicidad ----------
-// Los cuadros de la galería. Cualquiera pone uno con una imagen (se comprime como la foto de un
-// recuerdo) y un enlace, en un espacio libre de la pared del universo donde está. Su dueño lo
-// quita con «Anular publicidad». Los universos comparten dest.scene, así que cada cuadro de otro
-// universo se muestra solo cuando estás en el suyo.
-const adGalleries = { [MAIN]: gallery, other: dest.copies.get(gallery) };
-const ads = new Map();   // id -> { data, piece, hits }
-const adBox = document.querySelector('[data-ad-box]');
-const adForm = adBox.querySelector('[data-ad-form]');
-const adError = adBox.querySelector('[data-ad-error]');
-const adPreview = adBox.querySelector('[data-ad-preview]');
-const adInfo = adBox.querySelector('[data-ad-info]');
-const myAds = adBox.querySelector('[data-my-ads]');
-let pendingAdImage = null;
-let advertising = false;
-let adSlot = null;   // el espacio que se tocó para poner la publicidad
-
-const adImageUrl = (src) => (src && src.startsWith('/') ? API_BASE + src : src);
-const hostOf = (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } };
-function adColors(id) {
-    const h = Math.round(hueFor(id) * 360);
-    return [`hsl(${h} 55% 12%)`, `hsl(${h} 55% 32%)`];
-}
-
-// Espacio libre: un marco vacío que invita a poner la publicidad propia.
-const emptyTex = makeLabelTexture(1280, 720, (c, w, h) => {
-    c.fillStyle = '#15131d'; c.fillRect(0, 0, w, h);
-    c.setLineDash([28, 22]); c.strokeStyle = 'rgba(233,220,192,.55)'; c.lineWidth = 8;
-    c.strokeRect(30, 30, w - 60, h - 60);
-    c.fillStyle = '#e9dcc0'; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.font = '600 84px "Space Grotesk", sans-serif';
-    c.fillText('Espacio libre', w / 2, h / 2 - 50);
-    c.font = '44px "JetBrains Mono", monospace'; c.fillStyle = 'rgba(233,220,192,.8)';
-    c.fillText('Toca para poner tu publicidad', w / 2, h / 2 + 60);
-});
-const emptyGeo = new THREE.PlaneGeometry(PAINT_W, PAINT_H);
-const emptyMat = new THREE.MeshBasicMaterial({ map: emptyTex, toneMapped: false });
-const emptySlots = {};   // MAIN / other -> [mesh por espacio]
-for (const [key, wall] of Object.entries(adGalleries)) {
-    emptySlots[key] = Array.from({ length: AD_SLOTS }, (_, i) => {
-        const m = new THREE.Mesh(emptyGeo, emptyMat);
-        m.position.set(slotX(i), PAINT_BOTTOM + PAINT_H / 2, 0.02);
-        m.userData = { hint: 'Poner tu publicidad aquí', action: () => openAdBox(i) };
-        wall.add(m);
-        clickable.push(m);
-        return m;
-    });
-}
-
-function addAd(a) {
-    removeAd(a.id, true);
-    const item = {
-        title: a.title || hostOf(a.url),
-        subtitle: a.subtitle || 'Publicidad',
-        text: a.text || hostOf(a.url),
-        credit: a.devs ? `Desarrollo: ${a.devs}` : `Publicidad de ${a.owner_name || 'Visitante'} · ${formatDate(a.created_at)}`,
-        url: a.url,
-        image: adImageUrl(a.image),
-        fallback: a.fallback,
-        colors: a.colors?.length === 2 ? a.colors : adColors(a.id),
-    };
-    const { piece, hits } = makePainting(item);
-    piece.position.x = slotX(a.slot);
-    adGalleries[a.scene === MAIN ? MAIN : 'other'].add(piece);
-    piece.visible = a.scene === here.id;
-    for (const hit of hits) clickable.push(hit);
-    ads.set(a.id, { data: a, piece, hits });
-    showAdsHere();
-    refreshMyAds();
-}
-
-function removeAd(id, quiet) {
-    const e = ads.get(id);
-    if (!e) return;
-    e.piece.parent?.remove(e.piece);
-    e.piece.traverse((o) => {
-        if (!o.isMesh) return;
-        o.geometry.dispose();
-        if (o.material !== frameMat && o.material !== matMat) { o.material.map?.dispose(); o.material.dispose(); }
-    });
-    for (const hit of e.hits) clickable.splice(clickable.indexOf(hit), 1);
-    ads.delete(id);
-    if (!quiet) { showAdsHere(); refreshMyAds(); }
-}
-
-function showAdsHere() {
-    const taken = { [MAIN]: new Set(), other: new Set() };
-    for (const e of ads.values()) {
-        e.piece.visible = e.data.scene === here.id;
-        if (e.data.scene === MAIN) taken[MAIN].add(e.data.slot);
-        else if (e.data.scene === here.id) taken.other.add(e.data.slot);
-    }
-    for (const key of [MAIN, 'other']) emptySlots[key].forEach((m, i) => { m.visible = !taken[key].has(i); });
-}
-
-net.on('ads', (m) => {
-    const ids = new Set(m.ads.map((x) => x.id));
-    for (const id of [...ads.keys()]) if (!ids.has(id)) removeAd(id, true);
-    m.ads.forEach(addAd);
-    showAdsHere();
-    refreshMyAds();
-});
-net.on('ad_removed', (m) => removeAd(m.id));
-
-function adMessage(text) {
-    adError.hidden = !text;
-    adError.textContent = text || '';
-}
-function sceneLabel(scene) {
-    return scene === MAIN ? 'Universo principal' : (portals.get(scene)?.data.name || 'Otro universo');
-}
-function refreshMyAds() {
-    const mine = [...ads.values()].filter((e) => net.myId && e.data.owner_id === net.myId);
-    myAds.hidden = !mine.length;
-    myAds.querySelector('ul').replaceChildren(...mine.map((e) => {
-        const li = document.createElement('li');
-        const name = document.createElement('span');
-        name.textContent = `${e.data.title || hostOf(e.data.url)} · ${sceneLabel(e.data.scene)}`;
-        const del = document.createElement('button');
-        del.type = 'button';
-        del.className = 'holes__delete';
-        del.textContent = 'Anular publicidad';
-        del.addEventListener('click', () => {
-            if (del.dataset.confirm) return net.send({ type: 'ad_delete', id: e.data.id });
-            del.dataset.confirm = '1';
-            del.textContent = '¿Anular? Toca otra vez';
-        });
-        li.append(name, del);
-        return li;
-    }));
-}
-function openAdBox(slot = null) {
-    if (!getProfile()) return showLogin();
-    adSlot = slot;
-    adMessage('');
-    refreshMyAds();
-    adBox.querySelector('[data-ad-where]').textContent = sceneLabel(here.id);
-    adBox.hidden = false;
-}
-document.querySelector('[data-ad-open]').addEventListener('click', () => openAdBox());
-adBox.querySelector('[data-ad-close]').addEventListener('click', () => { adBox.hidden = true; });
-adForm.image.addEventListener('change', async () => {
-    const file = adForm.image.files[0];
-    pendingAdImage = null;
-    adPreview.hidden = true;
-    adMessage('');
-    if (!file) { adInfo.textContent = ''; return; }
-    adInfo.textContent = 'Preparando la imagen…';
-    try {
-        const p = await compressPhoto(file);
-        if (adForm.image.files[0] !== file) return;   // eligió otra mientras tanto
-        pendingAdImage = p;
-        adPreview.src = p.dataUrl;
-        adPreview.hidden = false;
-        adInfo.textContent = `Lista: ${p.w}×${p.h}, ${kb(p.size)} (antes ${kb(p.original)})`;
-    } catch {
-        adInfo.textContent = '';
-        adMessage('No se pudo leer esa imagen. Prueba con otra.');
-    }
-});
-adForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (!pendingAdImage) return adMessage('Elige una imagen.');
-    let url = adForm.url.value.trim();
-    if (url && !/^https?:\/\//i.test(url)) url = `https://${url}`;
-    if (!/^https?:\/\/[^\s/$.?#][^\s]*$/i.test(url)) return adMessage('Pon el enlace de tu página, por ejemplo https://mi-negocio.com');
-    if (!net.loggedIn) return adMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
-    advertising = true;
-    adMessage('');
-    adForm.querySelector('[type=submit]').disabled = true;
-    net.send({
-        type: 'ad_create',
-        url,
-        title: adForm.heading.value.trim(),
-        photo: pendingAdImage.dataUrl,
-        scene: here.id,
-        slot: adSlot,
-    });
-});
-net.on('ad', (m) => {
-    addAd(m.ad);
-    if (advertising && m.ad.owner_id === net.myId) {
-        advertising = false;
-        adForm.querySelector('[type=submit]').disabled = false;
-        adBox.hidden = true;
-        adForm.reset();
-        pendingAdImage = null;
-        adPreview.hidden = true;
-        adInfo.textContent = '';
-        flashHint('Tu publicidad quedó en la galería');
-    }
-});
-net.on('ad_error', (m) => {
-    advertising = false;
-    adForm.querySelector('[type=submit]').disabled = false;
-    adMessage(m.message);
-});
 
 // ---------- Estadísticas: gráficos 3D ----------
 // Roy (con la clave de estadísticas) arma peticiones HTTP a sus sistemas, elige campos en una

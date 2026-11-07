@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=59">
+    <link rel="stylesheet" href="style.css?v=60">
     <script type="importmap">
     {
         "imports": {
@@ -46,9 +46,7 @@
                         <button class="settings__item" type="button" data-bot-open>🤖 Mi personaje IA</button>
                         <button class="settings__item" type="button" data-fp aria-pressed="false">👁 Vista en primera persona</button>
                         <button class="settings__item" type="button" data-hole-open>🌀 Crear puente de Einstein-Rosen</button>
-                        <button class="settings__item" type="button" data-note-open>📝 Dejar una nota</button>
-                        <button class="settings__item" type="button" data-memory-open>📷 Crear recuerdo</button>
-                        <button class="settings__item" type="button" data-ad-open>🖼️ Poner publicidad</button>
+                        <button class="settings__item" type="button" data-sign-open>📌 Publicar</button>
                         <button class="settings__item" type="button" data-stats-open>📊 Estadísticas</button>
                     </div>
                 </section>
@@ -206,72 +204,6 @@
             <button class="login__back" type="button" data-hole-close>Cerrar</button>
         </form>
     </div>
-    <div class="login login--scroll" data-note-box role="dialog" aria-modal="true" aria-labelledby="note-title" hidden>
-        <form class="login__card" data-note-form autocomplete="off">
-            <p class="totem-panel__tag">Nota</p>
-            <h2 id="note-title">Deja una nota</h2>
-            <p class="login__note">Queda como un letrero delante de ti, en el lugar donde estás. Cualquiera puede leerla hasta que venza.</p>
-            <label>Mensaje<textarea name="text" maxlength="500" rows="4" required placeholder="Escribe tu nota…"></textarea></label>
-            <label>Vence el<input name="expires" type="date" required></label>
-            <p class="login__error" data-note-error hidden></p>
-            <button class="chat__send" type="submit">Dejar nota</button>
-            <div class="holes" data-my-notes hidden>
-                <h3>Tus notas</h3>
-                <ul></ul>
-            </div>
-            <button class="login__back" type="button" data-note-close>Cerrar</button>
-        </form>
-    </div>
-    <div class="totem-panel" data-note-view hidden role="dialog" aria-modal="true" aria-labelledby="note-view-author">
-        <div class="totem-panel__card profile note-view">
-            <p class="totem-panel__tag">Nota de</p>
-            <h2 id="note-view-author" data-note-author></h2>
-            <p class="note-view__text" data-note-text></p>
-            <dl class="profile__facts">
-                <dt>Creada</dt><dd data-note-created></dd>
-                <dt>Vence</dt><dd data-note-expires></dd>
-            </dl>
-            <button class="holes__delete" type="button" data-note-delete hidden>Borrar nota</button>
-            <button class="chat__send" type="button" data-note-close>Cerrar</button>
-        </div>
-    </div>
-    <div class="login login--scroll" data-memory-box role="dialog" aria-modal="true" aria-labelledby="memory-title" hidden>
-        <form class="login__card" data-memory-form autocomplete="off">
-            <p class="totem-panel__tag">Recuerdo</p>
-            <h2 id="memory-title">Crea un recuerdo</h2>
-            <p class="login__note">Un letrero grande con tu foto y un texto, delante de ti. Todos pueden verlo.</p>
-            <label>Foto<input name="photo" type="file" accept="image/*"></label>
-            <img class="memory__preview" data-memory-preview alt="Vista previa de la foto" hidden>
-            <p class="login__note" data-memory-info></p>
-            <label>Texto<textarea name="text" maxlength="300" rows="3" placeholder="Aquí celebramos…"></textarea></label>
-            <p class="login__error" data-memory-error hidden></p>
-            <button class="chat__send" type="submit">Crear recuerdo</button>
-            <div class="holes" data-my-memories hidden>
-                <h3>Tus recuerdos</h3>
-                <ul></ul>
-            </div>
-            <button class="login__back" type="button" data-memory-close>Cerrar</button>
-        </form>
-    </div>
-    <div class="login login--scroll" data-ad-box role="dialog" aria-modal="true" aria-labelledby="ad-title" hidden>
-        <form class="login__card" data-ad-form autocomplete="off">
-            <p class="totem-panel__tag">Publicidad</p>
-            <h2 id="ad-title">Pon tu publicidad</h2>
-            <p class="login__note">Un cuadro con tu imagen en la galería de <strong data-ad-where>este universo</strong>. Quien lo toque abre tu enlace.</p>
-            <label>Imagen<input name="image" type="file" accept="image/*"></label>
-            <img class="memory__preview" data-ad-preview alt="Vista previa de la imagen" hidden>
-            <p class="login__note" data-ad-info></p>
-            <label>Enlace<input name="url" type="text" inputmode="url" maxlength="500" placeholder="https://mi-negocio.com" required></label>
-            <label>Nombre (opcional)<input name="heading" type="text" maxlength="40" placeholder="Mi negocio"></label>
-            <p class="login__error" data-ad-error hidden></p>
-            <button class="chat__send" type="submit">Poner publicidad</button>
-            <div class="holes" data-my-ads hidden>
-                <h3>Tus publicidades</h3>
-                <ul></ul>
-            </div>
-            <button class="login__back" type="button" data-ad-close>Cerrar</button>
-        </form>
-    </div>
     <div class="login login--scroll" data-stats-box role="dialog" aria-modal="true" aria-labelledby="stats-title" hidden>
         <div class="login__card stats">
             <p class="totem-panel__tag">Estadísticas</p>
@@ -360,17 +292,42 @@
             <button class="chat__send" type="button" data-chart-close>Cerrar</button>
         </div>
     </div>
-    <div class="totem-panel" data-memory-view hidden role="dialog" aria-modal="true" aria-labelledby="memory-view-author">
+    <div class="login login--scroll" data-sign-box role="dialog" aria-modal="true" aria-labelledby="sign-title" hidden>
+        <form class="login__card" data-sign-form autocomplete="off">
+            <p class="totem-panel__tag">Publicar</p>
+            <h2 id="sign-title">Publica un letrero</h2>
+            <p class="login__note">Queda delante de ti, en el lugar donde estás. Solo texto, una imagen, un enlace o todo junto: todos lo ven y solo tú puedes borrarlo.</p>
+            <label>Título (opcional)<input name="heading" type="text" maxlength="60" placeholder="Mi negocio"></label>
+            <label>Texto (opcional)<textarea name="text" maxlength="500" rows="3" placeholder="Escribe tu mensaje…"></textarea></label>
+            <label>Imagen (opcional)<input name="image" type="file" accept="image/*"></label>
+            <img class="memory__preview" data-sign-preview alt="Vista previa de la imagen" hidden>
+            <p class="login__note" data-sign-info></p>
+            <label>Enlace (opcional)<input name="url" type="text" inputmode="url" maxlength="500" placeholder="https://mi-negocio.com"></label>
+            <label class="bot__check"><input name="expiring" type="checkbox"> Que desaparezca un día</label>
+            <label data-sign-expiry hidden>Vence el<input name="expires" type="date"></label>
+            <p class="login__error" data-sign-error hidden></p>
+            <button class="chat__send" type="submit">Publicar</button>
+            <div class="holes" data-my-signs hidden>
+                <h3>Tus letreros</h3>
+                <ul></ul>
+            </div>
+            <button class="login__back" type="button" data-sign-close>Cerrar</button>
+        </form>
+    </div>
+    <div class="totem-panel" data-sign-view hidden role="dialog" aria-modal="true" aria-labelledby="sign-view-author">
         <div class="totem-panel__card profile memory-view">
-            <img class="memory-view__photo" data-memory-photo alt="">
-            <p class="totem-panel__tag">Recuerdo de</p>
-            <h2 id="memory-view-author" data-memory-author></h2>
-            <p class="memory-view__text" data-memory-text></p>
+            <img class="memory-view__photo" data-sign-photo alt="" hidden>
+            <p class="totem-panel__tag">Publicado por</p>
+            <h2 id="sign-view-author" data-sign-author></h2>
+            <h3 class="sign-view__title" data-sign-heading hidden></h3>
+            <p class="memory-view__text" data-sign-text hidden></p>
+            <a class="chat__send sign-view__link" data-sign-link target="_blank" rel="noopener" hidden></a>
             <dl class="profile__facts">
-                <dt>Creado</dt><dd data-memory-created></dd>
+                <dt>Publicado</dt><dd data-sign-created></dd>
+                <dt>Vence</dt><dd data-sign-expires></dd>
             </dl>
-            <button class="holes__delete" type="button" data-memory-delete hidden>Borrar recuerdo</button>
-            <button class="chat__send" type="button" data-memory-close>Cerrar</button>
+            <button class="holes__delete" type="button" data-sign-delete hidden>Borrar letrero</button>
+            <button class="chat__send" type="button" data-sign-close>Cerrar</button>
         </div>
     </div>
     <div class="scene-banner" data-scene-banner hidden>
@@ -379,7 +336,7 @@
         <p data-scene-desc></p>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=59"></script>
+    <script type="module" src="world.js?v=60"></script>
     <script type="module" src="portafolio/firebase.js"></script>
 </body>
 </html>
