@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=55">
+    <link rel="stylesheet" href="style.css?v=56">
     <script type="importmap">
     {
         "imports": {
@@ -50,6 +50,7 @@
                         <button class="settings__item" type="button" data-note-open>📝 Dejar una nota</button>
                         <button class="settings__item" type="button" data-memory-open>📷 Crear recuerdo</button>
                         <button class="settings__item" type="button" data-ad-open>🖼️ Poner publicidad</button>
+                        <button class="settings__item" type="button" data-stats-open>📊 Estadísticas</button>
                     </div>
                 </section>
                 <section class="settings__group">
@@ -282,6 +283,92 @@
             <button class="login__back" type="button" data-ad-close>Cerrar</button>
         </form>
     </div>
+    <div class="login login--scroll" data-stats-box role="dialog" aria-modal="true" aria-labelledby="stats-title" hidden>
+        <div class="login__card stats">
+            <p class="totem-panel__tag">Estadísticas</p>
+            <h2 id="stats-title">Gráficos 3D con tus datos</h2>
+            <form class="stats__auth" data-stats-auth autocomplete="off">
+                <p class="login__note">Solo para el dueño del mundo. Las peticiones y sus credenciales se guardan y se ejecutan en el servidor: los demás solo ven los números de cada gráfico.</p>
+                <label>Clave de estadísticas<input name="key" type="password" autocomplete="current-password" spellcheck="false" required></label>
+                <label class="bot__check"><input name="remember" type="checkbox" checked> Recordar la clave en este dispositivo</label>
+                <button class="chat__send" type="submit">Entrar</button>
+            </form>
+            <div class="stats__main" data-stats-main hidden>
+                <form class="stats__step" data-stats-req autocomplete="off">
+                    <h3>1 · Petición HTTP</h3>
+                    <label>Petición<select name="saved" data-stats-saved></select></label>
+                    <label>Nombre<input name="name" maxlength="60" placeholder="Ventas del mes" required></label>
+                    <div class="stats__row">
+                        <label>Método<select name="method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></label>
+                        <label>URL<input name="url" type="text" inputmode="url" maxlength="2000" placeholder="https://api.mi-sistema.com/ventas" spellcheck="false" required></label>
+                    </div>
+                    <fieldset class="bot__field">
+                        <legend>Headers</legend>
+                        <div class="stats__headers" data-stats-headers></div>
+                        <button class="login__back stats__add" type="button" data-stats-add-header>+ Agregar header</button>
+                    </fieldset>
+                    <label data-stats-body-label hidden>Body<textarea name="body" rows="4" maxlength="20000" spellcheck="false" placeholder='{"desde": "2026-01-01"}'></textarea></label>
+                    <label>Ruta de los registros (opcional)<input name="records_path" maxlength="200" placeholder="data.items" spellcheck="false"></label>
+                    <div class="stats__actions">
+                        <button class="chat__send" type="submit">Probar</button>
+                        <button class="chat__send stats__secondary" type="button" data-stats-save>Guardar</button>
+                        <button class="holes__delete" type="button" data-stats-delete hidden>Borrar</button>
+                    </div>
+                </form>
+                <section class="stats__step" data-stats-response hidden>
+                    <h3>2 · Respuesta</h3>
+                    <p class="login__note" data-stats-summary></p>
+                    <details class="stats__raw"><summary>Ver la respuesta</summary><pre data-stats-raw></pre></details>
+                </section>
+                <form class="stats__step" data-stats-pivot hidden>
+                    <h3>3 · Tabla dinámica</h3>
+                    <div class="stats__row">
+                        <label>Filas (agrupar por)<select name="rows"></select></label>
+                        <label>Fechas<select name="date"><option value="">Tal cual</option><option value="day">Por día</option><option value="month">Por mes</option><option value="year">Por año</option></select></label>
+                    </div>
+                    <div class="stats__row">
+                        <label>Cálculo<select name="agg"><option value="count">Contar registros</option><option value="sum">Suma</option><option value="avg">Promedio</option><option value="min">Mínimo</option><option value="max">Máximo</option></select></label>
+                        <label>Valor<select name="value"></select></label>
+                    </div>
+                    <div class="stats__row">
+                        <label>Series (opcional)<select name="cols"></select></label>
+                        <label>Orden<select name="sort"><option value="value">Mayor valor</option><option value="label">Por nombre</option><option value="none">Como llegan</option></select></label>
+                    </div>
+                    <label>Máximo de filas<input name="limit" type="number" min="1" max="30" value="12"></label>
+                    <div class="stats__table" data-stats-table></div>
+                </form>
+                <form class="stats__step" data-stats-chart hidden autocomplete="off">
+                    <h3>4 · Gráfico 3D</h3>
+                    <label>Título<input name="title" maxlength="60" placeholder="Ventas por sucursal" required></label>
+                    <div class="stats__row">
+                        <label>Tipo<select name="kind"><option value="bars">Barras</option><option value="pie">Torta</option><option value="line">Línea</option></select></label>
+                        <label>Actualizar<select name="refresh_min"><option value="0">Nunca</option><option value="5">Cada 5 min</option><option value="15">Cada 15 min</option><option value="30">Cada 30 min</option><option value="60">Cada hora</option><option value="360">Cada 6 horas</option><option value="1440">Cada día</option></select></label>
+                    </div>
+                    <label class="bot__check" data-stats-move hidden><input name="move" type="checkbox"> Moverlo delante de mí</label>
+                    <p class="login__note" data-stats-editing hidden></p>
+                    <button class="chat__send" type="submit">Poner el gráfico delante de mí</button>
+                    <button class="login__back" type="button" data-stats-cancel-edit hidden>Cancelar edición</button>
+                </form>
+                <div class="holes" data-stats-charts hidden>
+                    <h3>Gráficos en el mundo</h3>
+                    <ul></ul>
+                </div>
+            </div>
+            <p class="login__note bot__status" data-stats-status hidden></p>
+            <p class="login__error" data-stats-error hidden></p>
+            <button class="login__back" type="button" data-stats-lock hidden>Bloquear y olvidar la clave</button>
+            <button class="login__back" type="button" data-stats-close>Cerrar</button>
+        </div>
+    </div>
+    <div class="totem-panel" data-chart-view hidden role="dialog" aria-modal="true" aria-labelledby="chart-view-title">
+        <div class="totem-panel__card profile chart-view">
+            <p class="totem-panel__tag">Estadística</p>
+            <h2 id="chart-view-title" data-chart-title></h2>
+            <p class="profile__status chart-view__sub" data-chart-sub></p>
+            <div class="stats__table" data-chart-table></div>
+            <button class="chat__send" type="button" data-chart-close>Cerrar</button>
+        </div>
+    </div>
     <div class="totem-panel" data-memory-view hidden role="dialog" aria-modal="true" aria-labelledby="memory-view-author">
         <div class="totem-panel__card profile memory-view">
             <img class="memory-view__photo" data-memory-photo alt="">
@@ -301,7 +388,7 @@
         <p data-scene-desc></p>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=55"></script>
+    <script type="module" src="world.js?v=56"></script>
     <script type="module" src="portafolio/firebase.js"></script>
 </body>
 </html>

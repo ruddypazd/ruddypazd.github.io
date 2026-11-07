@@ -992,7 +992,7 @@ settingsPanel.addEventListener('click', () => setSettings(false), true);
 document.addEventListener('pointerdown', (e) => {
     if (!settingsBox.contains(e.target)) setSettings(false);
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; document.querySelector('[data-note-box]').hidden = true; document.querySelector('[data-note-view]').hidden = true; document.querySelector('[data-memory-box]').hidden = true; document.querySelector('[data-memory-view]').hidden = true; document.querySelector('[data-ad-box]').hidden = true; document.querySelector('[data-bot-box]').hidden = true; } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; document.querySelector('[data-note-box]').hidden = true; document.querySelector('[data-note-view]').hidden = true; document.querySelector('[data-memory-box]').hidden = true; document.querySelector('[data-memory-view]').hidden = true; document.querySelector('[data-ad-box]').hidden = true; document.querySelector('[data-bot-box]').hidden = true; document.querySelector('[data-stats-box]').hidden = true; document.querySelector('[data-chart-view]').hidden = true; } });
 
 // ---------- Primera persona ----------
 const fpBtn = document.querySelector('[data-fp]');
@@ -2223,6 +2223,7 @@ function goTo(id, { from = null, pos = null } = {}) {
     showNotesHere();
     showMemoriesHere();
     showAdsHere();
+    showChartsHere();
     lastSent.at = 0;   // los demás se enteran enseguida
 }
 
@@ -3015,6 +3016,581 @@ net.on('ad_error', (m) => {
     adMessage(m.message);
 });
 
+// ---------- Estadísticas: gráficos 3D ----------
+// Roy (con la clave de estadísticas) arma peticiones HTTP a sus sistemas, elige campos en una
+// tabla dinámica y pone el resultado como un gráfico 3D donde está. Las peticiones y sus headers
+// se guardan y se ejecutan en el servidor: este navegador solo ve los headers enmascarados, y
+// los demás reciben únicamente el título, las etiquetas y los números de cada gráfico.
+const CHART_COLORS = ['#00e5ff', '#ff3d9a', '#ffd400', '#36f1a0', '#ff8a3d', '#9b6bff', '#3d8bff', '#ff6b6b'];
+const AGG_NAMES = { count: 'Cantidad', sum: 'Suma', avg: 'Promedio', min: 'Mínimo', max: 'Máximo' };
+const CHART_H = 2.6;          // altura del valor más alto
+const CHART_BASE = 0.55;      // altura de la base sobre el piso
+const charts = new Map();     // id -> { data, group, body, hits, grow }
+const chartView = document.querySelector('[data-chart-view]');
+const numFmt = new Intl.NumberFormat('es', { maximumFractionDigits: 2 });
+const fmtNum = (n) => {
+    const a = Math.abs(n);
+    if (a >= 1e9) return `${numFmt.format(n / 1e9)} mil M`;
+    if (a >= 1e6) return `${numFmt.format(n / 1e6)} M`;
+    return numFmt.format(n);
+};
+const chartMat = (color, emissive = 0.35) => new THREE.MeshStandardMaterial({
+    color, emissive: color, emissiveIntensity: emissive, roughness: 0.35, metalness: 0.2,
+});
+
+function chartSubtitle(d) {
+    const what = d.agg === 'count' ? 'Cantidad de registros' : `${AGG_NAMES[d.agg] || 'Valor'} de ${d.value}`;
+    return d.rows ? `${what} por ${d.rows}` : what;
+}
+
+// Cartel con el título, qué se mide y la leyenda de las series.
+function chartBoard(c, width) {
+    const series = c.data.series || [];
+    const showLegend = series.length > 1 || c.kind === 'pie';
+    const items = c.kind === 'pie' ? (c.data.labels || []).slice(0, 8) : series.map((s) => s.name);
+    const legendRows = showLegend ? Math.ceil(items.length / 2) : 0;
+    const h = 0.7 + legendRows * 0.22;
+    const tex = makeLabelTexture(1024, Math.round(1024 * h / width), (g, w, H) => {
+        g.fillStyle = 'rgba(10, 13, 22, 0.92)'; g.fillRect(0, 0, w, H);
+        g.strokeStyle = '#ffd400'; g.lineWidth = 5; g.strokeRect(4, 4, w - 8, H - 8);
+        const k = H / h;   // píxeles por metro
+        g.textAlign = 'center'; g.fillStyle = '#fff';
+        g.font = `700 ${Math.round(0.26 * k)}px "Space Grotesk", sans-serif`;
+        g.fillText(c.title, w / 2, 0.32 * k, w - 40);
+        g.font = `${Math.round(0.13 * k)}px "JetBrains Mono", monospace`; g.fillStyle = '#ffe680';
+        g.fillText(`${chartSubtitle(c.data)} · ${formatDate(c.updated_at)}`, w / 2, 0.55 * k, w - 40);
+        g.textAlign = 'left';
+        g.font = `${Math.round(0.13 * k)}px "Space Grotesk", sans-serif`;
+        items.forEach((name, i) => {
+            const x = (i % 2 ? w / 2 : 0) + 30, y = (0.7 + Math.floor(i / 2) * 0.22 + 0.13) * k;
+            g.fillStyle = CHART_COLORS[i % CHART_COLORS.length]; g.fillRect(x, y - 0.1 * k, 0.12 * k, 0.12 * k);
+            g.fillStyle = '#fff'; g.fillText(String(name), x + 0.18 * k, y, w / 2 - 0.25 * k - 40);
+        });
+    });
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(width, h), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+    return { board, h };
+}
+
+// Franja con el nombre de cada fila (y su valor) delante de la base.
+function categoryStrip(labels, values, width) {
+    const n = labels.length;
+    const tex = makeLabelTexture(2048, 256, (g, w, h) => {
+        g.fillStyle = '#0d1120'; g.fillRect(0, 0, w, h);
+        const col = w / n;
+        const size = Math.max(22, Math.min(54, col / 6));
+        g.textAlign = 'center';
+        labels.forEach((l, i) => {
+            g.fillStyle = '#fff'; g.font = `600 ${size}px "Space Grotesk", sans-serif`;
+            g.fillText(String(l), col * (i + 0.5), h * 0.42, col - 10);
+            if (values) {
+                g.fillStyle = '#ffe680'; g.font = `${size * 0.9}px "JetBrains Mono", monospace`;
+                g.fillText(fmtNum(values[i]), col * (i + 0.5), h * 0.82, col - 10);
+            }
+        });
+    });
+    return new THREE.Mesh(new THREE.PlaneGeometry(width, 0.42), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+}
+
+// Escala vertical común: el mayor valor mide CHART_H; si hay negativos, el cero sube.
+function valueScale(series) {
+    const all = series.flatMap((s) => s.values);
+    const max = Math.max(0, ...all), min = Math.min(0, ...all);
+    const k = CHART_H / ((max - min) || 1);
+    return { k, zero: -min * k, max, min };
+}
+
+// Pared de atrás con líneas guía y sus valores.
+function gridWall(width, scale) {
+    const tex = makeLabelTexture(1024, 512, (g, w, h) => {
+        g.fillStyle = 'rgba(12, 16, 30, 0.85)'; g.fillRect(0, 0, w, h);
+        g.strokeStyle = 'rgba(255,255,255,0.14)'; g.lineWidth = 2;
+        g.fillStyle = 'rgba(255,255,255,0.6)'; g.font = '22px "JetBrains Mono", monospace'; g.textAlign = 'left';
+        for (let i = 0; i <= 4; i++) {
+            const y = h - (i / 4) * h * (CHART_H / (CHART_H + 0.3)) - 2;
+            g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
+            const v = scale.min + (scale.max - scale.min) * (i / 4);
+            g.fillText(fmtNum(v), 10, y - 8);
+        }
+    });
+    const wall = new THREE.Mesh(new THREE.PlaneGeometry(width, CHART_H + 0.3), new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false }));
+    wall.position.set(0, CHART_BASE + (CHART_H + 0.3) / 2, -0.75);
+    return wall;
+}
+
+function buildBars(c, body) {
+    const { labels, series } = c.data;
+    const n = labels.length, m = series.length;
+    const slot = Math.max(0.45, Math.min(1.1, 7 / n));
+    const width = n * slot;
+    const barW = (slot * 0.72) / m;
+    const scale = valueScale(series);
+    series.forEach((s, j) => {
+        const mat = chartMat(CHART_COLORS[j % CHART_COLORS.length]);
+        s.values.forEach((v, i) => {
+            const h = Math.max(0.02, Math.abs(v) * scale.k);
+            const bar = new THREE.Mesh(new THREE.BoxGeometry(barW * 0.9, h, Math.min(0.6, barW * 0.9 + 0.15)), mat);
+            bar.position.set(-width / 2 + slot * (i + 0.5) - (slot * 0.72) / 2 + barW * (j + 0.5),
+                scale.zero + (v >= 0 ? h / 2 : -h / 2), 0);
+            bar.castShadow = true;
+            body.add(bar);
+        });
+    });
+    const totals = labels.map((_, i) => series.reduce((a, s) => a + s.values[i], 0));
+    return { width, wall: gridWall(width + 0.4, scale), strip: categoryStrip(labels, totals, width) };
+}
+
+function buildLine(c, body) {
+    const { labels, series } = c.data;
+    const n = labels.length;
+    const slot = Math.max(0.45, Math.min(1.1, 7 / n));
+    const width = n * slot;
+    const scale = valueScale(series);
+    series.forEach((s, j) => {
+        const mat = chartMat(CHART_COLORS[j % CHART_COLORS.length], 0.6);
+        const pts = s.values.map((v, i) => new THREE.Vector3(-width / 2 + slot * (i + 0.5), scale.zero + v * scale.k, j * 0.12));
+        if (pts.length > 1) {
+            const path = new THREE.CurvePath();
+            for (let i = 1; i < pts.length; i++) path.add(new THREE.LineCurve3(pts[i - 1], pts[i]));
+            body.add(new THREE.Mesh(new THREE.TubeGeometry(path, (pts.length - 1) * 4, 0.04, 8, false), mat));
+        }
+        const dot = new THREE.SphereGeometry(0.09, 16, 12);
+        for (const p of pts) { const d = new THREE.Mesh(dot, mat); d.position.copy(p); body.add(d); }
+    });
+    const totals = labels.map((_, i) => series.reduce((a, s) => a + s.values[i], 0));
+    return { width, wall: gridWall(width + 0.4, scale), strip: categoryStrip(labels, series.length === 1 ? totals : null, width) };
+}
+
+function buildPie(c, body) {
+    const { labels, series } = c.data;
+    const totals = labels.map((_, i) => series.reduce((a, s) => a + Math.max(0, s.values[i]), 0)).slice(0, 8);
+    const sum = totals.reduce((a, b) => a + b, 0) || 1;
+    const r = 1.5;
+    let start = 0;
+    totals.forEach((v, i) => {
+        const len = (v / sum) * Math.PI * 2;
+        if (len <= 0) return;
+        const h = 0.35 + 0.35 * (v / Math.max(...totals));
+        const geo = new THREE.CylinderGeometry(r, r, h, Math.max(3, Math.ceil(64 * len / (Math.PI * 2))), 1, false, start, len);
+        const slice = new THREE.Mesh(geo, chartMat(CHART_COLORS[i % CHART_COLORS.length]));
+        const mid = start + len / 2;
+        slice.position.set(Math.sin(mid) * 0.08, h / 2, Math.cos(mid) * 0.08);   // un poco separadas
+        slice.castShadow = true;
+        body.add(slice);
+        start += len;
+    });
+    const shown = labels.slice(0, 8);
+    const strip = categoryStrip(shown.map((l, i) => `${l} · ${Math.round((totals[i] / sum) * 100)}%`), totals, Math.max(3.4, shown.length * 0.9));
+    return { width: Math.max(3.4, shown.length * 0.9), strip, pie: true };
+}
+
+function addChart(c) {
+    removeChart(c.id);
+    if (!c.data?.labels?.length || !c.data.series?.length) return;
+    const group = new THREE.Group();
+    group.position.set(c.x, 0, c.z);
+    group.rotation.y = c.ry || 0;
+    const body = new THREE.Group();   // lo que crece al aparecer
+    const built = c.kind === 'pie' ? buildPie(c, body) : c.kind === 'line' ? buildLine(c, body) : buildBars(c, body);
+    const width = Math.max(built.width + 0.6, 3.4);
+
+    const base = new THREE.Mesh(new THREE.BoxGeometry(width, CHART_BASE, built.pie ? 3.6 : 1.7), poleMat);
+    base.position.y = CHART_BASE / 2;
+    base.receiveShadow = true;
+    group.add(base);
+    body.position.y = CHART_BASE + (built.pie ? 0 : 0.001);
+    if (built.pie) body.position.z = 0;
+    group.add(body);
+    if (built.wall) group.add(built.wall);
+    built.strip.position.set(0, CHART_BASE / 2, (built.pie ? 1.8 : 0.85) + 0.005);
+    built.strip.scale.y = Math.min(1, CHART_BASE / 0.42);
+    group.add(built.strip);
+
+    const { board, h } = chartBoard(c, Math.min(width, 6));
+    const top = built.pie ? CHART_BASE + 1.4 : CHART_BASE + CHART_H + 0.35;
+    board.position.set(0, top + h / 2, built.pie ? -1.2 : -0.74);
+    group.add(board);
+
+    // Caja invisible para tocar el gráfico y ver la tabla.
+    const hitH = top + h;
+    const hit = new THREE.Mesh(new THREE.BoxGeometry(width, hitH, 1.8), new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.y = hitH / 2;
+    hit.userData = { hint: `Ver los datos de «${c.title}»`, action: () => openChart(c.id) };
+    group.add(hit);
+    clickable.push(hit);
+
+    (c.scene === MAIN ? scene : dest.scene).add(group);
+    group.visible = c.scene === here.id;
+    // Si solo cambiaron los números, no vuelve a crecer desde cero.
+    const grow = chartGrowth.get(c.id) ?? 0;
+    body.scale.y = Math.max(0.001, grow);
+    charts.set(c.id, { data: c, group, body, hits: [hit], grow });
+    if (chartView.dataset.id === c.id && !chartView.hidden) openChart(c.id);
+}
+const chartGrowth = new Map();
+
+function removeChart(id) {
+    const e = charts.get(id);
+    if (!e) return;
+    chartGrowth.set(id, e.grow);
+    e.group.parent?.remove(e.group);
+    const seen = new Set();
+    e.group.traverse((o) => {
+        if (!o.isMesh) return;
+        if (!seen.has(o.geometry)) { seen.add(o.geometry); o.geometry.dispose(); }
+        if (o.material !== poleMat && !seen.has(o.material)) { seen.add(o.material); o.material.map?.dispose(); o.material.dispose(); }
+    });
+    for (const hit of e.hits) clickable.splice(clickable.indexOf(hit), 1);
+    charts.delete(id);
+}
+
+function showChartsHere() {
+    for (const e of charts.values()) e.group.visible = e.data.scene === here.id;
+}
+
+// Al aparecer (o al acercarse por primera vez) las barras crecen desde la base.
+function updateCharts(dt) {
+    for (const e of charts.values()) {
+        if (e.grow >= 1 || !e.group.visible) continue;
+        if (e.group.position.distanceTo(player.position) > 30) continue;
+        e.grow = Math.min(1, e.grow + dt * 0.8);
+        e.body.scale.y = Math.max(0.001, 1 - (1 - e.grow) ** 3);
+    }
+}
+
+function chartTableHtml(d, colors = true) {
+    const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    const head = d.series.map((s, j) => `<th>${colors ? `<span class="swatch" style="background:${CHART_COLORS[j % CHART_COLORS.length]}"></span>` : ''}${esc(s.name)}</th>`).join('');
+    const rows = d.labels.map((l, i) => `<tr><td>${esc(l)}</td>${d.series.map((s) => `<td>${fmtNum(s.values[i])}</td>`).join('')}</tr>`).join('');
+    return `<table><thead><tr><th>${esc(d.rows || '')}</th>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function openChart(id) {
+    const c = charts.get(id)?.data;
+    if (!c) return;
+    chartView.dataset.id = id;
+    chartView.querySelector('[data-chart-title]').textContent = c.title;
+    chartView.querySelector('[data-chart-sub]').textContent = `${chartSubtitle(c.data)} · ${c.owner_name || ''} · actualizado ${formatDate(c.updated_at)}`;
+    chartView.querySelector('[data-chart-table]').innerHTML = chartTableHtml(c.data);
+    chartView.hidden = false;
+}
+chartView.querySelector('[data-chart-close]').addEventListener('click', () => { chartView.hidden = true; });
+chartView.addEventListener('click', (e) => { if (e.target === chartView) chartView.hidden = true; });
+
+net.on('charts', (m) => {
+    const ids = new Set(m.charts.map((x) => x.id));
+    for (const id of [...charts.keys()]) if (!ids.has(id)) removeChart(id);
+    m.charts.forEach(addChart);
+});
+net.on('chart', (m) => addChart(m.chart));
+net.on('chart_removed', (m) => { removeChart(m.id); chartGrowth.delete(m.id); if (chartView.dataset.id === m.id) chartView.hidden = true; });
+
+// Panel del dueño (Ajustes → Estadísticas).
+const STATS_KEY_STORE = 'rp_stats_key';
+const statsBox = document.querySelector('[data-stats-box]');
+const statsAuth = statsBox.querySelector('[data-stats-auth]');
+const statsMain = statsBox.querySelector('[data-stats-main]');
+const reqForm = statsBox.querySelector('[data-stats-req]');
+const pivotForm = statsBox.querySelector('[data-stats-pivot]');
+const chartForm = statsBox.querySelector('[data-stats-chart]');
+const statsResponse = statsBox.querySelector('[data-stats-response]');
+const statsHeaders = statsBox.querySelector('[data-stats-headers]');
+const statsError = statsBox.querySelector('[data-stats-error]');
+const statsStatus = statsBox.querySelector('[data-stats-status]');
+const statsTable = statsBox.querySelector('[data-stats-table]');
+const statsChartsList = statsBox.querySelector('[data-stats-charts]');
+const stats = { admin: false, requests: [], charts: [], fields: [], editing: null, pendingKey: null };
+
+function statsMessage(error, status) {
+    statsError.hidden = !error; statsError.textContent = error || '';
+    statsStatus.hidden = !status; statsStatus.textContent = status || '';
+}
+function storedStatsKey() { try { return localStorage.getItem(STATS_KEY_STORE) || ''; } catch { return ''; } }
+
+function addHeaderRow(h = {}) {
+    const row = document.createElement('div');
+    row.className = 'stats__header';
+    const name = document.createElement('input');
+    name.placeholder = 'Authorization'; name.value = h.name || ''; name.maxLength = 100; name.spellcheck = false;
+    name.setAttribute('aria-label', 'Nombre del header');
+    const value = document.createElement('input');
+    value.type = 'password'; value.autocomplete = 'off'; value.spellcheck = false; value.maxLength = 4000;
+    value.setAttribute('aria-label', 'Valor del header');
+    // Uno guardado: el valor se queda en el servidor; si escribes otro, lo reemplaza.
+    if (h.masked) { row.dataset.keep = '1'; value.placeholder = `Guardado ${h.masked}`; } else value.placeholder = 'Bearer …';
+    const del = document.createElement('button');
+    del.type = 'button'; del.className = 'holes__delete'; del.textContent = '✕'; del.setAttribute('aria-label', 'Quitar header');
+    del.addEventListener('click', () => row.remove());
+    row.append(name, value, del);
+    statsHeaders.append(row);
+}
+
+function readRequestForm() {
+    return {
+        id: reqForm.saved.value || undefined,
+        name: reqForm.name.value.trim(),
+        method: reqForm.method.value,
+        url: reqForm.url.value.trim(),
+        body: reqForm.body.value,
+        records_path: reqForm.records_path.value.trim(),
+        headers: [...statsHeaders.children].map((row) => {
+            const [n, v] = row.querySelectorAll('input');
+            return { name: n.value.trim(), value: v.value, keep: !!row.dataset.keep && !v.value };
+        }).filter((h) => h.name),
+    };
+}
+
+function fillRequestForm(r) {
+    reqForm.saved.value = r?.id || '';
+    reqForm.name.value = r?.name || '';
+    reqForm.method.value = r?.method || 'GET';
+    reqForm.url.value = r?.url || '';
+    reqForm.body.value = r?.body || '';
+    reqForm.records_path.value = r?.records_path || '';
+    statsHeaders.replaceChildren();
+    (r?.headers?.length ? r.headers : [{}]).forEach(addHeaderRow);
+    syncMethod();
+    reqForm.querySelector('[data-stats-delete]').hidden = !r?.id;
+    statsResponse.hidden = pivotForm.hidden = chartForm.hidden = true;
+    stats.fields = [];
+}
+function syncMethod() { statsBox.querySelector('[data-stats-body-label]').hidden = reqForm.method.value === 'GET'; }
+reqForm.method.addEventListener('change', syncMethod);
+
+function renderSavedSelect() {
+    const current = reqForm.saved.value;
+    reqForm.saved.replaceChildren(new Option('Nueva petición', ''), ...stats.requests.map((r) => new Option(`${r.name} · ${r.method}`, r.id)));
+    reqForm.saved.value = stats.requests.some((r) => r.id === current) ? current : '';
+}
+reqForm.saved.addEventListener('change', () => fillRequestForm(stats.requests.find((r) => r.id === reqForm.saved.value)));
+statsBox.querySelector('[data-stats-add-header]').addEventListener('click', () => addHeaderRow());
+
+function renderChartsList() {
+    statsChartsList.hidden = !stats.charts.length;
+    statsChartsList.querySelector('ul').replaceChildren(...stats.charts.map((c) => {
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        const req = stats.requests.find((r) => r.id === c.request_id);
+        name.textContent = `${c.title} · ${req?.name || 'sin petición'} · ${formatDate(c.updated_at)}`;
+        if (c.error) { const s = document.createElement('small'); s.textContent = `Última actualización falló: ${c.error}`; name.append(s); }
+        const btns = document.createElement('div');
+        const mk = (text, fn, cls = 'holes__delete') => {
+            const b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = text;
+            b.addEventListener('click', () => fn(b)); btns.append(b);
+        };
+        mk('Editar', () => editChart(c));
+        mk('Actualizar', () => { statsMessage('', 'Actualizando…'); net.send({ type: 'stats_chart_refresh', id: c.id }); });
+        mk('Borrar', (b) => {
+            if (b.dataset.confirm) return net.send({ type: 'stats_chart_delete', id: c.id });
+            b.dataset.confirm = '1'; b.textContent = '¿Borrar? Toca otra vez';
+        });
+        li.append(name, btns);
+        return li;
+    }));
+}
+
+function fillFieldSelects(keep = {}) {
+    const opts = (empty) => [new Option(empty, ''), ...stats.fields.map((f) => new Option(`${f.name}${f.sample != null ? ` (${String(f.sample).slice(0, 18)})` : ''}`, f.name))];
+    pivotForm.rows.replaceChildren(...opts('Todo junto'));
+    pivotForm.cols.replaceChildren(...opts('Sin series'));
+    pivotForm.value.replaceChildren(...opts('—'), ...[]);
+    const firstText = stats.fields.find((f) => !f.numeric)?.name || '';
+    const firstNum = stats.fields.find((f) => f.numeric)?.name || '';
+    pivotForm.rows.value = stats.fields.some((f) => f.name === keep.rows) ? keep.rows : firstText;
+    pivotForm.cols.value = stats.fields.some((f) => f.name === keep.cols) ? keep.cols : '';
+    pivotForm.value.value = stats.fields.some((f) => f.name === keep.value) ? keep.value : firstNum;
+    if (keep.agg) pivotForm.agg.value = keep.agg;
+    if (keep.date !== undefined) pivotForm.date.value = keep.date;
+    if (keep.sort) pivotForm.sort.value = keep.sort;
+    if (keep.limit) pivotForm.limit.value = keep.limit;
+    syncAgg();
+}
+function syncAgg() { pivotForm.value.disabled = pivotForm.agg.value === 'count'; }
+function readPivot() {
+    return {
+        rows: pivotForm.rows.value, cols: pivotForm.cols.value, value: pivotForm.value.value,
+        agg: pivotForm.agg.value, date: pivotForm.date.value, sort: pivotForm.sort.value, limit: Number(pivotForm.limit.value) || 12,
+    };
+}
+let pivotTimer = 0;
+function requestPivot() {
+    syncAgg();
+    clearTimeout(pivotTimer);
+    pivotTimer = setTimeout(() => net.send({ type: 'stats_pivot', pivot: readPivot() }), 150);
+}
+pivotForm.addEventListener('change', requestPivot);
+pivotForm.limit.addEventListener('input', requestPivot);
+pivotForm.addEventListener('submit', (e) => e.preventDefault());
+
+function editChart(c) {
+    stats.editing = c;
+    fillRequestForm(stats.requests.find((r) => r.id === c.request_id));
+    stats.pendingPivot = c.pivot;
+    chartForm.title.value = c.title;
+    chartForm.kind.value = c.kind;
+    chartForm.refresh_min.value = String(c.refresh_min || 0);
+    syncEditing();
+    statsMessage('', 'Probando la petición del gráfico…');
+    net.send({ type: 'stats_run', request: readRequestForm() });
+}
+function syncEditing() {
+    const c = stats.editing;
+    statsBox.querySelector('[data-stats-move]').hidden = !c;
+    statsBox.querySelector('[data-stats-cancel-edit]').hidden = !c;
+    const note = statsBox.querySelector('[data-stats-editing]');
+    note.hidden = !c;
+    note.textContent = c ? `Editando «${c.title}». Al guardar, todos lo ven con los datos nuevos.` : '';
+    chartForm.querySelector('[type=submit]').textContent = c ? 'Guardar cambios del gráfico' : 'Poner el gráfico delante de mí';
+    if (!c) chartForm.move.checked = false;
+}
+statsBox.querySelector('[data-stats-cancel-edit]').addEventListener('click', () => { stats.editing = null; syncEditing(); });
+
+function statsShowMain(on) {
+    stats.admin = on;
+    statsAuth.hidden = on;
+    statsMain.hidden = !on;
+    statsBox.querySelector('[data-stats-lock]').hidden = !on;
+}
+
+document.querySelector('[data-stats-open]').addEventListener('click', () => {
+    if (!getProfile()) return showLogin();
+    statsMessage('');
+    statsBox.hidden = false;
+    if (stats.admin) return;
+    statsShowMain(false);
+    const key = storedStatsKey();
+    if (key && net.loggedIn) { statsMessage('', 'Entrando…'); stats.pendingKey = { key, remember: true }; net.send({ type: 'stats_auth', key }); }
+    else setTimeout(() => statsAuth.key.focus(), 50);
+});
+statsBox.querySelector('[data-stats-close]').addEventListener('click', () => { statsBox.hidden = true; });
+statsAuth.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!net.loggedIn) return statsMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
+    stats.pendingKey = { key: statsAuth.key.value, remember: statsAuth.remember.checked };
+    statsMessage('', 'Comprobando la clave…');
+    net.send({ type: 'stats_auth', key: statsAuth.key.value });
+});
+statsBox.querySelector('[data-stats-lock]').addEventListener('click', () => {
+    try { localStorage.removeItem(STATS_KEY_STORE); } catch { /* modo privado */ }
+    location.reload();   // la conexión deja de ser la del dueño
+});
+
+reqForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    statsMessage('', 'Haciendo la petición desde el servidor…');
+    reqForm.querySelector('[type=submit]').disabled = true;
+    net.send({ type: 'stats_run', request: readRequestForm() });
+});
+statsBox.querySelector('[data-stats-save]').addEventListener('click', () => {
+    if (!reqForm.reportValidity()) return;
+    statsMessage('', 'Guardando…');
+    net.send({ type: 'stats_request_save', request: readRequestForm() });
+});
+statsBox.querySelector('[data-stats-delete]').addEventListener('click', (e) => {
+    const b = e.currentTarget;
+    if (!b.dataset.confirm) { b.dataset.confirm = '1'; b.textContent = '¿Borrar la petición y sus gráficos?'; return; }
+    delete b.dataset.confirm; b.textContent = 'Borrar';
+    net.send({ type: 'stats_request_delete', id: reqForm.saved.value });
+    fillRequestForm(null);
+});
+
+chartForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const requestId = reqForm.saved.value;
+    if (!requestId) return statsMessage('Guarda la petición (botón «Guardar») antes de crear el gráfico.');
+    const editing = stats.editing;
+    let place = null;
+    if (!editing || chartForm.move.checked) {
+        // 3,5 m delante, mirando hacia ti, como un recuerdo.
+        camera.getWorldDirection(forward);
+        const yaw = Math.atan2(forward.x, forward.z);
+        place = { x: player.position.x + Math.sin(yaw) * 3.5, z: player.position.z + Math.cos(yaw) * 3.5, ry: yaw + Math.PI, scene: here.id };
+    }
+    statsMessage('', 'Calculando el gráfico en el servidor…');
+    chartForm.querySelector('[type=submit]').disabled = true;
+    net.send({
+        type: 'stats_chart_save', place,
+        chart: { id: editing?.id, request_id: requestId, title: chartForm.title.value.trim(), kind: chartForm.kind.value,
+            refresh_min: Number(chartForm.refresh_min.value), pivot: readPivot() },
+    });
+});
+
+net.on('stats_state', (m) => {
+    if (stats.pendingKey) {
+        if (stats.pendingKey.remember) { try { localStorage.setItem(STATS_KEY_STORE, stats.pendingKey.key); } catch { /* modo privado */ } }
+        stats.pendingKey = null;
+        statsAuth.reset();
+        statsMessage('');
+        fillRequestForm(null);
+    }
+    statsShowMain(true);
+    stats.requests = m.requests;
+    stats.charts = m.charts;
+    if (stats.editing) stats.editing = m.charts.find((c) => c.id === stats.editing.id) || null;
+    renderSavedSelect();
+    if (stats.selectAfter) {
+        const saved = stats.requests.find((r) => r.id === stats.selectAfter);
+        stats.selectAfter = null;
+        if (saved) {
+            reqForm.saved.value = saved.id;
+            reqForm.querySelector('[data-stats-delete]').hidden = false;
+            // Lo escrito en los headers ya está en el servidor: aquí queda solo enmascarado.
+            statsHeaders.replaceChildren();
+            (saved.headers.length ? saved.headers : [{}]).forEach(addHeaderRow);
+        }
+    }
+    renderChartsList();
+    syncEditing();
+    if (!statsStatus.hidden && /Actualizando/.test(statsStatus.textContent)) statsMessage('', 'Listo.');
+});
+net.on('stats_saved', (m) => {
+    // El estado llega justo después: ahí se elige esta petición y se ocultan los valores escritos.
+    stats.selectAfter = m.id;
+    statsMessage('', 'Petición guardada. Las credenciales quedan solo en el servidor.');
+});
+net.on('stats_error', (m) => {
+    reqForm.querySelector('[type=submit]').disabled = false;
+    chartForm.querySelector('[type=submit]').disabled = false;
+    if (stats.pendingKey) {
+        if (stats.pendingKey.remember && stats.pendingKey.key === storedStatsKey()) { try { localStorage.removeItem(STATS_KEY_STORE); } catch { /* modo privado */ } }
+        stats.pendingKey = null;
+    }
+    statsMessage(m.message);
+});
+net.on('stats_response', (m) => {
+    reqForm.querySelector('[type=submit]').disabled = false;
+    statsResponse.hidden = false;
+    const summary = statsBox.querySelector('[data-stats-summary]');
+    if (m.error) {
+        summary.textContent = m.error;
+        statsBox.querySelector('[data-stats-raw]').textContent = '';
+        pivotForm.hidden = chartForm.hidden = true;
+        return statsMessage(m.error);
+    }
+    summary.textContent = `HTTP ${m.status} · ${m.ms} ms · ${m.records} registros${m.records_error ? ` · ${m.records_error}` : ''}`;
+    statsBox.querySelector('[data-stats-raw]').textContent = m.preview;
+    stats.fields = m.fields;
+    const ok = m.records > 0 && m.fields.length > 0;
+    pivotForm.hidden = chartForm.hidden = !ok;
+    statsMessage(ok ? '' : (m.records_error || 'La respuesta no trae registros para la tabla.'), ok ? 'Arma la tabla dinámica con los campos de la respuesta.' : '');
+    if (!ok) return;
+    fillFieldSelects(stats.pendingPivot || readPivotSafe());
+    stats.pendingPivot = null;
+    if (!chartForm.title.value) chartForm.title.value = reqForm.name.value;
+    requestPivot();
+});
+function readPivotSafe() { return pivotForm.rows.options.length ? readPivot() : {}; }
+net.on('stats_table', (m) => {
+    const t = m.table;
+    statsTable.innerHTML = t.labels.length ? chartTableHtml(t) : '<p>Con esos campos la tabla queda vacía.</p>';
+});
+net.on('stats_chart_ok', () => {
+    chartForm.querySelector('[type=submit]').disabled = false;
+    const was = stats.editing;
+    stats.editing = null;
+    syncEditing();
+    statsMessage('', was ? 'Gráfico actualizado para todos.' : 'Listo: el gráfico quedó delante de ti y todos lo ven.');
+});
+
 // ---------- Personaje IA ----------
 // Cada persona puede soltar un personaje con nombre y personalidad que camina, conversa y salta
 // solo. Lo maneja una IA (Claude, OpenAI, Grok u OpenRouter) con el token de esa persona, llamada
@@ -3424,6 +4000,7 @@ renderer.setAnimationLoop(() => {
     faceCamera(dt);
     updateBot(dt);
     updateRemotes(dt);
+    updateCharts(dt);
     if (here.id === MAIN) updateBall(dt);
     checkHoles();
     dest.update(t);
