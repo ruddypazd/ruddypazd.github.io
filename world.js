@@ -4,10 +4,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { createWormholes, buildUniverse, hueFor, HOLE_R } from './wormholes.js?v=47';
-import { createCity } from './city.js?v=55';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
@@ -15,7 +13,6 @@ const loaderText = document.querySelector('[data-loader-text]');
 const modelNote = document.querySelector('[data-model-note]');
 
 // ---------- Renderer, escena y cámara ----------
-// alpha: el letrero de video abre un hueco transparente para ver el iframe que está detrás.
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -90,208 +87,27 @@ ring.rotation.x = -Math.PI / 2;
 ring.position.y = 0.005;
 actors.add(ring);
 
-// ---------- Escenario: pilares y cubos neón para orientarse ----------
-const NEON = [0x00e5ff, 0xa060ff, 0xff3da6];
-const pillarGeo = new THREE.BoxGeometry(0.5, 1, 0.5);
-const pillarMat = new THREE.MeshStandardMaterial({ color: 0x141a2e, roughness: 0.4, metalness: 0.5 });
+// ---------- Escenario ----------
+// Solo piso, luz y cielo: todo lo demás que se ve en cada escena viene del servidor.
 const obstacles = [];
 
-for (let i = 0; i < 18; i++) {
-    const angle = (i / 18) * Math.PI * 2 + (i % 2) * 0.17;
-    const dist = 7 + (i % 3) * 5.5;
-    const h = 1.5 + ((i * 7) % 5) * 0.6;
-    const color = NEON[i % 3];
-
-    const pillar = new THREE.Mesh(pillarGeo, pillarMat);
-    pillar.scale.y = h;
-    pillar.position.set(Math.cos(angle) * dist, h / 2, Math.sin(angle) * dist);
-    pillar.castShadow = true;
-    pillar.receiveShadow = true;
-    scene.add(pillar);
-
-    const cap = new THREE.Mesh(
-        new THREE.BoxGeometry(0.54, 0.08, 0.54),
-        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.6 })
-    );
-    cap.position.set(pillar.position.x, h + 0.04, pillar.position.z);
-    scene.add(cap);
-
-    obstacles.push({ x: pillar.position.x, z: pillar.position.z, r: 0.65 });
-}
-
-const cubes = NEON.map((color, i) => {
-    const cube = new THREE.Mesh(
-        new THREE.BoxGeometry(0.6, 0.6, 0.6),
-        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.9, transparent: true, opacity: 0.85 })
-    );
-    const angle = (i / 3) * Math.PI * 2 + 0.5;
-    cube.position.set(Math.cos(angle) * 4.5, 1.2, Math.sin(angle) * 4.5);
-    scene.add(cube);
-    return cube;
-});
-
-const clickable = [];   // cuadros, póster del video y tótem, para el clic
+const clickable = [];   // cuadros y demás objetos que se abren con un clic
 const poleMat = new THREE.MeshStandardMaterial({ color: 0x141a2e, roughness: 0.4, metalness: 0.6 });
 
-// ---------- Galería estilo museo: la pared de la publicidad ----------
-// Una pared al fondo con AD_SLOTS espacios para cuadros. Cada cuadro es una publicidad (imagen +
-// enlace) que alguien puso; el servidor guarda las de cada universo. GALLERY son los cuadros de
-// Roy (sus cotizaciones y proyectos): cuelgan en el mundo de las cotizaciones, al que se entra
-// por un puente fijo frente a esta pared. En el mundo principal la pared queda libre.
-// image: og:image del sitio (si la tiene); fallback: imagen local si la externa no carga.
-const GALLERY = [
-    {
-        title: 'ROR Logístico',
-        subtitle: 'Cotización',
-        text: 'Propuesta y cotización de los sistemas de R.O.R Logístico: torre de control, operaciones y seguimiento de envíos.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: 'https://s-r-o-r.github.io/cotizaciones/',
-        image: 'https://s-r-o-r.github.io/assets/og/og-cotizaciones.jpg',
-        fallback: 'images/cotizacion-ror.jpg',
-        colors: ['#06262e', '#0b5363'],
-    },
-    {
-        title: 'Sofía Ltda.',
-        subtitle: 'Cotización',
-        text: 'Propuesta y cotización del sistema para Sofía Ltda.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: 'https://s-s-sofia.github.io/',
-        image: 'https://s-s-sofia.github.io/image/og-image.jpg?v=20261007',
-        fallback: 'images/cotizacion-sofia.jpg',
-        colors: ['#24123d', '#5a2d91'],
-    },
-    {
-        title: 'Medical Center',
-        subtitle: 'Cotización',
-        text: 'Portal de autogestión de la Clínica Medical Center: citas, pagos QR, resultados y atención por WhatsApp.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: 'https://medicalcenterbo.github.io/',
-        image: 'https://medicalcenterbo.github.io/assets/og-image.jpg',
-        fallback: 'images/cotizacion-medical.jpg',
-        colors: ['#0b2e22', '#1d6b4f'],
-    },
-    {
-        title: 'Calistenia Bolivia',
-        subtitle: 'Cotización',
-        text: 'Propuesta y cotización del sitio y sistema de Calistenia Bolivia SRL.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: 'https://calisteniabolivia-srl.github.io/',
-        image: 'https://calisteniabolivia-srl.github.io/images/og/og-home.jpg',
-        fallback: 'images/cotizacion-calistenia.jpg',
-        colors: ['#3a1206', '#8a3412'],
-    },
-    {
-        title: 'Condominio Santa María',
-        subtitle: 'Portal de copropietarios',
-        text: 'Portal de la comunidad del Condominio Santa María 1 en Santa Cruz: planos, censo, finanzas, reuniones y solicitudes.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: 'https://condominio-santa-maria.github.io',
-        image: 'https://condominio-santa-maria.github.io/images/og-image.png',
-        colors: ['#0f3d3a', '#1f6f5c'],
-    },
-    {
-        title: 'iFacturación',
-        subtitle: 'Facturación electrónica',
-        text: 'Sistema de facturación electrónica en línea de iBrokers: emisión de facturas, registro y gestión de cuentas.',
-        devs: 'Roy Ruddy Paz · Strasol SRL',
-        url: 'https://facturacion.ibrokers.cloud',
-        colors: ['#10264f', '#2f5fb3'],
-    },
-    {
-        title: 'SERP',
-        subtitle: 'ERP empresarial',
-        text: 'Sistema de planificación de recursos empresariales de Servisofts: ventas, inventario, finanzas y operación en un solo lugar.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: 'https://serp.servisofts.com',
-        colors: ['#3a0f2e', '#a3246f'],
-    },
-    {
-        title: 'R.O.R Control Tower',
-        subtitle: 'Torre de control logística',
-        text: 'Torre de control de R.O.R Logístico para seguir envíos, operaciones y estados en tiempo real.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: 'https://ct.rorlogistico.com',
-        colors: ['#3d2a0a', '#c27a12'],
-    },
-    {
-        title: 'iCompany',
-        subtitle: 'ERP para broker de seguros',
-        text: 'Sistema ERP para el broker de seguros del Banco Mercantil.',
-        devs: 'Roy Ruddy Paz · Strasol SRL',
-        url: 'https://icompany.segurosmsc.com',
-        colors: ['#06321f', '#0f7a45'],
-    },
-    {
-        title: 'UpLabs AI',
-        subtitle: 'CRM con IA',
-        text: 'CRM completo y multitenant con agentes de IA para llamadas y WhatsApp.',
-        devs: 'Roy Ruddy Paz · UpLabs AI',
-        url: 'https://app.uplabsai.com',
-        colors: ['#0b1440', '#5b2bd6'],
-    },
-    {
-        title: 'App Kolping',
-        subtitle: 'Gestión empresarial',
-        text: 'Sistema de gestión empresarial de Kolping.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: 'https://kolping.servisofts.com',
-        colors: ['#2a0b0b', '#8f1f1f'],
-    },
-    {
-        title: 'Staff Pro USA',
-        subtitle: 'Sistema web',
-        text: 'Sistema web de Staff Pro USA.',
-        devs: 'Roy Ruddy Paz · Servisofts',
-        url: 'https://staffprousa.servisofts.com/',
-        colors: ['#0a1e3a', '#b0242f'],
-    },
-];
+// ---------- Galería: los espacios de la publicidad ----------
+// AD_SLOTS lugares en fila al fondo. Cada cuadro es una publicidad (imagen + enlace) que alguien
+// puso y que el servidor guarda; no hay pared fija: si no hay publicidad, no se ve nada.
 const AD_SLOTS = 12;
 const PAINT_W = 5.6, PAINT_H = 3.15, PAINT_GAP = 1.2, PAINT_BOTTOM = 2.5;
 const galleryWidth = AD_SLOTS * PAINT_W + (AD_SLOTS - 1) * PAINT_GAP;
 const slotX = (i) => -galleryWidth / 2 + PAINT_W / 2 + i * (PAINT_W + PAINT_GAP);
-// La pared mira al centro del mundo. Cuantos más cuadros, más ancha: se acerca al
+// La fila mira al centro del mundo. Cuantos más cuadros, más ancha: se acerca al
 // centro lo justo para que sus extremos sigan dentro del mundo.
 const GALLERY_Z = Math.min(40, Math.sqrt((WORLD_RADIUS - 1) ** 2 - (galleryWidth / 2 + 2) ** 2));
 const gallery = new THREE.Group();
 gallery.position.set(0, 0, GALLERY_Z);
 gallery.rotation.y = Math.PI;       // los cuadros miran hacia -z
 scene.add(gallery);
-{
-    const wall = new THREE.Mesh(
-        new THREE.BoxGeometry(galleryWidth + 4, 7.5, 0.4),
-        new THREE.MeshStandardMaterial({ color: 0x1c1a24, roughness: 0.9 })
-    );
-    wall.position.set(0, 3.75, -0.3);
-    wall.receiveShadow = true;
-    gallery.add(wall);
-    const signMesh = new THREE.Mesh(new THREE.PlaneGeometry(8, 1), new THREE.MeshBasicMaterial({ map: gallerySign('GALERÍA DE PUBLICIDAD'), transparent: true, toneMapped: false }));
-    gallery.userData.sign = signMesh;
-    signMesh.position.set(0, 6.6, -0.09);
-    gallery.add(signMesh);
-    gallery.updateMatrixWorld(true);
-    const p = new THREE.Vector3();
-    for (let x = -galleryWidth / 2 - 2; x <= galleryWidth / 2 + 2.01; x += 0.6) {
-        gallery.localToWorld(p.set(x, 0, -0.3));
-        obstacles.push({ x: p.x, z: p.z, r: 0.6 });
-    }
-    // Foco de museo sobre cada espacio (cuadro y ficha), haya o no publicidad.
-    for (let i = 0; i < AD_SLOTS; i++) {
-        const spot = new THREE.SpotLight(0xfff1d6, 60, 12, Math.PI / 5, 0.5, 1.2);
-        spot.position.set(slotX(i), PAINT_BOTTOM + PAINT_H + 1.8, 2.4);
-        spot.target.position.set(slotX(i), PAINT_BOTTOM + PAINT_H / 2 - 0.8, 0);
-        gallery.add(spot, spot.target);
-    }
-}
-
-function gallerySign(text) {
-    return makeLabelTexture(1024, 128, (c, w, h) => {
-        c.fillStyle = '#e9dcc0'; c.textAlign = 'center'; c.textBaseline = 'middle';
-        c.font = '600 64px "Space Grotesk", serif';
-        c.fillText(text, w / 2, h / 2);
-    });
-}
-
 function makeLabelTexture(w, h, draw) {
     const cv = document.createElement('canvas');
     cv.width = w; cv.height = h;
@@ -392,207 +208,6 @@ function makePainting(item) {
     return { piece, hits: [canvasMesh] };
 }
 
-// ---------- Letrero de video (YouTube) a lo lejos: su audio es la música de fondo ----------
-// Un iframe no puede ser textura de WebGL. Se dibuja con CSS3DRenderer detrás del canvas y
-// un plano "agujero" en la escena deja ver el video, así Ruddy y los pilares lo tapan bien.
-// Arranca con este video y sigue con el resto de la lista de Roy, que se repite al terminar.
-const VIDEO_ID = 'xwtdhWltSIg';
-const PLAYLIST_ID = 'PLyyYs_E5nqBuSV2ARl6aTLMKOsRc3ms3Q';
-let videoTitle = 'Música de fondo';   // se cambia por el título real cuando YouTube lo avisa
-const VIDEO_W = 16;                    // ancho en metros (16:9); grande porque está lejos
-const VIDEO_H = VIDEO_W * 9 / 16;
-const VIDEO_PX = 1280;                 // ancho del iframe en píxeles CSS
-const VIDEO_BOTTOM = 2;
-const VIDEO_POS = new THREE.Vector3(0, 0, -48);
-
-const cssRenderer = new CSS3DRenderer();
-cssRenderer.setSize(window.innerWidth, window.innerHeight);
-cssRenderer.domElement.className = 'video-layer';
-document.body.prepend(cssRenderer.domElement);
-const cssScene = new THREE.Scene();
-
-// iOS no reproduce solo un iframe de YouTube (ni mudo), así que ahí arranca con sonido
-// cuando se toca su botón play; en el resto arranca mudo y suena con el primer gesto.
-const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent)
-    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const ytFrame = document.createElement('iframe');
-ytFrame.src = `https://www.youtube.com/embed/${VIDEO_ID}?enablejsapi=1${IS_IOS ? '' : '&autoplay=1&mute=1'}&loop=1`
-    + `&list=${PLAYLIST_ID}&controls=0&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3`
-    + `&origin=${encodeURIComponent(location.origin)}`;
-ytFrame.title = 'Video de fondo del Mundo 3D';
-ytFrame.allow = 'autoplay; encrypted-media';
-ytFrame.style.cssText = IS_IOS ? 'width:100%;aspect-ratio:16/9;border:0;background:#000;display:block'
-    : `width:${VIDEO_PX}px;height:${VIDEO_PX * 9 / 16}px;border:0;background:#000`;
-// En iPhone el play de YouTube hay que tocarlo dentro del iframe, y Safari no siempre
-// entrega el toque a un iframe con transformaciones 3D. Ahí el reproductor vive en una
-// tarjeta 2D que se abre al tocar el cartel y se oculta en cuanto suena; el cartel muestra
-// el póster del video.
-const ytCard = document.createElement('div');
-ytCard.className = 'yt-card';
-ytCard.innerHTML = '<p class="yt-card__text">Toca ▶ para empezar la música</p>';
-const ytCardClose = document.createElement('button');
-ytCardClose.type = 'button';
-ytCardClose.className = 'yt-card__close';
-ytCardClose.textContent = 'Cerrar';
-if (IS_IOS) {
-    ytCard.append(ytFrame, ytCardClose);
-    document.body.append(ytCard);
-}
-const videoObject = new CSS3DObject(IS_IOS ? document.createElement('div') : ytFrame);
-videoObject.scale.setScalar(VIDEO_W / VIDEO_PX);
-
-const videoBoard = new THREE.Group();
-videoBoard.position.copy(VIDEO_POS);
-videoBoard.lookAt(0, 0, 0);
-const videoCenterY = VIDEO_BOTTOM + VIDEO_H / 2;
-const videoFrame = new THREE.Mesh(
-    new THREE.BoxGeometry(VIDEO_W + 0.4, VIDEO_H + 0.4, 0.14),
-    new THREE.MeshStandardMaterial({ color: 0xff3da6, emissive: 0xff3da6, emissiveIntensity: 2.2, fog: false })
-);
-videoFrame.position.y = videoCenterY;
-const videoHole = new THREE.Mesh(
-    new THREE.PlaneGeometry(VIDEO_W, VIDEO_H),
-    new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 0, blending: THREE.NoBlending, fog: false, toneMapped: false })
-);
-videoHole.position.set(0, videoCenterY, 0.08);
-videoBoard.add(videoFrame, videoHole);
-for (const side of [-1, 1]) {
-    const pole = new THREE.Mesh(new THREE.BoxGeometry(0.3, VIDEO_BOTTOM + 0.2, 0.3), poleMat);
-    pole.position.set(side * (VIDEO_W / 2 - 1), (VIDEO_BOTTOM + 0.2) / 2, -0.14);
-    videoBoard.add(pole);
-}
-const videoGlow = new THREE.PointLight(0xff3da6, 45, 20);
-videoGlow.position.set(0, VIDEO_BOTTOM, 2.5);
-videoBoard.add(videoGlow);
-scene.add(videoBoard);
-videoBoard.updateMatrixWorld(true);
-videoHole.getWorldPosition(videoObject.position);
-videoObject.quaternion.copy(videoBoard.quaternion);
-if (!IS_IOS) cssScene.add(videoObject);
-{
-    const p = new THREE.Vector3();
-    for (let x = -VIDEO_W / 2; x <= VIDEO_W / 2 + 0.01; x += 0.6) {
-        videoBoard.localToWorld(p.set(x, 0, 0));
-        obstacles.push({ x: p.x, z: p.z, r: 0.5 });
-    }
-}
-
-// El video arranca mudo (el navegador lo permite) y se le activa el sonido con el primer
-// gesto. Se controla con la API de mensajes del reproductor de YouTube.
-let ytReady = false;
-function ytCommand(func, args = []) {
-    ytFrame.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), '*');
-}
-ytFrame.addEventListener('load', () => {
-    ytFrame.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 'mundo3d' }), '*');
-    ytCommand('addEventListener', ['onError']);
-});
-// Hay videos que su dueño no deja insertar en otras páginas (errores 101 y 150) o que ya no
-// existen (100): se salta al siguiente de la lista y, si fallan varios, suena el video de antes.
-const FALLBACK_VIDEO_ID = '22y0yNXSbQI';
-let ytErrors = 0;
-function onVideoError() {
-    ytErrors += 1;
-    if (ytErrors <= 3) ytCommand('nextVideo');
-    else if (ytErrors === 4) ytCommand('loadPlaylist', [[FALLBACK_VIDEO_ID]]);
-    if (ytErrors <= 4) setTimeout(() => ytCommand('playVideo'), 800);
-}
-// La capa del video vive detrás del canvas. Solo si hace falta tocar el play de YouTube
-// (iPhone, o si el navegador bloqueó el autoplay) pasa delante hasta que se reproduce.
-let ytPlaying = null;
-function setVideoWaiting(waiting) {
-    if (IS_IOS) ytCard.classList.toggle('is-open', waiting);
-    else cssRenderer.domElement.classList.toggle('is-waiting', waiting);
-}
-ytCardClose.addEventListener('click', () => setVideoWaiting(false));
-
-// Mientras el video no se reproduce, un póster luminoso tapa el hueco: así el cartel no
-// queda oscuro y avisa que se toca para escuchar la música.
-function drawPoster(ctx, w, h, thumb, playing = false) {
-    const g = ctx.createLinearGradient(0, 0, w, h);
-    g.addColorStop(0, '#1a0f2e'); g.addColorStop(0.55, '#3a1240'); g.addColorStop(1, '#0b2a3a');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-    if (thumb) {
-        ctx.globalAlpha = 0.75; ctx.drawImage(thumb, 0, 0, w, h); ctx.globalAlpha = 1;
-        ctx.fillStyle = 'rgba(5, 6, 10, .25)'; ctx.fillRect(0, 0, w, h);
-    }
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-    if (playing) {
-        ctx.font = 'bold 64px "Space Grotesk", sans-serif';
-        ctx.fillText('♪ Sonando ahora', w / 2, h / 2 + 150);
-    } else {
-        ctx.beginPath(); ctx.arc(w / 2, h / 2 - 40, 110, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 61, 166, .92)'; ctx.fill();
-        ctx.beginPath(); ctx.moveTo(w / 2 - 35, h / 2 - 105); ctx.lineTo(w / 2 + 65, h / 2 - 40); ctx.lineTo(w / 2 - 35, h / 2 + 25);
-        ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill();
-        ctx.font = 'bold 64px "Space Grotesk", sans-serif';
-        ctx.fillText('Toca para escuchar la música', w / 2, h / 2 + 150);
-    }
-    ctx.font = '36px "JetBrains Mono", monospace'; ctx.fillStyle = 'rgba(255,255,255,.8)';
-    ctx.fillText(videoTitle, w / 2, h / 2 + 215, w - 80);
-}
-const posterCanvas = document.createElement('canvas');
-posterCanvas.width = 1280; posterCanvas.height = 720;
-const posterCtx = posterCanvas.getContext('2d');
-let posterThumb = null;
-drawPoster(posterCtx, 1280, 720);
-const posterTex = new THREE.CanvasTexture(posterCanvas);
-posterTex.colorSpace = THREE.SRGBColorSpace;
-{
-    const thumb = new Image();
-    thumb.crossOrigin = 'anonymous';
-    thumb.onload = () => { posterThumb = thumb; drawPoster(posterCtx, 1280, 720, thumb, !!ytPlaying); posterTex.needsUpdate = true; };
-    thumb.src = `https://i.ytimg.com/vi/${VIDEO_ID}/hqdefault.jpg`;
-}
-const videoPoster = new THREE.Mesh(
-    new THREE.PlaneGeometry(VIDEO_W, VIDEO_H),
-    new THREE.MeshBasicMaterial({ map: posterTex, toneMapped: false, fog: false })
-);
-videoPoster.position.set(0, videoCenterY, 0.1);
-videoBoard.add(videoPoster);
-clickable.push(videoPoster);
-let waitTimer = 0;
-videoPoster.userData = {
-    hint: 'Toca para escuchar la música ▶',
-    action() {
-        startMusic();
-        ytCommand('playVideo');
-        clearTimeout(waitTimer);
-        // iPhone solo arranca si se toca el play del propio video.
-        waitTimer = setTimeout(() => {
-            if (ytPlaying) return;
-            if (!IS_IOS) videoPoster.visible = false;
-            setVideoWaiting(true);
-            if (!IS_IOS) flashHint('Toca ▶ en el video para empezar la música');
-        }, IS_IOS ? 0 : 1200);
-    },
-};
-window.addEventListener('message', (e) => {
-    if (e.source !== ytFrame.contentWindow) return;
-    if (!ytReady) { ytReady = true; music.sync(); }
-    let data;
-    try { data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch { return; }
-    // Con la lista cambia la canción: el cartel muestra la que está sonando.
-    const title = data?.info?.videoData?.title;
-    if (title && title !== videoTitle) {
-        videoTitle = title;
-        drawPoster(posterCtx, 1280, 720, posterThumb, !!ytPlaying);
-        posterTex.needsUpdate = true;
-    }
-    if (data?.event === 'onError') return onVideoError();
-    const state = data?.info?.playerState ?? (data?.event === 'onStateChange' ? data.info : undefined);
-    if (typeof state !== 'number') return;
-    const playing = state === 1 || state === 3;  // reproduciendo o cargando
-    if (playing === ytPlaying) return;
-    ytPlaying = playing;
-    if (IS_IOS) {
-        drawPoster(posterCtx, 1280, 720, posterThumb, playing);
-        posterTex.needsUpdate = true;
-    } else videoPoster.visible = !playing;
-    if (playing) setVideoWaiting(false);
-    if (playing) { if (musicOn) startMusic(); else music.sync(); }
-});
-
 // Clic o toque (sin arrastrar) sobre un cartel: abre su cotización.
 const raycaster = new THREE.Raycaster();
 const pointerNdc = new THREE.Vector2();
@@ -642,82 +257,6 @@ function flashHint(text) {
     clearTimeout(hintTimer);
     hintTimer = setTimeout(() => { notice.hidden = true; }, Math.min(9000, 4000 + text.length * 40));
 }
-
-// ---------- Tótem táctil: Medical Center (el sistema se conecta más adelante) ----------
-// Está frente al cuadro de Medical Center, así que solo aparece en el mundo de las cotizaciones.
-const TOTEM_INDEX = GALLERY.findIndex((g) => g.title === 'Medical Center');  // frente a su cuadro
-const totemPanel = document.querySelector('[data-totem-panel]');
-const totemFrame = document.querySelector('[data-totem-frame]');
-const TOTEM_URL = 'https://medicalcenterbo.github.io/demo/';
-// La página del tótem se carga recién la primera vez que se toca, para no pesar al entrar.
-function openTotem() {
-    if (!totemFrame.src) totemFrame.src = TOTEM_URL;
-    totemPanel.hidden = false;
-}
-const totemScreenCanvas = document.createElement('canvas');
-totemScreenCanvas.width = 512; totemScreenCanvas.height = 860;
-{
-    const c = totemScreenCanvas.getContext('2d');
-    const g = c.createLinearGradient(0, 0, 0, 860);
-    g.addColorStop(0, '#062a36'); g.addColorStop(1, '#0a0d16');
-    c.fillStyle = g; c.fillRect(0, 0, 512, 860);
-    c.strokeStyle = '#00e5ff'; c.lineWidth = 6; c.strokeRect(14, 14, 484, 832);
-    c.fillStyle = '#00e5ff';
-    c.fillRect(216, 150, 80, 220); c.fillRect(146, 220, 220, 80);   // cruz médica
-    c.fillStyle = '#fff'; c.textAlign = 'center';
-    c.font = 'bold 54px "Space Grotesk", sans-serif';
-    c.fillText('MEDICAL', 256, 480); c.fillText('CENTER', 256, 540);
-    c.font = '30px "JetBrains Mono", monospace'; c.fillStyle = 'rgba(255,255,255,.8)';
-    c.fillText('Tótem de atención', 256, 630);
-    c.fillStyle = '#ff3da6'; c.font = 'bold 34px "JetBrains Mono", monospace';
-    c.fillText('☝ Toca la pantalla', 256, 750);
-}
-const totemTex = new THREE.CanvasTexture(totemScreenCanvas);
-totemTex.colorSpace = THREE.SRGBColorSpace;
-{
-    // Pantalla real del tótem; el dibujo de arriba queda si la imagen no carga.
-    const img = new Image();
-    img.onload = () => {
-        const c = totemScreenCanvas.getContext('2d');
-        const k = Math.min(512 / img.width, 860 / img.height);
-        const w = img.width * k, h = img.height * k;
-        c.fillStyle = '#f2f8f7'; c.fillRect(0, 0, 512, 860);
-        c.drawImage(img, (512 - w) / 2, (860 - h) / 2, w, h);
-        totemTex.needsUpdate = true;
-    };
-    img.src = 'images/totem-pantalla.jpg';
-}
-const totem = new THREE.Group();
-// La galería está girada 180°: la x local del cuadro queda invertida en el mundo.
-totem.position.set(-(-galleryWidth / 2 + PAINT_W / 2 + TOTEM_INDEX * (PAINT_W + PAINT_GAP)), 0, GALLERY_Z - 6);
-totem.lookAt(totem.position.x, 0, 0);
-{
-    const base = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.16, 0.7), poleMat);
-    base.position.y = 0.08;
-    const column = new THREE.Mesh(new THREE.BoxGeometry(0.8, 2.1, 0.35), poleMat);
-    column.position.y = 1.2;
-    column.castShadow = true;
-    const edge = new THREE.Mesh(
-        new THREE.BoxGeometry(0.84, 2.14, 0.3),
-        new THREE.MeshStandardMaterial({ color: 0x00e5ff, emissive: 0x00e5ff, emissiveIntensity: 1.8 })
-    );
-    edge.position.set(0, 1.2, -0.04);
-    const screen = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.62, 1.04),
-        new THREE.MeshBasicMaterial({ map: totemTex, toneMapped: false })
-    );
-    screen.position.set(0, 1.45, 0.18);
-    screen.userData = { hint: 'Tótem Medical Center: toca la pantalla', action: openTotem };
-    clickable.push(screen);
-    const light = new THREE.PointLight(0x00e5ff, 6, 5);
-    light.position.set(0, 1.4, 0.8);
-    totem.add(base, column, edge, screen, light);
-}
-scene.add(totem);
-const totemObstacle = { x: totem.position.x, z: totem.position.z, r: 0.75 };
-obstacles.push(totemObstacle);
-document.querySelector('[data-totem-close]').addEventListener('click', () => { totemPanel.hidden = true; });
-totemPanel.addEventListener('click', (e) => { if (e.target === totemPanel) totemPanel.hidden = true; });
 
 // ---------- Ruddy ----------
 // player se mueve y gira; body lleva el balanceo al caminar.
@@ -943,41 +482,6 @@ function toggleRun() {
 }
 onPress(runBtn, toggleRun);
 
-// Música de fondo: el audio del video de YouTube. "Pausar" la silencia sin detener el video.
-const music = {
-    paused: true,
-    play() { this.paused = false; this.sync(); return Promise.resolve(); },
-    pause() { this.paused = true; this.sync(); },
-    sync() {
-        if (!ytReady) return;
-        ytCommand('playVideo');
-        if (this.paused) ytCommand('mute');
-        else { ytCommand('unMute'); ytCommand('setVolume', [45]); }
-    },
-};
-const musicBtn = document.querySelector('[data-music]');
-let musicOn = true;
-function syncMusicBtn() {
-    musicBtn.textContent = musicOn ? '🔊 Música: activada' : '🔇 Música: apagada';
-    musicBtn.setAttribute('aria-label', musicOn ? 'Silenciar música' : 'Activar música');
-    musicBtn.setAttribute('aria-pressed', String(musicOn));
-}
-function startMusic() {
-    if (musicOn && music.paused) music.play().catch(() => {});
-}
-musicBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    musicOn = !musicOn;
-    if (musicOn) startMusic(); else music.pause();
-    syncMusicBtn();
-});
-syncMusicBtn();
-window.addEventListener('pointerdown', startMusic);
-window.addEventListener('keydown', startMusic);
-document.addEventListener('visibilitychange', () => {
-    if (document.hidden) music.pause(); else startMusic();
-});
-
 // ---------- Ajustes ----------
 const settingsBox = document.querySelector('[data-settings]');
 const settingsBtn = settingsBox.querySelector('[data-settings-open]');
@@ -992,7 +496,7 @@ settingsPanel.addEventListener('click', () => setSettings(false), true);
 document.addEventListener('pointerdown', (e) => {
     if (!settingsBox.contains(e.target)) setSettings(false);
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; document.querySelector('[data-sign-box]').hidden = true; document.querySelector('[data-sign-view]').hidden = true; document.querySelector('[data-bot-box]').hidden = true; } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; document.querySelector('[data-sign-box]').hidden = true; document.querySelector('[data-sign-view]').hidden = true; document.querySelector('[data-bot-box]').hidden = true; document.querySelector('[data-stats-box]').hidden = true; document.querySelector('[data-chart-view]').hidden = true; } });
 
 // ---------- Primera persona ----------
 const fpBtn = document.querySelector('[data-fp]');
@@ -1083,7 +587,7 @@ function updatePlayer(dt) {
         const prev = player.position.clone();
         player.position.addScaledVector(move, speed * dt);
 
-        // Límites del mundo y choques con los pilares.
+        // Límites del mundo y choques con los obstáculos.
         const r = Math.hypot(player.position.x, player.position.z);
         if (r > here.radius) player.position.multiplyScalar(here.radius / r);
         for (const o of here.obstacles) {
@@ -1216,7 +720,6 @@ let talkSession = null;
 let talkState = 'idle';   // idle | connecting | live
 let speaking = false;
 let voiceLevel = 0;       // volumen suavizado de la voz del agente, 0..1
-let musicWasOn = false;
 
 // La transcripción de la llamada viaja por el socket del mundo (ver «Personas en el mundo»).
 // Cada línea (tuya o de Ruddy) se envía como {type:"call_transcript", ...}; si el socket
@@ -1258,14 +761,9 @@ function endTalk(text) {
     clearSubs();
     setTalk('idle', text);
     if (text) setTimeout(() => talkState === 'idle' && setTalk('idle'), 3500);
-    if (musicWasOn) { musicOn = true; startMusic(); syncMusicBtn(); }
-    musicWasOn = false;
 }
 
 async function startTalk() {
-    // La música taparía la voz: se pausa durante la conversación.
-    musicWasOn = musicOn;
-    if (musicOn) { musicOn = false; music.pause(); syncMusicBtn(); }
     setTalk('connecting', 'Llamando a Ruddy… permite el micrófono');
     try {
         const { Conversation } = await import(SDK);
@@ -1930,120 +1428,6 @@ function updateRemotes(dt) {
     }
 }
 
-// ---------- Pelota ----------
-// Rueda y rebota con física sencilla. Quien la toca con su Ruddy manda el estado al resto,
-// que lo adopta; los choques con los demás se simulan aquí sin enviar nada (los manda su dueño).
-const BALL_R = 0.35;
-const ball = new THREE.Mesh(
-    new THREE.SphereGeometry(BALL_R, 32, 20),
-    new THREE.MeshStandardMaterial({ map: (() => {
-        const c = document.createElement('canvas');
-        c.width = 256; c.height = 128;
-        const g = c.getContext('2d');
-        g.fillStyle = '#f4f6ff'; g.fillRect(0, 0, 256, 128);
-        g.fillStyle = '#ff3da6'; g.fillRect(0, 44, 256, 40);
-        g.fillStyle = '#00e5ff'; for (const x of [32, 160]) { g.beginPath(); g.arc(x, 64, 18, 0, Math.PI * 2); g.fill(); }
-        const t = new THREE.CanvasTexture(c);
-        t.colorSpace = THREE.SRGBColorSpace;
-        return t;
-    })(), roughness: 0.45, emissive: 0x220a18 })
-);
-ball.castShadow = true;
-ball.position.set(0, BALL_R, 5);
-scene.add(ball);
-const ballVel = new THREE.Vector3();
-const prevPlayer = new THREE.Vector3().copy(player.position);
-let ballSentAt = 0;
-let ballRestSent = true;
-
-function sendBall() {
-    ballSentAt = performance.now();
-    ballRestSent = ballVel.lengthSq() < 0.0004;
-    const { x, y, z } = ball.position;
-    net.send({ type: 'ball', x, y, z, vx: ballVel.x, vy: ballVel.y, vz: ballVel.z });
-}
-
-// Empuja la pelota si una persona (pos, con velocidad vel) la toca. Devuelve true si la tocó.
-function pushBall(pos, vel) {
-    const dx = ball.position.x - pos.x;
-    const dz = ball.position.z - pos.z;
-    const d = Math.hypot(dx, dz);
-    const reach = BALL_R + 0.38;
-    if (d >= reach || d === 0 || ball.position.y > 1.6) return false;
-    const nx = dx / d, nz = dz / d;
-    ball.position.x = pos.x + nx * reach;
-    ball.position.z = pos.z + nz * reach;
-    const toward = vel.x * nx + vel.z * nz;          // qué tanto camina hacia la pelota
-    const kick = Math.max(0, toward) * 1.6 + 0.6;
-    const along = ballVel.x * nx + ballVel.z * nz;
-    if (along < kick) {
-        ballVel.x += nx * (kick - along);
-        ballVel.z += nz * (kick - along);
-        if (toward > 4) ballVel.y = Math.max(ballVel.y, 2.2);   // corriendo, la levanta un poco
-    }
-    return true;
-}
-
-const tmpVel = new THREE.Vector3();
-function updateBall(dt) {
-    // Choques: mi Ruddy (y lo aviso) y los demás (solo aquí).
-    tmpVel.copy(player.position).sub(prevPlayer).divideScalar(Math.max(dt, 1e-3));
-    prevPlayer.copy(player.position);
-    if (pushBall(player.position, tmpVel) && performance.now() - ballSentAt > 120) sendBall();
-    for (const r of remotes.values()) {
-        if (!r.group.visible) continue;   // está en otra escena
-        tmpVel.copy(r.target).sub(r.group.position).multiplyScalar(6);
-        pushBall(r.group.position, tmpVel);
-    }
-
-    // Gravedad, rebote, roce con el piso.
-    ballVel.y -= 9.8 * dt;
-    ball.position.addScaledVector(ballVel, dt);
-    if (ball.position.y < BALL_R) {
-        ball.position.y = BALL_R;
-        ballVel.y = ballVel.y < -1 ? -ballVel.y * 0.55 : 0;
-        const f = Math.max(0, 1 - 0.9 * dt);
-        ballVel.x *= f; ballVel.z *= f;
-        if (Math.hypot(ballVel.x, ballVel.z) < 0.05) { ballVel.x = 0; ballVel.z = 0; }
-    }
-    // Bordes del mundo y pilares: rebota.
-    const r = Math.hypot(ball.position.x, ball.position.z);
-    if (r > WORLD_RADIUS) {
-        const nx = ball.position.x / r, nz = ball.position.z / r;
-        ball.position.x = nx * WORLD_RADIUS; ball.position.z = nz * WORLD_RADIUS;
-        const vn = ballVel.x * nx + ballVel.z * nz;
-        if (vn > 0) { ballVel.x -= 1.7 * vn * nx; ballVel.z -= 1.7 * vn * nz; }
-    }
-    for (const o of obstacles) {
-        const dx = ball.position.x - o.x, dz = ball.position.z - o.z;
-        const d = Math.hypot(dx, dz);
-        const min = o.r - 0.3 + BALL_R;
-        if (d < min && d > 0) {
-            const nx = dx / d, nz = dz / d;
-            ball.position.x = o.x + nx * min; ball.position.z = o.z + nz * min;
-            const vn = ballVel.x * nx + ballVel.z * nz;
-            if (vn < 0) { ballVel.x -= 1.7 * vn * nx; ballVel.z -= 1.7 * vn * nz; }
-        }
-    }
-    // Rueda: gira según lo que avanza.
-    const speed = Math.hypot(ballVel.x, ballVel.z);
-    if (speed > 0.01) {
-        tmpVel.set(ballVel.z, 0, -ballVel.x).normalize();
-        ball.rotateOnWorldAxis(tmpVel, (speed * dt) / BALL_R);
-    }
-    // Cuando se detiene después de mi toque, mando dónde quedó.
-    if (!ballRestSent && speed === 0 && Math.abs(ballVel.y) < 0.01 && performance.now() - ballSentAt > 300) sendBall();
-}
-
-// Estado que manda otra persona (o el servidor al entrar): se adopta tal cual.
-net.on('ball', (m) => {
-    if (![m.x, m.y, m.z, m.vx, m.vy, m.vz].every(Number.isFinite)) return;
-    ball.position.set(m.x, Math.max(BALL_R, m.y), m.z);
-    ballVel.set(m.vx, m.vy, m.vz);
-    ballRestSent = true;
-});
-
-
 // ---------- Agujeros de gusano ----------
 // Cualquiera crea uno (Ajustes → Crear agujero de gusano) con nombre y descripción, delante de
 // donde está. Al meterse en uno, Ruddy pasa a otra escena: lo ven los que están ahí y deja de
@@ -2057,39 +1441,14 @@ const ARM_DIST = 3.5;      // y hay que alejarse esto para que vuelva a funciona
 const LABEL_DIST = 24;     // el cartel con el nombre se ve desde esta distancia
 const wormholes = createWormholes(renderer);
 // Se copia el escenario tal como está al cargar: todavía no hay puentes, notas ni recuerdos.
-const dest = buildUniverse(scene.children.filter((o) => o !== actors && o !== ball), obstacles);
-{
-    // En el otro universo no hay video (la capa del video es del mundo principal): queda el póster.
-    dest.copies.get(videoHole).visible = false;
-    dest.copies.get(videoPoster).visible = true;
-    // Los cuadros y el tótem también se abren desde allá.
-    for (const o of [...clickable]) {
-        const copy = dest.copies.get(o);
-        if (!copy || o === videoPoster) continue;
-        copy.userData = o.userData;
-        clickable.push(copy);
-    }
+const dest = buildUniverse(scene.children.filter((o) => o !== actors), obstacles);
+// Los cuadros también se abren desde allá.
+for (const o of [...clickable]) {
+    const copy = dest.copies.get(o);
+    if (!copy) continue;
+    copy.userData = o.userData;
+    clickable.push(copy);
 }
-// El tótem y los cuadros de Roy son del mundo de las cotizaciones: el mundo principal se queda
-// sin tótem, y en los demás universos el tótem copiado se esconde (ver dressUniverse).
-const COTIZACIONES = 'cotizaciones';
-const destTotem = dest.copies.get(totem);
-const destTotemObstacle = dest.obstacles[obstacles.indexOf(totemObstacle)];
-const destSign = dest.copies.get(gallery.userData.sign);
-const signTextures = { other: destSign.material.map, [COTIZACIONES]: gallerySign('COTIZACIONES Y PROYECTOS') };
-totem.visible = false;
-obstacles.splice(obstacles.indexOf(totemObstacle), 1);
-function dressUniverse(id) {
-    const quotes = id === COTIZACIONES;
-    destTotem.visible = quotes;
-    destTotemObstacle.r = quotes ? totemObstacle.r : 0;
-    destSign.material.map = signTextures[quotes ? COTIZACIONES : 'other'];
-}
-const mirrorCubes = cubes.map((c) => dest.copies.get(c));
-// La ciudad cyberpunk de alrededor (city.js). Se agrega después de copiar el escenario: no se
-// duplica, viaja con Ruddy de una escena a otra (como actors) y toma el tono de cada universo.
-const city = createCity();
-scene.add(city.group);
 const returnHole = wormholes.makeHole({ scene: dest.scene, x: 0, z: 0 });
 const portals = new Map();   // id -> { data, hole, label }
 // Dónde estás: la escena, sus límites y sus obstáculos.
@@ -2189,17 +1548,14 @@ function goTo(id, { from = null, pos = null } = {}) {
 
     const target = toMain ? scene : dest.scene;
     target.add(actors);
-    target.add(city.group);
-    city.setHue(toMain ? 0 : hueFor(id));
     here.id = id;
     here.scene = target;
         here.obstacles = toMain ? obstacles : dest.obstacles;
-    if (!toMain) { dest.setHue(hueFor(id)); dressUniverse(id); }
+    if (!toMain) dest.setHue(hueFor(id));
 
     const offset = camera.position.clone().sub(controls.target);
     player.position.set(x, 0, z);
     player.rotation.y = ry;
-    prevPlayer.copy(player.position);   // que el salto no cuente como una patada a la pelota
     if (firstPerson) setFirstPerson(true);
     else {
         // Al cruzar, la cámara mira a Ruddy de frente con el agujero detrás (se ve que acaba de
@@ -2211,7 +1567,6 @@ function goTo(id, { from = null, pos = null } = {}) {
         controls.update();
     }
     holeArmed = false;
-    cssRenderer.domElement.style.visibility = toMain ? '' : 'hidden';
     banner.hidden = toMain;
     if (!toMain) {
         fillBanner(portals.get(id)?.data || { name: 'Puente de Einstein-Rosen' });
@@ -2221,6 +1576,7 @@ function goTo(id, { from = null, pos = null } = {}) {
     }
     for (const r of remotes.values()) showRemote(r);
     showSignsHere();
+    showChartsHere();
     lastSent.at = 0;   // los demás se enteran enseguida
 }
 
@@ -2756,6 +2112,628 @@ net.on('sign_error', (m) => {
 });
 
 
+// ---------- Estadísticas: gráficos 3D ----------
+// Roy (con la clave de estadísticas) arma peticiones HTTP a sus sistemas, elige campos en una
+// tabla dinámica y pone el resultado como un gráfico 3D donde está. Las peticiones y sus headers
+// se guardan y se ejecutan en el servidor: este navegador solo ve los headers enmascarados, y
+// los demás reciben únicamente el título, las etiquetas y los números de cada gráfico.
+const CHART_COLORS = ['#00e5ff', '#ff3d9a', '#ffd400', '#36f1a0', '#ff8a3d', '#9b6bff', '#3d8bff', '#ff6b6b'];
+const AGG_NAMES = { count: 'Cantidad', sum: 'Suma', avg: 'Promedio', min: 'Mínimo', max: 'Máximo' };
+const CHART_H = 2.6;          // altura del valor más alto
+const CHART_BASE = 0.55;      // altura de la base sobre el piso
+const charts = new Map();     // id -> { data, group, body, hits, grow }
+const chartView = document.querySelector('[data-chart-view]');
+const numFmt = new Intl.NumberFormat('es', { maximumFractionDigits: 2 });
+const fmtNum = (n) => {
+    const a = Math.abs(n);
+    if (a >= 1e9) return `${numFmt.format(n / 1e9)} mil M`;
+    if (a >= 1e6) return `${numFmt.format(n / 1e6)} M`;
+    return numFmt.format(n);
+};
+const chartMat = (color, emissive = 0.35) => new THREE.MeshStandardMaterial({
+    color, emissive: color, emissiveIntensity: emissive, roughness: 0.35, metalness: 0.2,
+});
+
+function chartSubtitle(d) {
+    const what = d.agg === 'count' ? 'Cantidad de registros' : `${AGG_NAMES[d.agg] || 'Valor'} de ${d.value}`;
+    return d.rows ? `${what} por ${d.rows}` : what;
+}
+
+// Cartel con el título, qué se mide y la leyenda de las series.
+function chartBoard(c, width) {
+    const series = c.data.series || [];
+    const showLegend = series.length > 1 || c.kind === 'pie';
+    const items = c.kind === 'pie' ? (c.data.labels || []).slice(0, 8) : series.map((s) => s.name);
+    const legendRows = showLegend ? Math.ceil(items.length / 2) : 0;
+    const h = 0.7 + legendRows * 0.22;
+    const tex = makeLabelTexture(1024, Math.round(1024 * h / width), (g, w, H) => {
+        g.fillStyle = 'rgba(10, 13, 22, 0.92)'; g.fillRect(0, 0, w, H);
+        g.strokeStyle = '#ffd400'; g.lineWidth = 5; g.strokeRect(4, 4, w - 8, H - 8);
+        const k = H / h;   // píxeles por metro
+        g.textAlign = 'center'; g.fillStyle = '#fff';
+        g.font = `700 ${Math.round(0.26 * k)}px "Space Grotesk", sans-serif`;
+        g.fillText(c.title, w / 2, 0.32 * k, w - 40);
+        g.font = `${Math.round(0.13 * k)}px "JetBrains Mono", monospace`; g.fillStyle = '#ffe680';
+        g.fillText(`${chartSubtitle(c.data)} · ${formatDate(c.updated_at)}`, w / 2, 0.55 * k, w - 40);
+        g.textAlign = 'left';
+        g.font = `${Math.round(0.13 * k)}px "Space Grotesk", sans-serif`;
+        items.forEach((name, i) => {
+            const x = (i % 2 ? w / 2 : 0) + 30, y = (0.7 + Math.floor(i / 2) * 0.22 + 0.13) * k;
+            g.fillStyle = CHART_COLORS[i % CHART_COLORS.length]; g.fillRect(x, y - 0.1 * k, 0.12 * k, 0.12 * k);
+            g.fillStyle = '#fff'; g.fillText(String(name), x + 0.18 * k, y, w / 2 - 0.25 * k - 40);
+        });
+    });
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(width, h), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+    return { board, h };
+}
+
+// Franja con el nombre de cada fila (y su valor) delante de la base.
+function categoryStrip(labels, values, width) {
+    const n = labels.length;
+    const tex = makeLabelTexture(2048, 256, (g, w, h) => {
+        g.fillStyle = '#0d1120'; g.fillRect(0, 0, w, h);
+        const col = w / n;
+        const size = Math.max(22, Math.min(54, col / 6));
+        g.textAlign = 'center';
+        labels.forEach((l, i) => {
+            g.fillStyle = '#fff'; g.font = `600 ${size}px "Space Grotesk", sans-serif`;
+            g.fillText(String(l), col * (i + 0.5), h * 0.42, col - 10);
+            if (values) {
+                g.fillStyle = '#ffe680'; g.font = `${size * 0.9}px "JetBrains Mono", monospace`;
+                g.fillText(fmtNum(values[i]), col * (i + 0.5), h * 0.82, col - 10);
+            }
+        });
+    });
+    return new THREE.Mesh(new THREE.PlaneGeometry(width, 0.42), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+}
+
+// Escala vertical común: el mayor valor mide CHART_H; si hay negativos, el cero sube.
+function valueScale(series) {
+    const all = series.flatMap((s) => s.values);
+    const max = Math.max(0, ...all), min = Math.min(0, ...all);
+    const k = CHART_H / ((max - min) || 1);
+    return { k, zero: -min * k, max, min };
+}
+
+// Pared de atrás con líneas guía y sus valores.
+function gridWall(width, scale) {
+    const tex = makeLabelTexture(1024, 512, (g, w, h) => {
+        g.fillStyle = 'rgba(12, 16, 30, 0.85)'; g.fillRect(0, 0, w, h);
+        g.strokeStyle = 'rgba(255,255,255,0.14)'; g.lineWidth = 2;
+        g.fillStyle = 'rgba(255,255,255,0.6)'; g.font = '22px "JetBrains Mono", monospace'; g.textAlign = 'left';
+        for (let i = 0; i <= 4; i++) {
+            const y = h - (i / 4) * h * (CHART_H / (CHART_H + 0.3)) - 2;
+            g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
+            const v = scale.min + (scale.max - scale.min) * (i / 4);
+            g.fillText(fmtNum(v), 10, y - 8);
+        }
+    });
+    const wall = new THREE.Mesh(new THREE.PlaneGeometry(width, CHART_H + 0.3), new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false }));
+    wall.position.set(0, CHART_BASE + (CHART_H + 0.3) / 2, -0.75);
+    return wall;
+}
+
+function buildBars(c, body) {
+    const { labels, series } = c.data;
+    const n = labels.length, m = series.length;
+    const slot = Math.max(0.45, Math.min(1.1, 7 / n));
+    const width = n * slot;
+    const barW = (slot * 0.72) / m;
+    const scale = valueScale(series);
+    series.forEach((s, j) => {
+        const mat = chartMat(CHART_COLORS[j % CHART_COLORS.length]);
+        s.values.forEach((v, i) => {
+            const h = Math.max(0.02, Math.abs(v) * scale.k);
+            const bar = new THREE.Mesh(new THREE.BoxGeometry(barW * 0.9, h, Math.min(0.6, barW * 0.9 + 0.15)), mat);
+            bar.position.set(-width / 2 + slot * (i + 0.5) - (slot * 0.72) / 2 + barW * (j + 0.5),
+                scale.zero + (v >= 0 ? h / 2 : -h / 2), 0);
+            bar.castShadow = true;
+            body.add(bar);
+        });
+    });
+    const totals = labels.map((_, i) => series.reduce((a, s) => a + s.values[i], 0));
+    return { width, wall: gridWall(width + 0.4, scale), strip: categoryStrip(labels, totals, width) };
+}
+
+function buildLine(c, body) {
+    const { labels, series } = c.data;
+    const n = labels.length;
+    const slot = Math.max(0.45, Math.min(1.1, 7 / n));
+    const width = n * slot;
+    const scale = valueScale(series);
+    series.forEach((s, j) => {
+        const mat = chartMat(CHART_COLORS[j % CHART_COLORS.length], 0.6);
+        const pts = s.values.map((v, i) => new THREE.Vector3(-width / 2 + slot * (i + 0.5), scale.zero + v * scale.k, j * 0.12));
+        if (pts.length > 1) {
+            const path = new THREE.CurvePath();
+            for (let i = 1; i < pts.length; i++) path.add(new THREE.LineCurve3(pts[i - 1], pts[i]));
+            body.add(new THREE.Mesh(new THREE.TubeGeometry(path, (pts.length - 1) * 4, 0.04, 8, false), mat));
+        }
+        const dot = new THREE.SphereGeometry(0.09, 16, 12);
+        for (const p of pts) { const d = new THREE.Mesh(dot, mat); d.position.copy(p); body.add(d); }
+    });
+    const totals = labels.map((_, i) => series.reduce((a, s) => a + s.values[i], 0));
+    return { width, wall: gridWall(width + 0.4, scale), strip: categoryStrip(labels, series.length === 1 ? totals : null, width) };
+}
+
+function buildPie(c, body) {
+    const { labels, series } = c.data;
+    const totals = labels.map((_, i) => series.reduce((a, s) => a + Math.max(0, s.values[i]), 0)).slice(0, 8);
+    const sum = totals.reduce((a, b) => a + b, 0) || 1;
+    const r = 1.5;
+    let start = 0;
+    totals.forEach((v, i) => {
+        const len = (v / sum) * Math.PI * 2;
+        if (len <= 0) return;
+        const h = 0.35 + 0.35 * (v / Math.max(...totals));
+        const geo = new THREE.CylinderGeometry(r, r, h, Math.max(3, Math.ceil(64 * len / (Math.PI * 2))), 1, false, start, len);
+        const slice = new THREE.Mesh(geo, chartMat(CHART_COLORS[i % CHART_COLORS.length]));
+        const mid = start + len / 2;
+        slice.position.set(Math.sin(mid) * 0.08, h / 2, Math.cos(mid) * 0.08);   // un poco separadas
+        slice.castShadow = true;
+        body.add(slice);
+        start += len;
+    });
+    const shown = labels.slice(0, 8);
+    const strip = categoryStrip(shown.map((l, i) => `${l} · ${Math.round((totals[i] / sum) * 100)}%`), totals, Math.max(3.4, shown.length * 0.9));
+    return { width: Math.max(3.4, shown.length * 0.9), strip, pie: true };
+}
+
+function addChart(c) {
+    removeChart(c.id);
+    if (!c.data?.labels?.length || !c.data.series?.length) return;
+    const group = new THREE.Group();
+    group.position.set(c.x, 0, c.z);
+    group.rotation.y = c.ry || 0;
+    const body = new THREE.Group();   // lo que crece al aparecer
+    const built = c.kind === 'pie' ? buildPie(c, body) : c.kind === 'line' ? buildLine(c, body) : buildBars(c, body);
+    const width = Math.max(built.width + 0.6, 3.4);
+
+    const base = new THREE.Mesh(new THREE.BoxGeometry(width, CHART_BASE, built.pie ? 3.6 : 1.7), poleMat);
+    base.position.y = CHART_BASE / 2;
+    base.receiveShadow = true;
+    group.add(base);
+    body.position.y = CHART_BASE + (built.pie ? 0 : 0.001);
+    if (built.pie) body.position.z = 0;
+    group.add(body);
+    if (built.wall) group.add(built.wall);
+    built.strip.position.set(0, CHART_BASE / 2, (built.pie ? 1.8 : 0.85) + 0.005);
+    built.strip.scale.y = Math.min(1, CHART_BASE / 0.42);
+    group.add(built.strip);
+
+    const { board, h } = chartBoard(c, Math.min(width, 6));
+    const top = built.pie ? CHART_BASE + 1.4 : CHART_BASE + CHART_H + 0.35;
+    board.position.set(0, top + h / 2, built.pie ? -1.2 : -0.74);
+    group.add(board);
+
+    // Caja invisible para tocar el gráfico y ver la tabla.
+    const hitH = top + h;
+    const hit = new THREE.Mesh(new THREE.BoxGeometry(width, hitH, 1.8), new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.y = hitH / 2;
+    hit.userData = { hint: `Ver los datos de «${c.title}»`, action: () => openChart(c.id) };
+    group.add(hit);
+    clickable.push(hit);
+
+    (c.scene === MAIN ? scene : dest.scene).add(group);
+    group.visible = c.scene === here.id;
+    // Si solo cambiaron los números, no vuelve a crecer desde cero.
+    const grow = chartGrowth.get(c.id) ?? 0;
+    body.scale.y = Math.max(0.001, grow);
+    charts.set(c.id, { data: c, group, body, hits: [hit], grow });
+    if (chartView.dataset.id === c.id && !chartView.hidden) openChart(c.id);
+}
+const chartGrowth = new Map();
+
+function removeChart(id) {
+    const e = charts.get(id);
+    if (!e) return;
+    chartGrowth.set(id, e.grow);
+    e.group.parent?.remove(e.group);
+    const seen = new Set();
+    e.group.traverse((o) => {
+        if (!o.isMesh) return;
+        if (!seen.has(o.geometry)) { seen.add(o.geometry); o.geometry.dispose(); }
+        if (o.material !== poleMat && !seen.has(o.material)) { seen.add(o.material); o.material.map?.dispose(); o.material.dispose(); }
+    });
+    for (const hit of e.hits) clickable.splice(clickable.indexOf(hit), 1);
+    charts.delete(id);
+}
+
+function showChartsHere() {
+    for (const e of charts.values()) e.group.visible = e.data.scene === here.id;
+}
+
+// Al aparecer (o al acercarse por primera vez) las barras crecen desde la base.
+function updateCharts(dt) {
+    for (const e of charts.values()) {
+        if (e.grow >= 1 || !e.group.visible) continue;
+        if (e.group.position.distanceTo(player.position) > 30) continue;
+        e.grow = Math.min(1, e.grow + dt * 0.8);
+        e.body.scale.y = Math.max(0.001, 1 - (1 - e.grow) ** 3);
+    }
+}
+
+function chartTableHtml(d, colors = true) {
+    const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    const head = d.series.map((s, j) => `<th>${colors ? `<span class="swatch" style="background:${CHART_COLORS[j % CHART_COLORS.length]}"></span>` : ''}${esc(s.name)}</th>`).join('');
+    const rows = d.labels.map((l, i) => `<tr><td>${esc(l)}</td>${d.series.map((s) => `<td>${fmtNum(s.values[i])}</td>`).join('')}</tr>`).join('');
+    return `<table><thead><tr><th>${esc(d.rows || '')}</th>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function openChart(id) {
+    const c = charts.get(id)?.data;
+    if (!c) return;
+    chartView.dataset.id = id;
+    chartView.querySelector('[data-chart-title]').textContent = c.title;
+    chartView.querySelector('[data-chart-sub]').textContent = `${chartSubtitle(c.data)} · ${c.owner_name || ''} · actualizado ${formatDate(c.updated_at)}`;
+    chartView.querySelector('[data-chart-table]').innerHTML = chartTableHtml(c.data);
+    chartView.hidden = false;
+}
+chartView.querySelector('[data-chart-close]').addEventListener('click', () => { chartView.hidden = true; });
+chartView.addEventListener('click', (e) => { if (e.target === chartView) chartView.hidden = true; });
+
+net.on('charts', (m) => {
+    const ids = new Set(m.charts.map((x) => x.id));
+    for (const id of [...charts.keys()]) if (!ids.has(id)) removeChart(id);
+    m.charts.forEach(addChart);
+});
+net.on('chart', (m) => addChart(m.chart));
+net.on('chart_removed', (m) => { removeChart(m.id); chartGrowth.delete(m.id); if (chartView.dataset.id === m.id) chartView.hidden = true; });
+
+// Panel del dueño (Ajustes → Estadísticas).
+// La clave de cada persona se recuerda por teléfono: otra persona en el mismo navegador no la usa.
+const statsKeyStore = () => `rp_stats_key:${getProfile()?.phone || ''}`;
+const statsBox = document.querySelector('[data-stats-box]');
+const statsAuth = statsBox.querySelector('[data-stats-auth]');
+const statsMain = statsBox.querySelector('[data-stats-main]');
+const reqForm = statsBox.querySelector('[data-stats-req]');
+const pivotForm = statsBox.querySelector('[data-stats-pivot]');
+const chartForm = statsBox.querySelector('[data-stats-chart]');
+const statsResponse = statsBox.querySelector('[data-stats-response]');
+const statsHeaders = statsBox.querySelector('[data-stats-headers]');
+const statsError = statsBox.querySelector('[data-stats-error]');
+const statsStatus = statsBox.querySelector('[data-stats-status]');
+const statsTable = statsBox.querySelector('[data-stats-table]');
+const statsChartsList = statsBox.querySelector('[data-stats-charts]');
+const stats = { admin: false, creating: false, requests: [], charts: [], fields: [], editing: null, pendingKey: null };
+
+function statsMessage(error, status) {
+    statsError.hidden = !error; statsError.textContent = error || '';
+    statsStatus.hidden = !status; statsStatus.textContent = status || '';
+}
+function storedStatsKey() { try { return localStorage.getItem(statsKeyStore()) || ''; } catch { return ''; } }
+function rememberStatsKey(key) {
+    try { if (key) localStorage.setItem(statsKeyStore(), key); else localStorage.removeItem(statsKeyStore()); } catch { /* modo privado */ }
+}
+
+function addHeaderRow(h = {}) {
+    const row = document.createElement('div');
+    row.className = 'stats__header';
+    const name = document.createElement('input');
+    name.placeholder = 'Authorization'; name.value = h.name || ''; name.maxLength = 100; name.spellcheck = false;
+    name.setAttribute('aria-label', 'Nombre del header');
+    const value = document.createElement('input');
+    value.type = 'password'; value.autocomplete = 'off'; value.spellcheck = false; value.maxLength = 4000;
+    value.setAttribute('aria-label', 'Valor del header');
+    // Uno guardado: el valor se queda en el servidor; si escribes otro, lo reemplaza.
+    if (h.masked) { row.dataset.keep = '1'; value.placeholder = `Guardado ${h.masked}`; } else value.placeholder = 'Bearer …';
+    const del = document.createElement('button');
+    del.type = 'button'; del.className = 'holes__delete'; del.textContent = '✕'; del.setAttribute('aria-label', 'Quitar header');
+    del.addEventListener('click', () => row.remove());
+    row.append(name, value, del);
+    statsHeaders.append(row);
+}
+
+function readRequestForm() {
+    return {
+        id: reqForm.saved.value || undefined,
+        name: reqForm.name.value.trim(),
+        method: reqForm.method.value,
+        url: reqForm.url.value.trim(),
+        body: reqForm.body.value,
+        records_path: reqForm.records_path.value.trim(),
+        headers: [...statsHeaders.children].map((row) => {
+            const [n, v] = row.querySelectorAll('input');
+            return { name: n.value.trim(), value: v.value, keep: !!row.dataset.keep && !v.value };
+        }).filter((h) => h.name),
+    };
+}
+
+function fillRequestForm(r) {
+    reqForm.saved.value = r?.id || '';
+    reqForm.name.value = r?.name || '';
+    reqForm.method.value = r?.method || 'GET';
+    reqForm.url.value = r?.url || '';
+    reqForm.body.value = r?.body || '';
+    reqForm.records_path.value = r?.records_path || '';
+    statsHeaders.replaceChildren();
+    (r?.headers?.length ? r.headers : [{}]).forEach(addHeaderRow);
+    syncMethod();
+    reqForm.querySelector('[data-stats-delete]').hidden = !r?.id;
+    statsResponse.hidden = pivotForm.hidden = chartForm.hidden = true;
+    stats.fields = [];
+}
+function syncMethod() { statsBox.querySelector('[data-stats-body-label]').hidden = reqForm.method.value === 'GET'; }
+reqForm.method.addEventListener('change', syncMethod);
+
+function renderSavedSelect() {
+    const current = reqForm.saved.value;
+    reqForm.saved.replaceChildren(new Option('Nueva petición', ''), ...stats.requests.map((r) => new Option(`${r.name} · ${r.method}`, r.id)));
+    reqForm.saved.value = stats.requests.some((r) => r.id === current) ? current : '';
+}
+reqForm.saved.addEventListener('change', () => fillRequestForm(stats.requests.find((r) => r.id === reqForm.saved.value)));
+statsBox.querySelector('[data-stats-add-header]').addEventListener('click', () => addHeaderRow());
+
+function renderChartsList() {
+    statsChartsList.hidden = !stats.charts.length;
+    statsChartsList.querySelector('ul').replaceChildren(...stats.charts.map((c) => {
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        const req = stats.requests.find((r) => r.id === c.request_id);
+        name.textContent = `${c.title} · ${req?.name || 'sin petición'} · ${formatDate(c.updated_at)}`;
+        if (c.error) { const s = document.createElement('small'); s.textContent = `Última actualización falló: ${c.error}`; name.append(s); }
+        const btns = document.createElement('div');
+        const mk = (text, fn, cls = 'holes__delete') => {
+            const b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = text;
+            b.addEventListener('click', () => fn(b)); btns.append(b);
+        };
+        mk('Editar', () => editChart(c));
+        mk('Actualizar', () => { statsMessage('', 'Actualizando…'); net.send({ type: 'stats_chart_refresh', id: c.id }); });
+        mk('Borrar', (b) => {
+            if (b.dataset.confirm) return net.send({ type: 'stats_chart_delete', id: c.id });
+            b.dataset.confirm = '1'; b.textContent = '¿Borrar? Toca otra vez';
+        });
+        li.append(name, btns);
+        return li;
+    }));
+}
+
+function fillFieldSelects(keep = {}) {
+    const opts = (empty) => [new Option(empty, ''), ...stats.fields.map((f) => new Option(`${f.name}${f.sample != null ? ` (${String(f.sample).slice(0, 18)})` : ''}`, f.name))];
+    pivotForm.rows.replaceChildren(...opts('Todo junto'));
+    pivotForm.cols.replaceChildren(...opts('Sin series'));
+    pivotForm.value.replaceChildren(...opts('—'), ...[]);
+    const firstText = stats.fields.find((f) => !f.numeric)?.name || '';
+    const firstNum = stats.fields.find((f) => f.numeric)?.name || '';
+    pivotForm.rows.value = stats.fields.some((f) => f.name === keep.rows) ? keep.rows : firstText;
+    pivotForm.cols.value = stats.fields.some((f) => f.name === keep.cols) ? keep.cols : '';
+    pivotForm.value.value = stats.fields.some((f) => f.name === keep.value) ? keep.value : firstNum;
+    if (keep.agg) pivotForm.agg.value = keep.agg;
+    if (keep.date !== undefined) pivotForm.date.value = keep.date;
+    if (keep.sort) pivotForm.sort.value = keep.sort;
+    if (keep.limit) pivotForm.limit.value = keep.limit;
+    syncAgg();
+}
+function syncAgg() { pivotForm.value.disabled = pivotForm.agg.value === 'count'; }
+function readPivot() {
+    return {
+        rows: pivotForm.rows.value, cols: pivotForm.cols.value, value: pivotForm.value.value,
+        agg: pivotForm.agg.value, date: pivotForm.date.value, sort: pivotForm.sort.value, limit: Number(pivotForm.limit.value) || 12,
+    };
+}
+let pivotTimer = 0;
+function requestPivot() {
+    syncAgg();
+    clearTimeout(pivotTimer);
+    pivotTimer = setTimeout(() => net.send({ type: 'stats_pivot', pivot: readPivot() }), 150);
+}
+pivotForm.addEventListener('change', requestPivot);
+pivotForm.limit.addEventListener('input', requestPivot);
+pivotForm.addEventListener('submit', (e) => e.preventDefault());
+
+function editChart(c) {
+    stats.editing = c;
+    fillRequestForm(stats.requests.find((r) => r.id === c.request_id));
+    stats.pendingPivot = c.pivot;
+    chartForm.title.value = c.title;
+    chartForm.kind.value = c.kind;
+    chartForm.refresh_min.value = String(c.refresh_min || 0);
+    syncEditing();
+    statsMessage('', 'Probando la petición del gráfico…');
+    net.send({ type: 'stats_run', request: readRequestForm() });
+}
+function syncEditing() {
+    const c = stats.editing;
+    statsBox.querySelector('[data-stats-move]').hidden = !c;
+    statsBox.querySelector('[data-stats-cancel-edit]').hidden = !c;
+    const note = statsBox.querySelector('[data-stats-editing]');
+    note.hidden = !c;
+    note.textContent = c ? `Editando «${c.title}». Al guardar, todos lo ven con los datos nuevos.` : '';
+    chartForm.querySelector('[type=submit]').textContent = c ? 'Guardar cambios del gráfico' : 'Poner el gráfico delante de mí';
+    if (!c) chartForm.move.checked = false;
+}
+statsBox.querySelector('[data-stats-cancel-edit]').addEventListener('click', () => { stats.editing = null; syncEditing(); });
+
+function statsShowMain(on) {
+    stats.admin = on;
+    statsAuth.hidden = on;
+    statsMain.hidden = !on;
+    statsBox.querySelector('[data-stats-lock]').hidden = !on;
+}
+
+// Primera vez: la persona crea su clave (dos veces). Después: la escribe o entra con la recordada.
+function statsAuthMode(creating) {
+    stats.creating = creating;
+    statsBox.querySelector('[data-stats-key-label]').textContent = creating ? 'Crea tu clave de estadísticas (mínimo 8 caracteres)' : 'Tu clave de estadísticas';
+    statsBox.querySelector('[data-stats-key2]').hidden = !creating;
+    statsAuth.key2.required = creating;
+    statsAuth.key.autocomplete = creating ? 'new-password' : 'current-password';
+    statsAuth.querySelector('[type=submit]').textContent = creating ? 'Crear mi clave' : 'Entrar';
+    const forgot = statsBox.querySelector('[data-stats-forgot]');
+    forgot.hidden = creating;
+    forgot.textContent = 'Olvidé mi clave';
+    delete forgot.dataset.confirm;
+}
+document.querySelector('[data-stats-open]').addEventListener('click', () => {
+    if (!getProfile()) return showLogin();
+    statsMessage('');
+    statsBox.hidden = false;
+    if (stats.admin) return;
+    statsShowMain(false);
+    if (!net.loggedIn) return statsMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
+    statsMessage('', 'Cargando…');
+    net.send({ type: 'stats_status' });
+});
+net.on('stats_key', (m) => {
+    if (m.admin) return;
+    statsShowMain(false);
+    statsAuthMode(!m.exists);
+    if (!m.exists) rememberStatsKey('');
+    const key = m.exists && storedStatsKey();
+    if (key) {
+        statsMessage('', 'Entrando…');
+        stats.pendingKey = { key, remember: true };
+        net.send({ type: 'stats_auth', key });
+        return;
+    }
+    statsMessage('', m.exists ? '' : 'Es tu primera vez: crea una clave solo tuya. La pedirá cada vez que quieras ver o cambiar tus peticiones.');
+    setTimeout(() => statsAuth.key.focus(), 50);
+});
+statsBox.querySelector('[data-stats-forgot]').addEventListener('click', (e) => {
+    const b = e.currentTarget;
+    if (!b.dataset.confirm) {
+        b.dataset.confirm = '1';
+        b.textContent = '¿Borrar tu clave, tus peticiones y tus gráficos? Toca otra vez';
+        return;
+    }
+    net.send({ type: 'stats_reset', confirm: true });
+});
+statsBox.querySelector('[data-stats-close]').addEventListener('click', () => { statsBox.hidden = true; });
+statsAuth.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!net.loggedIn) return statsMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
+    if (stats.creating && statsAuth.key.value !== statsAuth.key2.value) return statsMessage('Las dos claves no coinciden.');
+    stats.pendingKey = { key: statsAuth.key.value, remember: statsAuth.remember.checked };
+    statsMessage('', stats.creating ? 'Creando tu clave…' : 'Comprobando la clave…');
+    net.send({ type: 'stats_auth', key: statsAuth.key.value, create: stats.creating });
+});
+statsBox.querySelector('[data-stats-lock]').addEventListener('click', () => {
+    rememberStatsKey('');
+    location.reload();   // la conexión deja de tener la clave
+});
+
+reqForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    statsMessage('', 'Haciendo la petición desde el servidor…');
+    reqForm.querySelector('[type=submit]').disabled = true;
+    net.send({ type: 'stats_run', request: readRequestForm() });
+});
+statsBox.querySelector('[data-stats-save]').addEventListener('click', () => {
+    if (!reqForm.reportValidity()) return;
+    statsMessage('', 'Guardando…');
+    net.send({ type: 'stats_request_save', request: readRequestForm() });
+});
+statsBox.querySelector('[data-stats-delete]').addEventListener('click', (e) => {
+    const b = e.currentTarget;
+    if (!b.dataset.confirm) { b.dataset.confirm = '1'; b.textContent = '¿Borrar la petición y sus gráficos?'; return; }
+    delete b.dataset.confirm; b.textContent = 'Borrar';
+    net.send({ type: 'stats_request_delete', id: reqForm.saved.value });
+    fillRequestForm(null);
+});
+
+chartForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const requestId = reqForm.saved.value;
+    if (!requestId) return statsMessage('Guarda la petición (botón «Guardar») antes de crear el gráfico.');
+    const editing = stats.editing;
+    let place = null;
+    if (!editing || chartForm.move.checked) {
+        // 3,5 m delante, mirando hacia ti, como un recuerdo.
+        camera.getWorldDirection(forward);
+        const yaw = Math.atan2(forward.x, forward.z);
+        place = { x: player.position.x + Math.sin(yaw) * 3.5, z: player.position.z + Math.cos(yaw) * 3.5, ry: yaw + Math.PI, scene: here.id };
+    }
+    statsMessage('', 'Calculando el gráfico en el servidor…');
+    chartForm.querySelector('[type=submit]').disabled = true;
+    net.send({
+        type: 'stats_chart_save', place,
+        chart: { id: editing?.id, request_id: requestId, title: chartForm.title.value.trim(), kind: chartForm.kind.value,
+            refresh_min: Number(chartForm.refresh_min.value), pivot: readPivot() },
+    });
+});
+
+net.on('stats_state', (m) => {
+    if (stats.pendingKey) {
+        if (stats.pendingKey.remember) rememberStatsKey(stats.pendingKey.key);
+        stats.pendingKey = null;
+        statsAuth.reset();
+        statsMessage('');
+        fillRequestForm(null);
+    }
+    statsShowMain(true);
+    stats.requests = m.requests;
+    stats.charts = m.charts;
+    if (stats.editing) stats.editing = m.charts.find((c) => c.id === stats.editing.id) || null;
+    renderSavedSelect();
+    if (stats.selectAfter) {
+        const saved = stats.requests.find((r) => r.id === stats.selectAfter);
+        stats.selectAfter = null;
+        if (saved) {
+            reqForm.saved.value = saved.id;
+            reqForm.querySelector('[data-stats-delete]').hidden = false;
+            // Lo escrito en los headers ya está en el servidor: aquí queda solo enmascarado.
+            statsHeaders.replaceChildren();
+            (saved.headers.length ? saved.headers : [{}]).forEach(addHeaderRow);
+        }
+    }
+    renderChartsList();
+    syncEditing();
+    if (!statsStatus.hidden && /Actualizando/.test(statsStatus.textContent)) statsMessage('', 'Listo.');
+});
+net.on('stats_saved', (m) => {
+    // El estado llega justo después: ahí se elige esta petición y se ocultan los valores escritos.
+    stats.selectAfter = m.id;
+    statsMessage('', 'Petición guardada. Las credenciales quedan solo en el servidor.');
+});
+net.on('stats_error', (m) => {
+    reqForm.querySelector('[type=submit]').disabled = false;
+    chartForm.querySelector('[type=submit]').disabled = false;
+    if (stats.pendingKey) {
+        if (/incorrecta/.test(m.message) && stats.pendingKey.key === storedStatsKey()) rememberStatsKey('');
+        stats.pendingKey = null;
+    }
+    // Se reconectó el socket: el servidor ya no recuerda la clave de esta conexión.
+    if (/Primero escribe tu clave/.test(m.message) && stats.admin) {
+        statsShowMain(false);
+        net.send({ type: 'stats_status' });
+    }
+    statsMessage(m.message);
+});
+net.on('stats_response', (m) => {
+    reqForm.querySelector('[type=submit]').disabled = false;
+    statsResponse.hidden = false;
+    const summary = statsBox.querySelector('[data-stats-summary]');
+    if (m.error) {
+        summary.textContent = m.error;
+        statsBox.querySelector('[data-stats-raw]').textContent = '';
+        pivotForm.hidden = chartForm.hidden = true;
+        return statsMessage(m.error);
+    }
+    summary.textContent = `HTTP ${m.status} · ${m.ms} ms · ${m.records} registros${m.records_error ? ` · ${m.records_error}` : ''}`;
+    statsBox.querySelector('[data-stats-raw]').textContent = m.preview;
+    stats.fields = m.fields;
+    const ok = m.records > 0 && m.fields.length > 0;
+    pivotForm.hidden = chartForm.hidden = !ok;
+    statsMessage(ok ? '' : (m.records_error || 'La respuesta no trae registros para la tabla.'), ok ? 'Arma la tabla dinámica con los campos de la respuesta.' : '');
+    if (!ok) return;
+    fillFieldSelects(stats.pendingPivot || readPivotSafe());
+    stats.pendingPivot = null;
+    if (!chartForm.title.value) chartForm.title.value = reqForm.name.value;
+    requestPivot();
+});
+function readPivotSafe() { return pivotForm.rows.options.length ? readPivot() : {}; }
+net.on('stats_table', (m) => {
+    const t = m.table;
+    statsTable.innerHTML = t.labels.length ? chartTableHtml(t) : '<p>Con esos campos la tabla queda vacía.</p>';
+});
+net.on('stats_chart_ok', () => {
+    chartForm.querySelector('[type=submit]').disabled = false;
+    const was = stats.editing;
+    stats.editing = null;
+    syncEditing();
+    statsMessage('', was ? 'Gráfico actualizado para todos.' : 'Listo: el gráfico quedó delante de ti y todos lo ven.');
+});
+
 // ---------- Personaje IA ----------
 // Cada persona puede soltar un personaje con nombre y personalidad que camina, conversa y salta
 // solo. Lo maneja una IA (Claude, OpenAI, Grok u OpenRouter) con el token de esa persona, llamada
@@ -2790,9 +2768,7 @@ const bot = {
 function botPlaces() {
     const places = {
         centro: new THREE.Vector3(0, 0, 0),
-        pelota: ball.position.clone().setY(0),
         galeria: new THREE.Vector3(0, 0, GALLERY_Z - 4),
-        video: VIDEO_POS.clone().multiplyScalar(0.85),
     };
     return places;
 }
@@ -3165,10 +3141,9 @@ renderer.setAnimationLoop(() => {
     faceCamera(dt);
     updateBot(dt);
     updateRemotes(dt);
-    if (here.id === MAIN) updateBall(dt);
+    updateCharts(dt);
     checkHoles();
     dest.update(t);
-    city.update(t);
     syncPosition();
 
     ring.position.x = player.position.x;
@@ -3177,15 +3152,8 @@ renderer.setAnimationLoop(() => {
     rims.position.copy(player.position);
     key.position.copy(player.position).add(KEY_OFFSET);
     key.target.position.copy(player.position);
-    for (const list of [cubes, mirrorCubes]) list.forEach((c, i) => {
-        c.rotation.x = t * 0.6 + i;
-        c.rotation.y = t * 0.8 + i;
-        c.position.y = 1.2 + Math.sin(t * 1.5 + i * 2) * 0.25;
-    });
-
     controls.update();
     wormholes.render(here.scene, camera, dt, t, otherSide);
-    if (here.id === MAIN) cssRenderer.render(cssScene, camera);
     updateBubble();
     updateHoleLabels();
 });
@@ -3194,12 +3162,10 @@ window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    cssRenderer.setSize(window.innerWidth, window.innerHeight);
     resizeWormholes();
 });
 function resizeWormholes() {
     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
     wormholes.setSize(size.x, size.y);
-    city.setPixelHeight(size.y);
 }
 resizeWormholes();
