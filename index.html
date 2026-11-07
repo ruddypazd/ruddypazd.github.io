@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=61">
+    <link rel="stylesheet" href="style.css?v=62">
     <script type="importmap">
     {
         "imports": {
@@ -47,6 +47,7 @@
                         <button class="settings__item" type="button" data-fp aria-pressed="false">👁 Vista en primera persona</button>
                         <button class="settings__item" type="button" data-hole-open>🌀 Crear puente de Einstein-Rosen</button>
                         <button class="settings__item" type="button" data-sign-open>📌 Publicar</button>
+                        <button class="settings__item" type="button" data-items-open>🧸 Ítems</button>
                         <button class="settings__item" type="button" data-stats-open>📊 Estadísticas</button>
                     </div>
                 </section>
@@ -339,6 +340,51 @@
             <button class="login__back" type="button" data-sign-close>Cerrar</button>
         </form>
     </div>
+    <div class="login login--scroll" data-items-box role="dialog" aria-modal="true" aria-labelledby="items-title" hidden>
+        <form class="login__card items" data-items-form autocomplete="off">
+            <p class="totem-panel__tag">Ítems</p>
+            <h2 id="items-title">Pon algo en el mundo</h2>
+            <p class="login__note">Elige un ítem: queda delante de ti, en el lugar donde estás. Todos lo ven y solo tú puedes quitarlo.</p>
+            <div class="items__grid" data-items-catalog></div>
+            <fieldset class="items__colors" data-items-colors hidden>
+                <legend>Color</legend>
+                <label><input type="radio" name="color" value="0" checked><span style="--c:#00e5ff">Celeste</span></label>
+                <label><input type="radio" name="color" value="1"><span style="--c:#a060ff">Violeta</span></label>
+                <label><input type="radio" name="color" value="2"><span style="--c:#ff3da6">Rosado</span></label>
+            </fieldset>
+            <label data-items-youtube hidden>Enlace de YouTube (opcional)<input name="youtube" type="text" inputmode="url" maxlength="500" placeholder="Vacío: la lista de música de Ruddy"></label>
+            <p class="login__error" data-items-error hidden></p>
+            <button class="chat__send" type="submit">Poner delante de mí</button>
+            <div class="holes" data-my-items hidden>
+                <h3>Tus ítems</h3>
+                <ul></ul>
+            </div>
+            <button class="login__back" type="button" data-items-close>Cerrar</button>
+        </form>
+    </div>
+    <div class="totem-panel" data-item-view hidden role="dialog" aria-modal="true" aria-labelledby="item-view-name">
+        <div class="totem-panel__card profile memory-view">
+            <p class="items__big" data-item-icon aria-hidden="true"></p>
+            <p class="totem-panel__tag">Ítem</p>
+            <h2 id="item-view-name" data-item-name></h2>
+            <p class="memory-view__text" data-item-desc></p>
+            <dl class="profile__facts">
+                <dt>Puesto por</dt><dd data-item-author></dd>
+                <dt>Desde</dt><dd data-item-created></dd>
+            </dl>
+            <button class="holes__delete" type="button" data-item-delete hidden>Quitar ítem</button>
+            <button class="chat__send" type="button" data-item-close>Cerrar</button>
+        </div>
+    </div>
+    <div class="totem-panel" data-totem-panel hidden role="dialog" aria-modal="true" aria-labelledby="totem-title">
+        <div class="totem-panel__card totem-panel__card--frame">
+            <div class="totem-panel__bar">
+                <h2 id="totem-title">Tótem Medical Center</h2>
+                <button class="chat__send" type="button" data-totem-close>Cerrar</button>
+            </div>
+            <iframe class="totem-panel__frame" data-totem-frame title="Tótem de Medical Center" allow="camera; microphone; autoplay; fullscreen"></iframe>
+        </div>
+    </div>
     <div class="totem-panel" data-sign-view hidden role="dialog" aria-modal="true" aria-labelledby="sign-view-author">
         <div class="totem-panel__card profile memory-view">
             <img class="memory-view__photo" data-sign-photo alt="" hidden>
@@ -361,7 +407,7 @@
         <p data-scene-desc></p>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=61"></script>
+    <script type="module" src="world.js?v=62"></script>
     <script type="module" src="portafolio/firebase.js"></script>
 </body>
 </html>
