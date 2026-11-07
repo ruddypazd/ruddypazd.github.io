@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=56">
+    <link rel="stylesheet" href="style.css?v=57">
     <script type="importmap">
     {
         "imports": {
@@ -288,10 +288,12 @@
             <p class="totem-panel__tag">Estadísticas</p>
             <h2 id="stats-title">Gráficos 3D con tus datos</h2>
             <form class="stats__auth" data-stats-auth autocomplete="off">
-                <p class="login__note">Solo para el dueño del mundo. Las peticiones y sus credenciales se guardan y se ejecutan en el servidor: los demás solo ven los números de cada gráfico.</p>
-                <label>Clave de estadísticas<input name="key" type="password" autocomplete="current-password" spellcheck="false" required></label>
+                <p class="login__note" data-stats-auth-note>Tus peticiones y sus credenciales se guardan y se ejecutan en el servidor, protegidas con tu propia clave. Los demás solo ven los números de tus gráficos.</p>
+                <label><span data-stats-key-label>Tu clave de estadísticas</span><input name="key" type="password" autocomplete="current-password" spellcheck="false" required></label>
+                <label data-stats-key2 hidden>Repite la clave<input name="key2" type="password" autocomplete="new-password" spellcheck="false"></label>
                 <label class="bot__check"><input name="remember" type="checkbox" checked> Recordar la clave en este dispositivo</label>
                 <button class="chat__send" type="submit">Entrar</button>
+                <button class="login__back" type="button" data-stats-forgot hidden>Olvidé mi clave</button>
             </form>
             <div class="stats__main" data-stats-main hidden>
                 <form class="stats__step" data-stats-req autocomplete="off">
@@ -388,7 +390,7 @@
         <p data-scene-desc></p>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=56"></script>
+    <script type="module" src="world.js?v=57"></script>
     <script type="module" src="portafolio/firebase.js"></script>
 </body>
 </html>

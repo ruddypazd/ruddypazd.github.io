@@ -3285,7 +3285,8 @@ net.on('chart', (m) => addChart(m.chart));
 net.on('chart_removed', (m) => { removeChart(m.id); chartGrowth.delete(m.id); if (chartView.dataset.id === m.id) chartView.hidden = true; });
 
 // Panel del dueño (Ajustes → Estadísticas).
-const STATS_KEY_STORE = 'rp_stats_key';
+// La clave de cada persona se recuerda por teléfono: otra persona en el mismo navegador no la usa.
+const statsKeyStore = () => `rp_stats_key:${getProfile()?.phone || ''}`;
 const statsBox = document.querySelector('[data-stats-box]');
 const statsAuth = statsBox.querySelector('[data-stats-auth]');
 const statsMain = statsBox.querySelector('[data-stats-main]');
@@ -3298,13 +3299,16 @@ const statsError = statsBox.querySelector('[data-stats-error]');
 const statsStatus = statsBox.querySelector('[data-stats-status]');
 const statsTable = statsBox.querySelector('[data-stats-table]');
 const statsChartsList = statsBox.querySelector('[data-stats-charts]');
-const stats = { admin: false, requests: [], charts: [], fields: [], editing: null, pendingKey: null };
+const stats = { admin: false, creating: false, requests: [], charts: [], fields: [], editing: null, pendingKey: null };
 
 function statsMessage(error, status) {
     statsError.hidden = !error; statsError.textContent = error || '';
     statsStatus.hidden = !status; statsStatus.textContent = status || '';
 }
-function storedStatsKey() { try { return localStorage.getItem(STATS_KEY_STORE) || ''; } catch { return ''; } }
+function storedStatsKey() { try { return localStorage.getItem(statsKeyStore()) || ''; } catch { return ''; } }
+function rememberStatsKey(key) {
+    try { if (key) localStorage.setItem(statsKeyStore(), key); else localStorage.removeItem(statsKeyStore()); } catch { /* modo privado */ }
+}
 
 function addHeaderRow(h = {}) {
     const row = document.createElement('div');
@@ -3451,27 +3455,65 @@ function statsShowMain(on) {
     statsBox.querySelector('[data-stats-lock]').hidden = !on;
 }
 
+// Primera vez: la persona crea su clave (dos veces). Después: la escribe o entra con la recordada.
+function statsAuthMode(creating) {
+    stats.creating = creating;
+    statsBox.querySelector('[data-stats-key-label]').textContent = creating ? 'Crea tu clave de estadísticas (mínimo 8 caracteres)' : 'Tu clave de estadísticas';
+    statsBox.querySelector('[data-stats-key2]').hidden = !creating;
+    statsAuth.key2.required = creating;
+    statsAuth.key.autocomplete = creating ? 'new-password' : 'current-password';
+    statsAuth.querySelector('[type=submit]').textContent = creating ? 'Crear mi clave' : 'Entrar';
+    const forgot = statsBox.querySelector('[data-stats-forgot]');
+    forgot.hidden = creating;
+    forgot.textContent = 'Olvidé mi clave';
+    delete forgot.dataset.confirm;
+}
 document.querySelector('[data-stats-open]').addEventListener('click', () => {
     if (!getProfile()) return showLogin();
     statsMessage('');
     statsBox.hidden = false;
     if (stats.admin) return;
     statsShowMain(false);
-    const key = storedStatsKey();
-    if (key && net.loggedIn) { statsMessage('', 'Entrando…'); stats.pendingKey = { key, remember: true }; net.send({ type: 'stats_auth', key }); }
-    else setTimeout(() => statsAuth.key.focus(), 50);
+    if (!net.loggedIn) return statsMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
+    statsMessage('', 'Cargando…');
+    net.send({ type: 'stats_status' });
+});
+net.on('stats_key', (m) => {
+    if (m.admin) return;
+    statsShowMain(false);
+    statsAuthMode(!m.exists);
+    if (!m.exists) rememberStatsKey('');
+    const key = m.exists && storedStatsKey();
+    if (key) {
+        statsMessage('', 'Entrando…');
+        stats.pendingKey = { key, remember: true };
+        net.send({ type: 'stats_auth', key });
+        return;
+    }
+    statsMessage('', m.exists ? '' : 'Es tu primera vez: crea una clave solo tuya. La pedirá cada vez que quieras ver o cambiar tus peticiones.');
+    setTimeout(() => statsAuth.key.focus(), 50);
+});
+statsBox.querySelector('[data-stats-forgot]').addEventListener('click', (e) => {
+    const b = e.currentTarget;
+    if (!b.dataset.confirm) {
+        b.dataset.confirm = '1';
+        b.textContent = '¿Borrar tu clave, tus peticiones y tus gráficos? Toca otra vez';
+        return;
+    }
+    net.send({ type: 'stats_reset', confirm: true });
 });
 statsBox.querySelector('[data-stats-close]').addEventListener('click', () => { statsBox.hidden = true; });
 statsAuth.addEventListener('submit', (e) => {
     e.preventDefault();
     if (!net.loggedIn) return statsMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
+    if (stats.creating && statsAuth.key.value !== statsAuth.key2.value) return statsMessage('Las dos claves no coinciden.');
     stats.pendingKey = { key: statsAuth.key.value, remember: statsAuth.remember.checked };
-    statsMessage('', 'Comprobando la clave…');
-    net.send({ type: 'stats_auth', key: statsAuth.key.value });
+    statsMessage('', stats.creating ? 'Creando tu clave…' : 'Comprobando la clave…');
+    net.send({ type: 'stats_auth', key: statsAuth.key.value, create: stats.creating });
 });
 statsBox.querySelector('[data-stats-lock]').addEventListener('click', () => {
-    try { localStorage.removeItem(STATS_KEY_STORE); } catch { /* modo privado */ }
-    location.reload();   // la conexión deja de ser la del dueño
+    rememberStatsKey('');
+    location.reload();   // la conexión deja de tener la clave
 });
 
 reqForm.addEventListener('submit', (e) => {
@@ -3516,7 +3558,7 @@ chartForm.addEventListener('submit', (e) => {
 
 net.on('stats_state', (m) => {
     if (stats.pendingKey) {
-        if (stats.pendingKey.remember) { try { localStorage.setItem(STATS_KEY_STORE, stats.pendingKey.key); } catch { /* modo privado */ } }
+        if (stats.pendingKey.remember) rememberStatsKey(stats.pendingKey.key);
         stats.pendingKey = null;
         statsAuth.reset();
         statsMessage('');
@@ -3551,8 +3593,13 @@ net.on('stats_error', (m) => {
     reqForm.querySelector('[type=submit]').disabled = false;
     chartForm.querySelector('[type=submit]').disabled = false;
     if (stats.pendingKey) {
-        if (stats.pendingKey.remember && stats.pendingKey.key === storedStatsKey()) { try { localStorage.removeItem(STATS_KEY_STORE); } catch { /* modo privado */ } }
+        if (/incorrecta/.test(m.message) && stats.pendingKey.key === storedStatsKey()) rememberStatsKey('');
         stats.pendingKey = null;
+    }
+    // Se reconectó el socket: el servidor ya no recuerda la clave de esta conexión.
+    if (/Primero escribe tu clave/.test(m.message) && stats.admin) {
+        statsShowMain(false);
+        net.send({ type: 'stats_status' });
     }
     statsMessage(m.message);
 });
