@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=65">
+    <link rel="stylesheet" href="style.css?v=66">
     <script type="importmap">
     {
         "imports": {
@@ -282,28 +282,69 @@
                 <button class="chat__send" type="submit">Entrar</button>
                 <button class="login__back" type="button" data-stats-forgot hidden>Olvidé mi clave</button>
             </form>
-            <!-- Estadísticas en pantallas: lista → petición → datos y tabla → gráfico. «‹» vuelve a la anterior. -->
+            <!-- Estadísticas en pantallas. «Crear un gráfico» es un asistente de 5 pasos: origen (petición HTTP
+                 o Excel) → datos en tabla → tabla dinámica → tipo de gráfico con vista previa → agregar al mundo.
+                 «‹» (o Escape) vuelve a la pantalla anterior. -->
             <div class="stats__main" data-stats-main hidden>
                 <section class="stats__screen" data-stats-screen="home">
                     <header class="stats__head">
                         <div class="settings__titles">
                             <p class="settings__crumb">Estadísticas</p>
-                            <h3 class="stats__title">Tus peticiones HTTP</h3>
+                            <h3 class="stats__title">Gráficos 3D con tus datos</h3>
                         </div>
                     </header>
-                    <div class="stats__reqs-btns">
-                        <button class="chat__send" type="button" data-stats-new>+ Nueva petición</button>
-                        <button class="chat__send stats__secondary" type="button" data-stats-curl-open aria-expanded="false">Importar cURL</button>
-                    </div>
-                    <div class="stats__curl" data-stats-curl hidden>
-                        <label>Pega el comando curl<textarea name="curl" rows="5" spellcheck="false" placeholder="curl 'https://api.mi-sistema.com/ventas' -H 'Authorization: Bearer …'"></textarea></label>
-                        <button class="chat__send stats__secondary" type="button" data-stats-curl-apply>Armar la petición</button>
-                    </div>
-                    <ul class="stats__reqs" data-stats-req-list></ul>
+                    <button class="stats__big" type="button" data-stats-wizard>
+                        <span class="stats__big-icon" aria-hidden="true">📊</span>
+                        <span><strong>Crear un gráfico</strong><small>Desde una petición HTTP o un Excel, paso a paso.</small></span>
+                    </button>
                     <button class="stats__req stats__req--link" type="button" data-stats-go-charts>
                         <span>📈 Tus gráficos en el mundo</span>
                         <small data-stats-charts-count>Ninguno todavía</small>
                     </button>
+                    <h4 class="stats__sub">Tus peticiones HTTP</h4>
+                    <ul class="stats__reqs" data-stats-req-list data-empty="Todavía no tienes peticiones."></ul>
+                    <h4 class="stats__sub">Tus Excel</h4>
+                    <ul class="stats__reqs" data-stats-dataset-list data-empty="Todavía no subiste ninguno."></ul>
+                </section>
+
+                <section class="stats__screen" data-stats-screen="source" data-stats-step="1" hidden>
+                    <header class="stats__head">
+                        <button class="settings__back stats__back" type="button" data-stats-back aria-label="Volver">‹</button>
+                        <div class="settings__titles">
+                            <p class="settings__crumb">Paso 1 de 5 · Origen</p>
+                            <h3 class="stats__title">¿De dónde salen los datos?</h3>
+                        </div>
+                    </header>
+                    <div class="stats__sources" role="radiogroup" aria-label="Origen de los datos">
+                        <button class="stats__source" type="button" role="radio" aria-checked="true" data-stats-source="http">
+                            <span aria-hidden="true">🌐</span><strong>Petición HTTP</strong><small>Una API de tu sistema. Se puede actualizar sola.</small>
+                        </button>
+                        <button class="stats__source" type="button" role="radio" aria-checked="false" data-stats-source="excel">
+                            <span aria-hidden="true">📄</span><strong>Subir Excel</strong><small>Un .xlsx, .xls o .csv con una fila de títulos.</small>
+                        </button>
+                    </div>
+                    <div class="stats__pane" data-stats-pane="http">
+                        <ul class="stats__reqs" data-stats-pick-list data-empty="Todavía no tienes peticiones: crea una o importa un cURL."></ul>
+                        <div class="stats__reqs-btns">
+                            <button class="chat__send" type="button" data-stats-new>+ Nueva petición</button>
+                            <button class="chat__send stats__secondary" type="button" data-stats-curl-open aria-expanded="false">Importar cURL</button>
+                        </div>
+                        <div class="stats__curl" data-stats-curl hidden>
+                            <label>Pega el comando curl<textarea name="curl" rows="5" spellcheck="false" placeholder="curl 'https://api.mi-sistema.com/ventas' -H 'Authorization: Bearer …'"></textarea></label>
+                            <button class="chat__send stats__secondary" type="button" data-stats-curl-apply>Armar la petición</button>
+                        </div>
+                    </div>
+                    <div class="stats__pane" data-stats-pane="excel" hidden>
+                        <label class="stats__drop" data-stats-drop>
+                            <input type="file" accept=".xlsx,.xls,.xlsm,.ods,.csv,text/csv" data-stats-file>
+                            <span aria-hidden="true">⬆</span>
+                            <strong data-stats-file-name>Elige o arrastra un archivo</strong>
+                            <small>La primera fila debe tener los nombres de las columnas. Hasta 5000 filas. Si subes otro con el mismo nombre, reemplaza al anterior y sus gráficos se actualizan.</small>
+                        </label>
+                        <label data-stats-sheet-label hidden>Hoja<select data-stats-sheet></select></label>
+                        <button class="chat__send" type="button" data-stats-upload disabled>Subir y ver los datos ›</button>
+                        <ul class="stats__reqs" data-stats-pick-datasets data-empty=""></ul>
+                    </div>
                 </section>
 
                 <section class="stats__screen" data-stats-screen="detail" hidden>
@@ -331,7 +372,7 @@
                     <header class="stats__head">
                         <button class="settings__back stats__back" type="button" data-stats-back aria-label="Volver">‹</button>
                         <div class="settings__titles">
-                            <p class="settings__crumb">Estadísticas / Editar</p>
+                            <p class="settings__crumb">Estadísticas / Petición HTTP</p>
                             <h3 class="stats__title" data-stats-title-edit>Nueva petición</h3>
                         </div>
                     </header>
@@ -356,58 +397,84 @@
                     </form>
                 </section>
 
-                <section class="stats__screen" data-stats-screen="data" hidden>
+                <section class="stats__screen" data-stats-screen="data" data-stats-step="2" hidden>
                     <header class="stats__head">
                         <button class="settings__back stats__back" type="button" data-stats-back aria-label="Volver">‹</button>
                         <div class="settings__titles">
-                            <p class="settings__crumb">Estadísticas / Datos</p>
-                            <h3 class="stats__title" data-stats-title-data>La data</h3>
+                            <p class="settings__crumb">Paso 2 de 5 · Datos</p>
+                            <h3 class="stats__title" data-stats-title-data>Los datos</h3>
                         </div>
                     </header>
-                <section class="stats__step" data-stats-response hidden>
-                    <p class="login__note" data-stats-summary></p>
-                    <details class="stats__raw"><summary>Ver la respuesta</summary><pre data-stats-raw></pre></details>
-                </section>
-                    <button class="chat__send" type="button" data-stats-to-chart hidden>📊 Crear un gráfico con esta data ›</button>
+                    <section class="stats__step" data-stats-response hidden>
+                        <p class="login__note" data-stats-summary></p>
+                        <div class="stats__table stats__table--data" data-stats-rows></div>
+                        <details class="stats__raw" data-stats-raw-box><summary>Ver la respuesta completa</summary><pre data-stats-raw></pre></details>
+                    </section>
+                    <button class="chat__send stats__next" type="button" data-stats-to-pivot hidden>Siguiente: tabla dinámica ›</button>
                 </section>
 
-                <section class="stats__screen" data-stats-screen="chart" hidden>
+                <section class="stats__screen" data-stats-screen="pivot" data-stats-step="3" hidden>
                     <header class="stats__head">
                         <button class="settings__back stats__back" type="button" data-stats-back aria-label="Volver">‹</button>
                         <div class="settings__titles">
-                            <p class="settings__crumb">Estadísticas / Gráfico</p>
-                            <h3 class="stats__title" data-stats-title-chart>Gráfico 3D</h3>
+                            <p class="settings__crumb">Paso 3 de 5 · Tabla dinámica</p>
+                            <h3 class="stats__title">Agrupa y calcula</h3>
                         </div>
                     </header>
-                <form class="stats__step" data-stats-pivot hidden>
-                    <h3>Tabla dinámica</h3>
-                    <div class="stats__row">
-                        <label>Filas (agrupar por)<select name="rows"></select></label>
-                        <label>Fechas<select name="date"><option value="">Tal cual</option><option value="day">Por día</option><option value="month">Por mes</option><option value="year">Por año</option></select></label>
-                    </div>
-                    <div class="stats__row">
-                        <label>Cálculo<select name="agg"><option value="count">Contar registros</option><option value="sum">Suma</option><option value="avg">Promedio</option><option value="min">Mínimo</option><option value="max">Máximo</option></select></label>
-                        <label>Valor<select name="value"></select></label>
-                    </div>
-                    <div class="stats__row">
-                        <label>Series (opcional)<select name="cols"></select></label>
-                        <label>Orden<select name="sort"><option value="value">Mayor valor</option><option value="label">Por nombre</option><option value="none">Como llegan</option></select></label>
-                    </div>
-                    <label>Máximo de filas<input name="limit" type="number" min="1" max="30" value="12"></label>
-                    <div class="stats__table" data-stats-table></div>
-                </form>
-                <form class="stats__step" data-stats-chart hidden autocomplete="off">
-                    <label>Título<input name="title" maxlength="60" placeholder="Ventas por sucursal" required></label>
-                    <label>Descripción (opcional)<textarea name="description" rows="3" maxlength="600" placeholder="Explica qué muestra el gráfico, de dónde salen los datos o cómo leerlo."></textarea></label>
-                    <div class="stats__row">
-                        <label>Tipo<select name="kind"><option value="bars">Barras</option><option value="pie">Torta</option><option value="line">Línea</option></select></label>
-                        <label>Actualizar<select name="refresh_min"><option value="0">Nunca</option><option value="5">Cada 5 min</option><option value="15">Cada 15 min</option><option value="30">Cada 30 min</option><option value="60">Cada hora</option><option value="360">Cada 6 horas</option><option value="1440">Cada día</option></select></label>
-                    </div>
-                    <label class="bot__check" data-stats-move hidden><input name="move" type="checkbox"> Moverlo delante de mí</label>
-                    <p class="login__note" data-stats-editing hidden></p>
-                    <button class="chat__send" type="submit">Poner el gráfico delante de mí</button>
-                    <button class="login__back" type="button" data-stats-cancel-edit hidden>Cancelar edición</button>
-                </form>
+                    <form class="stats__step" data-stats-pivot hidden>
+                        <div class="stats__row">
+                            <label>Filas (agrupar por)<select name="rows"></select></label>
+                            <label>Fechas<select name="date"><option value="">Tal cual</option><option value="day">Por día</option><option value="month">Por mes</option><option value="year">Por año</option></select></label>
+                        </div>
+                        <div class="stats__row">
+                            <label>Cálculo<select name="agg"><option value="count">Contar registros</option><option value="sum">Suma</option><option value="avg">Promedio</option><option value="min">Mínimo</option><option value="max">Máximo</option></select></label>
+                            <label>Valor<select name="value"></select></label>
+                        </div>
+                        <div class="stats__row">
+                            <label>Series (opcional)<select name="cols"></select></label>
+                            <label>Orden<select name="sort"><option value="value">Mayor valor</option><option value="label">Por nombre</option><option value="none">Como llegan</option></select></label>
+                        </div>
+                        <label>Máximo de filas<input name="limit" type="number" min="1" max="30" value="12"></label>
+                        <h3>Resultado</h3>
+                        <div class="stats__table" data-stats-table></div>
+                    </form>
+                    <button class="chat__send stats__next" type="button" data-stats-to-kind>Siguiente: elegir el gráfico ›</button>
+                </section>
+
+                <section class="stats__screen" data-stats-screen="kind" data-stats-step="4" hidden>
+                    <header class="stats__head">
+                        <button class="settings__back stats__back" type="button" data-stats-back aria-label="Volver">‹</button>
+                        <div class="settings__titles">
+                            <p class="settings__crumb">Paso 4 de 5 · Gráfico</p>
+                            <h3 class="stats__title">¿Cómo se ve mejor?</h3>
+                        </div>
+                    </header>
+                    <div class="stats__kinds" role="radiogroup" aria-label="Tipo de gráfico" data-stats-kinds></div>
+                    <figure class="stats__preview" data-stats-preview></figure>
+                    <p class="login__note" data-stats-kind-tip></p>
+                    <button class="chat__send stats__next" type="button" data-stats-to-chart>Siguiente: agregar al mundo ›</button>
+                </section>
+
+                <section class="stats__screen" data-stats-screen="chart" data-stats-step="5" hidden>
+                    <header class="stats__head">
+                        <button class="settings__back stats__back" type="button" data-stats-back aria-label="Volver">‹</button>
+                        <div class="settings__titles">
+                            <p class="settings__crumb">Paso 5 de 5 · Al mundo</p>
+                            <h3 class="stats__title" data-stats-title-chart>Agregar al mundo</h3>
+                        </div>
+                    </header>
+                    <form class="stats__step" data-stats-chart autocomplete="off">
+                        <figure class="stats__preview stats__preview--small" data-stats-preview-final></figure>
+                        <label>Título<input name="title" maxlength="60" placeholder="Ventas por sucursal" required></label>
+                        <label>Descripción (opcional)<textarea name="description" rows="3" maxlength="600" placeholder="Explica qué muestra el gráfico, de dónde salen los datos o cómo leerlo."></textarea></label>
+                        <input type="hidden" name="kind" value="bars">
+                        <label data-stats-refresh-label>Actualizar los datos<select name="refresh_min"><option value="0">Nunca</option><option value="5">Cada 5 min</option><option value="15">Cada 15 min</option><option value="30">Cada 30 min</option><option value="60">Cada hora</option><option value="360">Cada 6 horas</option><option value="1440">Cada día</option></select></label>
+                        <p class="login__note" data-stats-excel-note hidden>Sale de un Excel: para cambiar los números, sube otra vez el archivo con el mismo nombre y el gráfico se actualiza solo.</p>
+                        <label class="bot__check" data-stats-move hidden><input name="move" type="checkbox"> Moverlo delante de mí</label>
+                        <p class="login__note" data-stats-editing hidden></p>
+                        <button class="chat__send" type="submit">Agregar al mundo, delante de mí</button>
+                        <button class="login__back" type="button" data-stats-cancel-edit hidden>Cancelar edición</button>
+                    </form>
                 </section>
 
                 <section class="stats__screen" data-stats-screen="charts" hidden>
@@ -546,7 +613,7 @@
         <p data-scene-desc></p>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=65"></script>
+    <script type="module" src="world.js?v=66"></script>
     <script type="module" src="portafolio/firebase.js"></script>
 </body>
 </html>

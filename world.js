@@ -3133,7 +3133,9 @@ function openChart(id, keepNote = false) {
     if (chartView.dataset.id !== id) keepNote = false;
     chartView.dataset.id = id;
     chartView.querySelector('[data-chart-title]').textContent = c.title;
-    const auto = REFRESH_NAMES[c.refresh_min] ? `se actualiza solo ${REFRESH_NAMES[c.refresh_min]}` : 'se actualiza al tocar «Actualizar»';
+    const fromExcel = c.source === 'excel';
+    const auto = fromExcel ? 'datos de un Excel' : REFRESH_NAMES[c.refresh_min] ? `se actualiza solo ${REFRESH_NAMES[c.refresh_min]}` : 'se actualiza al tocar «Actualizar»';
+    chartRefreshBtn.hidden = fromExcel;
     chartView.querySelector('[data-chart-sub]').textContent =
         `${chartSubtitle(c.data)} · ${c.owner_name || ''} · datos del ${formatDate(c.refreshed_at || c.updated_at)} · ${auto}`;
     const description = chartView.querySelector('[data-chart-description]');
@@ -3189,7 +3191,16 @@ const statsError = statsBox.querySelector('[data-stats-error]');
 const statsStatus = statsBox.querySelector('[data-stats-status]');
 const statsTable = statsBox.querySelector('[data-stats-table]');
 const statsChartsList = statsBox.querySelector('[data-stats-charts]');
-const stats = { admin: false, creating: false, requests: [], charts: [], fields: [], editing: null, pendingKey: null };
+// source: de dónde salen los datos del asistente ({ type: 'http' } o { type: 'excel', id, name }).
+// table: el último resultado de la tabla dinámica, para las vistas previas del gráfico.
+const stats = { admin: false, creating: false, requests: [], charts: [], datasets: [], fields: [], editing: null,
+    pendingKey: null, source: { type: 'http' }, table: null, wizard: false };
+const STATS_KINDS = [
+    { id: 'bars', name: 'Barras', tip: 'Para comparar cantidades entre grupos: sucursales, vendedores, productos.' },
+    { id: 'pie', name: 'Torta', tip: 'Para ver cuánto aporta cada parte al total. Funciona mejor con pocas filas y una sola serie.' },
+    { id: 'line', name: 'Línea', tip: 'Para ver cómo cambia algo en el tiempo. Agrupa por fecha (por día, mes o año).' },
+];
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 
 function statsMessage(error, status) {
     statsError.hidden = !error; statsError.textContent = error || '';
@@ -3243,38 +3254,81 @@ function fillRequestForm(r) {
     statsHeaders.replaceChildren();
     (r?.headers?.length ? r.headers : [{}]).forEach(addHeaderRow);
     syncMethod();
-    renderReqList();
-    statsResponse.hidden = pivotForm.hidden = chartForm.hidden = true;
-    statsBox.querySelector('[data-stats-to-chart]').hidden = true;
+    stats.source = { type: 'http' };
+    clearWizardData();
+}
+// Datos nuevos: lo que se armó con los anteriores ya no sirve.
+function clearWizardData() {
+    statsResponse.hidden = pivotForm.hidden = true;
+    statsBox.querySelector('[data-stats-to-pivot]').hidden = true;
+    statsTable.replaceChildren();
     stats.fields = [];
+    stats.table = null;
 }
 function syncMethod() { statsBox.querySelector('[data-stats-body-label]').hidden = reqForm.method.value === 'GET'; }
 reqForm.method.addEventListener('change', syncMethod);
 
-// Pantallas del panel: lista de peticiones → una petición (traer data, crear gráfico, editar,
-// eliminar) → sus datos o el gráfico. «‹» (o Escape) vuelve a la pantalla anterior.
+// ---- Pantallas ----
+// Inicio (lista) → asistente de 5 pasos: origen → datos → tabla dinámica → tipo de gráfico → al mundo.
+// También: una petición (traer data, crear gráfico, editar, eliminar), sus gráficos y quién los tocó.
+// «‹» (o Escape) vuelve a la pantalla anterior.
 const statsNav = ['home'];
+const STEP_NAMES = ['Origen', 'Datos', 'Tabla', 'Gráfico', 'Al mundo'];
+statsBox.querySelectorAll('[data-stats-step]').forEach((sc) => {
+    const at = Number(sc.dataset.statsStep);
+    const ol = document.createElement('ol');
+    ol.className = 'stats__steps';
+    ol.setAttribute('aria-label', `Paso ${at} de ${STEP_NAMES.length}`);
+    ol.innerHTML = STEP_NAMES.map((n, i) => `<li class="${i + 1 < at ? 'is-done' : i + 1 === at ? 'is-now' : ''}"${i + 1 === at ? ' aria-current="step"' : ''}><span>${i + 1}</span>${n}</li>`).join('');
+    sc.querySelector('.stats__head').after(ol);
+});
 function statsShow(name) {
     statsBox.querySelectorAll('[data-stats-screen]').forEach((sc) => { sc.hidden = sc.dataset.statsScreen !== name; });
     statsBox.scrollTop = 0;
+    if (name === 'kind') renderKinds();
+    if (name === 'chart') renderFinalPreview();
 }
 function statsGo(name, { replace = false, reset = false } = {}) {
     if (reset) statsNav.splice(0, statsNav.length, 'home');
     else if (replace && statsNav.length > 1) statsNav.pop();
     if (statsNav[statsNav.length - 1] !== name) statsNav.push(name);
+    if (name === 'home') stats.wizard = false;
     statsShow(name);
 }
 function statsBack() {
     if (!stats.admin || statsNav.length < 2) return false;
     statsNav.pop();
     statsMessage('');
-    statsShow(statsNav[statsNav.length - 1]);
+    const name = statsNav[statsNav.length - 1];
+    if (name === 'home') stats.wizard = false;
+    statsShow(name);
     return true;
 }
 statsBox.querySelectorAll('[data-stats-back]').forEach((b) => b.addEventListener('click', statsBack));
 function currentRequest() { return stats.requests.find((r) => r.id === reqForm.saved.value); }
+
+// Empieza el asistente: paso 1, elegir de dónde salen los datos.
+function startWizard() {
+    stats.editing = null;
+    syncEditing();
+    chartForm.title.value = '';
+    chartForm.description.value = '';
+    chartForm.kind.value = 'bars';
+    chartForm.refresh_min.value = '0';
+    stats.wizard = true;
+    statsMessage('');
+    statsGo('source', { reset: true });
+}
+statsBox.querySelector('[data-stats-wizard]').addEventListener('click', startWizard);
+function setSource(type) {
+    statsBox.querySelectorAll('[data-stats-source]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.statsSource === type)));
+    statsBox.querySelectorAll('[data-stats-pane]').forEach((p) => { p.hidden = p.dataset.statsPane !== type; });
+}
+statsBox.querySelectorAll('[data-stats-source]').forEach((b) => b.addEventListener('click', () => setSource(b.dataset.statsSource)));
+
 function openRequest(r) {
     stats.editing = null;
+    stats.wizard = false;
     syncEditing();
     fillRequestForm(r);
     statsMessage('');
@@ -3303,7 +3357,47 @@ function renderDetail() {
     box.hidden = !mine.length;
     box.querySelector('ul').replaceChildren(...mine.map(chartRow));
 }
-const reqList = statsBox.querySelector('[data-stats-req-list]');
+
+// Listas: peticiones y Excel en el inicio (para administrarlos) y en el paso 1 (para elegir uno).
+function sourceItem(title, info, onClick, onDelete) {
+    const li = document.createElement('li');
+    li.className = 'stats__item';
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'stats__req';
+    const name = document.createElement('span');
+    name.textContent = title;
+    const small = document.createElement('small');
+    small.textContent = info;
+    b.append(name, small);
+    b.addEventListener('click', onClick);
+    li.append(b);
+    if (onDelete) {
+        const del = document.createElement('button');
+        del.type = 'button'; del.className = 'holes__delete'; del.textContent = 'Borrar';
+        del.addEventListener('click', () => {
+            if (del.dataset.confirm) return onDelete();
+            del.dataset.confirm = '1'; del.textContent = '¿Borrar? Toca otra vez';
+        });
+        li.append(del);
+    }
+    return li;
+}
+function requestInfo(r) {
+    let host = r.url;
+    try { host = new URL(r.url).host + new URL(r.url).pathname; } catch { /* URL rara: se muestra entera */ }
+    const used = stats.charts.filter((c) => c.request_id === r.id).length;
+    return `${r.method} ${host}${used ? ` · ${used} gráfico${used > 1 ? 's' : ''}` : ''}`;
+}
+function datasetInfo(d) {
+    const used = stats.charts.filter((c) => c.dataset_id === d.id).length;
+    return `${d.rows} filas · ${d.columns} columnas · ${formatDate(d.created_at)}${used ? ` · ${used} gráfico${used > 1 ? 's' : ''}` : ''}`;
+}
+function openDataset(d, after) {
+    stats.afterRun = after;
+    statsMessage('', `Abriendo «${d.name}»…`);
+    net.send({ type: 'stats_dataset_open', id: d.id });
+}
 function renderSavedSelect() {
     const current = reqForm.saved.value;
     reqForm.saved.replaceChildren(new Option('Nueva petición', ''), ...stats.requests.map((r) => new Option(`${r.name} · ${r.method}`, r.id)));
@@ -3311,28 +3405,25 @@ function renderSavedSelect() {
     renderReqList();
 }
 function renderReqList() {
-    reqList.replaceChildren(...stats.requests.map((r) => {
-        const li = document.createElement('li');
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'stats__req';
-        const name = document.createElement('span');
-        name.textContent = r.name;
-        const info = document.createElement('small');
-        let host = r.url;
-        try { host = new URL(r.url).host + new URL(r.url).pathname; } catch { /* URL rara: se muestra entera */ }
-        const used = stats.charts.filter((c) => c.request_id === r.id).length;
-        info.textContent = `${r.method} ${host}${used ? ` · ${used} gráfico${used > 1 ? 's' : ''}` : ''}`;
-        b.append(name, info);
-        b.addEventListener('click', () => openRequest(r));
-        li.append(b);
-        return li;
-    }));
+    statsBox.querySelector('[data-stats-req-list]').replaceChildren(...stats.requests.map((r) => sourceItem(r.name, requestInfo(r), () => openRequest(r))));
+    statsBox.querySelector('[data-stats-pick-list]').replaceChildren(...stats.requests.map((r) => sourceItem(r.name, requestInfo(r), () => {
+        stats.editing = null;
+        fillRequestForm(r);
+        runCurrent('data');
+    })));
+    const del = (d) => () => net.send({ type: 'stats_dataset_delete', id: d.id });
+    statsBox.querySelector('[data-stats-dataset-list]').replaceChildren(...stats.datasets.map((d) => sourceItem(`📄 ${d.name}`, datasetInfo(d), () => {
+        startWizard();
+        stats.wizard = true;
+        openDataset(d, 'data');
+    }, del(d))));
+    const pick = statsBox.querySelector('[data-stats-pick-datasets]');
+    pick.dataset.empty = '';
+    pick.replaceChildren(...(stats.datasets.length ? [Object.assign(document.createElement('li'), { className: 'stats__sub', textContent: 'O usa uno que ya subiste' })] : []),
+        ...stats.datasets.map((d) => sourceItem(`📄 ${d.name}`, datasetInfo(d), () => openDataset(d, 'data'))));
     const n = stats.charts.length;
     statsBox.querySelector('[data-stats-charts-count]').textContent = n ? `${n} gráfico${n > 1 ? 's' : ''}` : 'Ninguno todavía';
 }
-// Importar cURL: se pega el comando (p. ej. «Copy as cURL» del navegador o de Postman) y se
-// arma una petición nueva con su método, URL, headers y body, lista para probar y guardar.
 function shellWords(text) {
     const words = [];
     let cur = null, i = 0;
@@ -3448,85 +3539,182 @@ statsBox.querySelector('[data-stats-curl-apply]').addEventListener('click', () =
     area.value = '';
     curlBox.hidden = true;
     curlOpen.setAttribute('aria-expanded', 'false');
-    statsBox.querySelector('[data-stats-title-edit]').textContent = 'Nueva petición (cURL)';
-    statsGo('edit', { reset: true });
-    statsMessage('', `Listo: ${req.method} con ${req.headers.length} header${req.headers.length === 1 ? '' : 's'}. Pruébala y toca «Guardar».`);
+    openEditForm('Nueva petición (cURL)');
+    statsMessage('', `Listo: ${req.method} con ${req.headers.length} header${req.headers.length === 1 ? '' : 's'}. Toca «${saveLabel()}».`);
 });
-
+// En el asistente, guardar la petición sigue directo a ver sus datos.
+function saveLabel() { return stats.wizard ? 'Guardar y ver los datos ›' : 'Guardar'; }
+function openEditForm(title) {
+    statsBox.querySelector('[data-stats-title-edit]').textContent = title;
+    statsBox.querySelector('[data-stats-save]').textContent = saveLabel();
+    statsGo('edit');
+}
 statsBox.querySelector('[data-stats-new]').addEventListener('click', () => {
     stats.editing = null;
     syncEditing();
     fillRequestForm(null);
-    chartForm.title.value = '';
-    chartForm.description.value = '';
     statsMessage('');
-    statsBox.querySelector('[data-stats-title-edit]').textContent = 'Nueva petición';
-    statsGo('edit', { reset: true });
+    openEditForm('Nueva petición');
     reqForm.name.focus();
 });
 statsBox.querySelector('[data-stats-edit]').addEventListener('click', () => {
     statsMessage('');
-    statsBox.querySelector('[data-stats-title-edit]').textContent = `Editar «${currentRequest()?.name || ''}»`;
-    statsGo('edit');
+    stats.wizard = false;
+    openEditForm(`Editar «${currentRequest()?.name || ''}»`);
 });
-// «Traer la data» muestra la respuesta; «Crear gráfico» la trae y salta directo a la tabla dinámica.
+// «Traer la data» muestra los datos (paso 2); «Crear gráfico» los trae y salta a la tabla dinámica (paso 3).
 function runCurrent(after) {
     stats.afterRun = after;
     statsMessage('', 'Haciendo la petición desde el servidor…');
     net.send({ type: 'stats_run', request: readRequestForm() });
 }
-statsBox.querySelector('[data-stats-fetch]').addEventListener('click', () => runCurrent('data'));
+statsBox.querySelector('[data-stats-fetch]').addEventListener('click', () => { stats.wizard = true; runCurrent('data'); });
 statsBox.querySelector('[data-stats-make-chart]').addEventListener('click', () => {
     stats.editing = null;
+    stats.wizard = true;
     syncEditing();
     chartForm.title.value = currentRequest()?.name || '';
     chartForm.description.value = '';
-    runCurrent('chart');
+    runCurrent('pivot');
+});
+statsBox.querySelector('[data-stats-to-pivot]').addEventListener('click', () => { statsMessage(''); statsGo('pivot'); });
+statsBox.querySelector('[data-stats-to-kind]').addEventListener('click', () => {
+    if (!stats.table?.labels.length) return statsMessage('La tabla quedó vacía: prueba con otros campos.');
+    statsMessage('');
+    statsGo('kind');
 });
 statsBox.querySelector('[data-stats-to-chart]').addEventListener('click', () => {
-    if (!chartForm.title.value) chartForm.title.value = reqForm.name.value;
+    if (!chartForm.title.value) chartForm.title.value = stats.source.type === 'excel' ? stats.source.name : reqForm.name.value;
+    statsMessage('');
     statsGo('chart');
 });
 statsBox.querySelector('[data-stats-go-charts]').addEventListener('click', () => { statsMessage(''); statsGo('charts'); });
 reqForm.saved.addEventListener('change', () => fillRequestForm(stats.requests.find((r) => r.id === reqForm.saved.value)));
 statsBox.querySelector('[data-stats-add-header]').addEventListener('click', () => addHeaderRow());
 
+// ---- Excel / CSV ----
+// El archivo se lee aquí con SheetJS (se carga solo cuando hace falta) y al servidor van las filas
+// como {columna: valor}. Allí queda guardado para calcular el gráfico y poder editarlo después.
+const XLSX_URL = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+const MAX_EXCEL_ROWS = 5000;
+const MAX_EXCEL_MB = 10;
+let xlsxLoading = null;
+function loadXlsx() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    xlsxLoading ??= new Promise((ok, ko) => {
+        const s = document.createElement('script');
+        s.src = XLSX_URL;
+        s.onload = () => ok(window.XLSX);
+        s.onerror = () => { xlsxLoading = null; ko(new Error('No se pudo cargar el lector de Excel. Revisa tu conexión.')); };
+        document.head.append(s);
+    });
+    return xlsxLoading;
+}
+const fileInput = statsBox.querySelector('[data-stats-file]');
+const sheetSelect = statsBox.querySelector('[data-stats-sheet]');
+const uploadBtn = statsBox.querySelector('[data-stats-upload]');
+const excel = { book: null, name: '' };
+async function readExcel(file) {
+    excel.book = null;
+    uploadBtn.disabled = true;
+    statsBox.querySelector('[data-stats-sheet-label]').hidden = true;
+    statsBox.querySelector('[data-stats-file-name]').textContent = file.name;
+    if (file.size > MAX_EXCEL_MB * 1024 * 1024) return statsMessage(`El archivo pesa más de ${MAX_EXCEL_MB} MB.`);
+    statsMessage('', 'Leyendo el archivo…');
+    try {
+        const XLSX = await loadXlsx();
+        excel.book = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
+    } catch (err) {
+        return statsMessage(err.message?.startsWith('No se pudo') ? err.message : 'No pude leer ese archivo. ¿Es un Excel o CSV?');
+    }
+    excel.name = file.name.replace(/\.[^.]+$/, '').slice(0, 60) || 'Excel';
+    sheetSelect.replaceChildren(...excel.book.SheetNames.map((n) => new Option(n, n)));
+    statsBox.querySelector('[data-stats-sheet-label]').hidden = excel.book.SheetNames.length < 2;
+    uploadBtn.disabled = false;
+    statsMessage('', excel.book.SheetNames.length > 1 ? 'Elige la hoja y toca «Subir y ver los datos».' : '');
+}
+// Fechas de Excel → «2026-11-07» (o con hora), que es lo que la tabla dinámica agrupa por día, mes o año.
+function excelValue(v) {
+    if (!(v instanceof Date)) return v;
+    if (Number.isNaN(v.getTime())) return null;
+    const p = (n) => String(n).padStart(2, '0');
+    const day = `${v.getFullYear()}-${p(v.getMonth() + 1)}-${p(v.getDate())}`;
+    return v.getHours() || v.getMinutes() ? `${day} ${p(v.getHours())}:${p(v.getMinutes())}` : day;
+}
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) readExcel(fileInput.files[0]); });
+const drop = statsBox.querySelector('[data-stats-drop]');
+drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('is-over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('is-over'));
+drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    drop.classList.remove('is-over');
+    if (e.dataTransfer.files[0]) readExcel(e.dataTransfer.files[0]);
+});
+uploadBtn.addEventListener('click', () => {
+    if (!excel.book) return;
+    const sheet = sheetSelect.value || excel.book.SheetNames[0];
+    const raw = window.XLSX.utils.sheet_to_json(excel.book.Sheets[sheet], { defval: null, raw: true });
+    const rows = raw.map((r) => Object.fromEntries(Object.entries(r)
+        .filter(([k]) => !/^__EMPTY/.test(k))
+        .map(([k, v]) => [k, excelValue(v)])));
+    if (!rows.length) return statsMessage('Esa hoja no tiene filas con datos.');
+    if (rows.length > MAX_EXCEL_ROWS) return statsMessage(`La hoja tiene ${rows.length} filas; el máximo es ${MAX_EXCEL_ROWS}.`);
+    const name = excel.book.SheetNames.length > 1 ? `${excel.name} · ${sheet}`.slice(0, 60) : excel.name;
+    stats.afterRun = 'data';
+    uploadBtn.disabled = true;
+    statsMessage('', `Subiendo ${rows.length} filas…`);
+    net.send({ type: 'stats_dataset_save', name, rows });
+});
+
+// ---- Gráficos del dueño ----
 function renderChartsList() {
     statsChartsList.querySelector('ul').replaceChildren(...stats.charts.map(chartRow));
 }
 function chartRow(c) {
-        const li = document.createElement('li');
-        const name = document.createElement('span');
-        const req = stats.requests.find((r) => r.id === c.request_id);
-        name.textContent = `${c.title} · ${req?.name || 'sin petición'} · ${formatDate(c.updated_at)}`;
-        if (c.error) { const s = document.createElement('small'); s.textContent = `Última actualización falló: ${c.error}`; name.append(s); }
-        const btns = document.createElement('div');
-        const mk = (text, fn, cls = 'holes__delete') => {
-            const b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = text;
-            b.addEventListener('click', () => fn(b)); btns.append(b);
-        };
-        mk(`Visitas (${c.views || 0})`, () => net.send({ type: 'stats_chart_views', id: c.id }));
-        mk('Editar', () => editChart(c));
-        mk('Actualizar', () => { statsMessage('', 'Actualizando…'); net.send({ type: 'stats_chart_refresh', id: c.id }); });
-        mk('Borrar', (b) => {
-            if (b.dataset.confirm) return net.send({ type: 'stats_chart_delete', id: c.id });
-            b.dataset.confirm = '1'; b.textContent = '¿Borrar? Toca otra vez';
-        });
-        li.append(name, btns);
-        return li;
+    const li = document.createElement('li');
+    const name = document.createElement('span');
+    const from = c.dataset_id
+        ? `📄 ${stats.datasets.find((d) => d.id === c.dataset_id)?.name || 'Excel'}`
+        : stats.requests.find((r) => r.id === c.request_id)?.name || 'sin petición';
+    name.textContent = `${c.title} · ${from} · ${formatDate(c.updated_at)}`;
+    if (c.error) { const s = document.createElement('small'); s.textContent = `Última actualización falló: ${c.error}`; name.append(s); }
+    const btns = document.createElement('div');
+    const mk = (text, fn) => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'holes__delete'; b.textContent = text;
+        b.addEventListener('click', () => fn(b)); btns.append(b);
+    };
+    mk(`Visitas (${c.views || 0})`, () => net.send({ type: 'stats_chart_views', id: c.id }));
+    mk('Editar', () => editChart(c));
+    if (!c.dataset_id) mk('Actualizar', () => { statsMessage('', 'Actualizando…'); net.send({ type: 'stats_chart_refresh', id: c.id }); });
+    mk('Borrar', (b) => {
+        if (b.dataset.confirm) return net.send({ type: 'stats_chart_delete', id: c.id });
+        b.dataset.confirm = '1'; b.textContent = '¿Borrar? Toca otra vez';
+    });
+    li.append(name, btns);
+    return li;
 }
 
+// ---- Paso 2: los datos en tabla ----
+function sampleTableHtml(sample) {
+    if (!sample?.columns.length) return '';
+    const head = sample.columns.map((c) => `<th>${esc(c)}</th>`).join('');
+    const rows = sample.rows.map((r) => `<tr>${r.map((v) => `<td${typeof v === 'number' ? ' class="is-num"' : ''}>${v == null ? '' : typeof v === 'number' ? fmtNum(v) : esc(v)}</td>`).join('')}</tr>`).join('');
+    return `<table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ---- Paso 3: tabla dinámica ----
 function fillFieldSelects(keep = {}) {
     const opts = (empty) => [new Option(empty, ''), ...stats.fields.map((f) => new Option(`${f.name}${f.sample != null ? ` (${String(f.sample).slice(0, 18)})` : ''}`, f.name))];
     pivotForm.rows.replaceChildren(...opts('Todo junto'));
     pivotForm.cols.replaceChildren(...opts('Sin series'));
-    pivotForm.value.replaceChildren(...opts('—'), ...[]);
+    pivotForm.value.replaceChildren(...opts('—'));
     const firstText = stats.fields.find((f) => !f.numeric)?.name || '';
     const firstNum = stats.fields.find((f) => f.numeric)?.name || '';
     pivotForm.rows.value = stats.fields.some((f) => f.name === keep.rows) ? keep.rows : firstText;
     pivotForm.cols.value = stats.fields.some((f) => f.name === keep.cols) ? keep.cols : '';
     pivotForm.value.value = stats.fields.some((f) => f.name === keep.value) ? keep.value : firstNum;
-    if (keep.agg) pivotForm.agg.value = keep.agg;
+    // Sin pistas previas: si hay un campo con números, se suma; si no, se cuentan registros.
+    pivotForm.agg.value = keep.agg || (firstNum ? 'sum' : 'count');
     if (keep.date !== undefined) pivotForm.date.value = keep.date;
     if (keep.sort) pivotForm.sort.value = keep.sort;
     if (keep.limit) pivotForm.limit.value = keep.limit;
@@ -3539,6 +3727,7 @@ function readPivot() {
         agg: pivotForm.agg.value, date: pivotForm.date.value, sort: pivotForm.sort.value, limit: Number(pivotForm.limit.value) || 12,
     };
 }
+function readPivotSafe() { return pivotForm.rows.options.length ? readPivot() : {}; }
 let pivotTimer = 0;
 function requestPivot() {
     syncAgg();
@@ -3549,17 +3738,122 @@ pivotForm.addEventListener('change', requestPivot);
 pivotForm.limit.addEventListener('input', requestPivot);
 pivotForm.addEventListener('submit', (e) => e.preventDefault());
 
+// ---- Paso 4: tipo de gráfico, con vistas previas hechas con los datos de la tabla ----
+function chartSvg(t, kind, { w = 320, h = 200, mini = false } = {}) {
+    const series = t?.series?.length ? t.series : [{ name: '', values: [] }];
+    const labels = t?.labels || [];
+    const n = Math.max(labels.length, 1);
+    const color = (i) => CHART_COLORS[i % CHART_COLORS.length];
+    const parts = [];
+    if (kind === 'pie') {
+        const vals = series[0].values.map((v) => Math.max(0, v || 0));
+        const total = vals.reduce((a, b) => a + b, 0) || 1;
+        const r = (mini ? Math.min(w, h) : h) / 2 - (mini ? 6 : 12);
+        const cx = mini ? w / 2 : r + 14, cy = h / 2;
+        let a = -Math.PI / 2;
+        vals.forEach((v, i) => {
+            if (!v) return;
+            const b = a + (v / total) * Math.PI * 2;
+            if (v >= total) parts.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color(i)}"/>`);
+            else {
+                const [x1, y1, x2, y2] = [cx + r * Math.cos(a), cy + r * Math.sin(a), cx + r * Math.cos(b), cy + r * Math.sin(b)];
+                parts.push(`<path d="M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${b - a > Math.PI ? 1 : 0} 1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${color(i)}" stroke="#0b0f1c" stroke-width="1.5"/>`);
+            }
+            a = b;
+        });
+        if (!mini) {
+            labels.slice(0, 8).forEach((l, i) => {
+                const y = 18 + i * 21;
+                const pct = Math.round((vals[i] / total) * 100);
+                parts.push(`<rect x="${cx + r + 18}" y="${y - 9}" width="10" height="10" rx="2" fill="${color(i)}"/>`,
+                    `<text x="${cx + r + 34}" y="${y}" class="t">${esc(String(l).slice(0, 16))} · ${pct}%</text>`);
+            });
+        }
+    } else {
+        const all = series.flatMap((s) => s.values).filter(Number.isFinite);
+        const max = Math.max(...all, 0) || 1;
+        const x0 = mini ? 6 : 8, x1 = w - (mini ? 6 : 8), y0 = mini ? 8 : 20, y1 = h - (mini ? 8 : 24);
+        const gw = (x1 - x0) / n;
+        const y = (v) => y1 - (Math.max(0, v || 0) / max) * (y1 - y0);
+        parts.push(`<line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="rgba(255,255,255,.25)"/>`);
+        if (kind === 'line') {
+            series.forEach((s, j) => {
+                const pts = s.values.map((v, i) => `${(x0 + (i + 0.5) * gw).toFixed(1)},${y(v).toFixed(1)}`);
+                if (s.values.length) parts.push(`<polygon points="${(x0 + 0.5 * gw).toFixed(1)},${y1} ${pts.join(' ')} ${(x0 + (s.values.length - 0.5) * gw).toFixed(1)},${y1}" fill="${color(j)}" opacity="${series.length > 1 ? 0.08 : 0.18}"/>`);
+                parts.push(`<polyline points="${pts.join(' ')}" fill="none" stroke="${color(j)}" stroke-width="${mini ? 2 : 2.5}" stroke-linejoin="round"/>`);
+                if (!mini) s.values.forEach((v, i) => parts.push(`<circle cx="${(x0 + (i + 0.5) * gw).toFixed(1)}" cy="${y(v).toFixed(1)}" r="3" fill="${color(j)}"/>`));
+            });
+        } else {
+            const bw = (gw * 0.72) / series.length;
+            series.forEach((s, j) => s.values.forEach((v, i) => {
+                const bx = x0 + i * gw + gw * 0.14 + j * bw;
+                parts.push(`<rect x="${bx.toFixed(1)}" y="${y(v).toFixed(1)}" width="${Math.max(1, bw - 1).toFixed(1)}" height="${(y1 - y(v)).toFixed(1)}" rx="1.5" fill="${color(j)}"/>`);
+            }));
+        }
+        if (!mini) {
+            parts.push(`<text x="${x0}" y="12" class="t">máx ${esc(fmtNum(max))}</text>`);
+            const every = Math.ceil(n / 7);
+            labels.forEach((l, i) => {
+                if (i % every) return;
+                parts.push(`<text x="${(x0 + (i + 0.5) * gw).toFixed(1)}" y="${h - 8}" class="t" text-anchor="middle">${esc(String(l).slice(0, 9))}</text>`);
+            });
+        }
+    }
+    return `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Vista previa">${parts.join('')}</svg>`;
+}
+function kindTip(kind) {
+    const t = stats.table;
+    let tip = STATS_KINDS.find((k) => k.id === kind)?.tip || '';
+    if (kind === 'pie' && t?.series.length > 1) tip += ' Ojo: la torta usa solo la primera serie.';
+    if (kind === 'pie' && t?.labels.length > 8) tip += ' Con tantas filas las porciones quedan muy finas.';
+    if (kind === 'line' && t?.labels.length < 3) tip += ' Con tan pocas filas la línea casi no dice nada.';
+    return tip;
+}
+function renderKinds() {
+    const box = statsBox.querySelector('[data-stats-kinds]');
+    const kind = chartForm.kind.value;
+    box.replaceChildren(...STATS_KINDS.map((k) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'stats__kind';
+        b.setAttribute('role', 'radio');
+        b.setAttribute('aria-checked', String(k.id === kind));
+        b.innerHTML = `${chartSvg(stats.table, k.id, { w: 120, h: 80, mini: true })}<span>${k.name}</span>`;
+        b.addEventListener('click', () => { chartForm.kind.value = k.id; renderKinds(); });
+        return b;
+    }));
+    const legend = kind !== 'pie' && stats.table?.series.length > 1
+        ? `<span class="stats__legend">${stats.table.series.map((x, j) => `<span><i style="background:${CHART_COLORS[j % CHART_COLORS.length]}"></i>${esc(x.name)}</span>`).join('')}</span>`
+        : '';
+    statsBox.querySelector('[data-stats-preview]').innerHTML = `${chartSvg(stats.table, kind, { w: 340, h: 210 })}<figcaption>${legend}${stats.table ? esc(chartSubtitle(stats.table)) : ''}</figcaption>`;
+    statsBox.querySelector('[data-stats-kind-tip]').textContent = kindTip(kind);
+}
+
+// ---- Paso 5: título, descripción y al mundo ----
+function renderFinalPreview() {
+    const excelSource = stats.source.type === 'excel';
+    statsBox.querySelector('[data-stats-refresh-label]').hidden = excelSource;
+    statsBox.querySelector('[data-stats-excel-note]').hidden = !excelSource;
+    statsBox.querySelector('[data-stats-preview-final]').innerHTML = chartSvg(stats.table, chartForm.kind.value, { w: 340, h: 150 });
+}
+
 function editChart(c) {
     stats.editing = c;
-    fillRequestForm(stats.requests.find((r) => r.id === c.request_id));
+    stats.wizard = true;
     stats.pendingPivot = c.pivot;
     chartForm.title.value = c.title;
     chartForm.description.value = c.description || '';
     chartForm.kind.value = c.kind;
     chartForm.refresh_min.value = String(c.refresh_min || 0);
     syncEditing();
-    stats.afterRun = 'chart';
+    if (c.dataset_id) {
+        const d = stats.datasets.find((x) => x.id === c.dataset_id);
+        if (!d) return statsMessage('El Excel de este gráfico ya no existe.');
+        return openDataset(d, 'pivot');
+    }
+    fillRequestForm(stats.requests.find((r) => r.id === c.request_id));
     statsMessage('', 'Probando la petición del gráfico…');
+    stats.afterRun = 'pivot';
     net.send({ type: 'stats_run', request: readRequestForm() });
 }
 function syncEditing() {
@@ -3569,8 +3863,8 @@ function syncEditing() {
     const note = statsBox.querySelector('[data-stats-editing]');
     note.hidden = !c;
     note.textContent = c ? `Editando «${c.title}». Al guardar, todos lo ven con los datos nuevos.` : '';
-    chartForm.querySelector('[type=submit]').textContent = c ? 'Guardar cambios del gráfico' : 'Poner el gráfico delante de mí';
-    statsBox.querySelector('[data-stats-title-chart]').textContent = c ? `Editar «${c.title}»` : 'Nuevo gráfico 3D';
+    chartForm.querySelector('[type=submit]').textContent = c ? 'Guardar cambios del gráfico' : 'Agregar al mundo, delante de mí';
+    statsBox.querySelector('[data-stats-title-chart]').textContent = c ? `Editar «${c.title}»` : 'Agregar al mundo';
     if (!c) chartForm.move.checked = false;
 }
 statsBox.querySelector('[data-stats-cancel-edit]').addEventListener('click', () => { stats.editing = null; syncEditing(); });
@@ -3667,8 +3961,9 @@ statsBox.querySelector('[data-stats-delete]').addEventListener('click', (e) => {
 
 chartForm.addEventListener('submit', (e) => {
     e.preventDefault();
+    const fromExcel = stats.source.type === 'excel';
     const requestId = reqForm.saved.value;
-    if (!requestId) return statsMessage('Guarda la petición (botón «Guardar») antes de crear el gráfico.');
+    if (!fromExcel && !requestId) return statsMessage('Guarda la petición (botón «Guardar») antes de crear el gráfico.');
     const editing = stats.editing;
     let place = null;
     if (!editing || chartForm.move.checked) {
@@ -3681,9 +3976,9 @@ chartForm.addEventListener('submit', (e) => {
     chartForm.querySelector('[type=submit]').disabled = true;
     net.send({
         type: 'stats_chart_save', place,
-        chart: { id: editing?.id, request_id: requestId, title: chartForm.title.value.trim(),
-            description: chartForm.description.value.trim(), kind: chartForm.kind.value,
-            refresh_min: Number(chartForm.refresh_min.value), pivot: readPivot() },
+        chart: { id: editing?.id, request_id: fromExcel ? '' : requestId, dataset_id: fromExcel ? stats.source.id : '',
+            title: chartForm.title.value.trim(), description: chartForm.description.value.trim(), kind: chartForm.kind.value,
+            refresh_min: fromExcel ? 0 : Number(chartForm.refresh_min.value), pivot: readPivot() },
     });
 });
 
@@ -3699,6 +3994,7 @@ net.on('stats_state', (m) => {
     statsShowMain(true);
     stats.requests = m.requests;
     stats.charts = m.charts;
+    stats.datasets = m.datasets || [];
     if (stats.editing) stats.editing = m.charts.find((c) => c.id === stats.editing.id) || null;
     renderSavedSelect();
     if (stats.selectAfter) {
@@ -3709,13 +4005,14 @@ net.on('stats_state', (m) => {
             // Lo escrito en los headers ya está en el servidor: aquí queda solo enmascarado.
             statsHeaders.replaceChildren();
             (saved.headers.length ? saved.headers : [{}]).forEach(addHeaderRow);
-            // Guardada: se ve la petición con sus botones, en lugar del formulario.
-            statsGo('detail', { replace: true });
+            // En el asistente se sigue a ver los datos; si no, se ve la petición con sus botones.
+            if (stats.wizard) runCurrent('data');
+            else statsGo('detail', { replace: true });
         }
         renderReqList();
     }
     // Si se borró la petición abierta (desde otra pestaña), se vuelve a la lista.
-    if (statsNav.length > 1 && !['charts', 'views'].includes(statsNav[statsNav.length - 1]) && reqForm.saved.value && !currentRequest()) {
+    if (statsNav[statsNav.length - 1] === 'detail' && !currentRequest()) {
         fillRequestForm(null);
         statsGo('home', { reset: true });
     }
@@ -3750,6 +4047,7 @@ net.on('stats_saved', (m) => {
 net.on('stats_error', (m) => {
     reqForm.querySelector('[type=submit]').disabled = false;
     chartForm.querySelector('[type=submit]').disabled = false;
+    uploadBtn.disabled = !excel.book;
     if (stats.pendingKey) {
         if (/incorrecta/.test(m.message) && stats.pendingKey.key === storedStatsKey()) rememberStatsKey('');
         stats.pendingKey = null;
@@ -3763,37 +4061,52 @@ net.on('stats_error', (m) => {
 });
 net.on('stats_response', (m) => {
     reqForm.querySelector('[type=submit]').disabled = false;
-    statsResponse.hidden = false;
-    const toChart = statsBox.querySelector('[data-stats-to-chart]');
+    uploadBtn.disabled = !excel.book;
     const after = stats.afterRun || 'data';
     stats.afterRun = null;
-    statsBox.querySelector('[data-stats-title-data]').textContent = reqForm.name.value || 'La data';
+    stats.wizard = true;
+    clearWizardData();
+    stats.source = m.dataset_id ? { type: 'excel', id: m.dataset_id, name: m.name } : { type: 'http' };
+    const fromExcel = stats.source.type === 'excel';
+    statsBox.querySelector('[data-stats-title-data]').textContent = (fromExcel ? `📄 ${m.name}` : reqForm.name.value) || 'Los datos';
+    statsBox.querySelector('[data-stats-raw-box]').hidden = fromExcel;
+    statsResponse.hidden = false;
     const summary = statsBox.querySelector('[data-stats-summary]');
+    const rowsBox = statsBox.querySelector('[data-stats-rows]');
     if (m.error) {
         summary.textContent = m.error;
         statsBox.querySelector('[data-stats-raw]').textContent = '';
-        pivotForm.hidden = chartForm.hidden = toChart.hidden = true;
+        rowsBox.replaceChildren();
         statsGo('data');
         return statsMessage(m.error);
     }
-    summary.textContent = `HTTP ${m.status} · ${m.ms} ms · ${m.records} registros${m.records_error ? ` · ${m.records_error}` : ''}`;
-    statsBox.querySelector('[data-stats-raw]').textContent = m.preview;
+    const shown = m.sample?.rows.length || 0;
+    const more = shown < m.records ? ` (aquí las primeras ${shown})` : '';
+    summary.textContent = fromExcel
+        ? `${m.records} filas · ${m.fields.length} columnas${more}`
+        : `HTTP ${m.status} · ${m.ms} ms · ${m.records} registros${more}${m.records_error ? ` · ${m.records_error}` : ''}`;
+    statsBox.querySelector('[data-stats-raw]').textContent = m.preview || '';
+    rowsBox.innerHTML = sampleTableHtml(m.sample);
     stats.fields = m.fields;
     const ok = m.records > 0 && m.fields.length > 0;
-    pivotForm.hidden = chartForm.hidden = toChart.hidden = !ok;
-    statsGo(ok && after === 'chart' ? 'chart' : 'data');
-    statsMessage(ok ? '' : (m.records_error || 'La respuesta no trae registros para la tabla.'),
-        ok && after === 'chart' ? 'Arma la tabla dinámica con los campos de la respuesta.' : '');
+    pivotForm.hidden = statsBox.querySelector('[data-stats-to-pivot]').hidden = !ok;
+    statsGo(ok && after === 'pivot' ? 'pivot' : 'data');
+    const replaced = m.replaced
+        ? `Reemplacé «${m.name}» con el archivo nuevo${m.charts_updated ? `: ${m.charts_updated} gráfico${m.charts_updated > 1 ? 's' : ''} ya muestra${m.charts_updated > 1 ? 'n' : ''} los números nuevos` : ''}.`
+        : '';
+    statsMessage(ok ? '' : (m.records_error || 'La respuesta no trae registros para la tabla.'), ok ? replaced : '');
     if (!ok) return;
-    fillFieldSelects(stats.pendingPivot || readPivotSafe());
+    fillFieldSelects(stats.pendingPivot || {});
     stats.pendingPivot = null;
-    if (!chartForm.title.value) chartForm.title.value = reqForm.name.value;
     requestPivot();
 });
-function readPivotSafe() { return pivotForm.rows.options.length ? readPivot() : {}; }
 net.on('stats_table', (m) => {
     const t = m.table;
+    stats.table = t;
     statsTable.innerHTML = t.labels.length ? chartTableHtml(t) : '<p>Con esos campos la tabla queda vacía.</p>';
+    const now = statsNav[statsNav.length - 1];
+    if (now === 'kind') renderKinds();
+    if (now === 'chart') renderFinalPreview();
 });
 net.on('stats_chart_ok', () => {
     chartForm.querySelector('[type=submit]').disabled = false;
@@ -3803,6 +4116,7 @@ net.on('stats_chart_ok', () => {
     statsGo('charts', { reset: true });
     statsMessage('', was ? 'Gráfico actualizado para todos.' : 'Listo: el gráfico quedó delante de ti y todos lo ven.');
 });
+
 
 // ---------- Personaje IA ----------
 // Cada persona puede soltar un personaje con nombre y personalidad que camina, conversa y salta
