@@ -653,3 +653,29 @@ button.login__back { background: none; border: 0; cursor: pointer; font-family: 
 .items__colors input:checked + span { border-color: var(--c); background: rgba(255, 255, 255, .08); }
 .items__colors input:focus-visible + span { outline: 2px solid #00e5ff; outline-offset: 2px; }
 .items__big { margin: .4rem 0 0; font-size: 2.6rem; text-align: center; }
+
+/* Estadísticas en pantallas: cada paso es una ventana con «‹» para volver (como el menú ⚙). */
+.stats__screen { display: grid; gap: .8rem; min-width: 0; animation: stats-in .22s ease both; }
+.stats__screen[hidden] { display: none; }
+@keyframes stats-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+.stats__head { display: flex; align-items: center; gap: .7rem; }
+.stats__head .settings__crumb { color: #ffd400; }
+.stats__title { margin: 0; font-family: var(--font); font-size: 1.35rem; letter-spacing: -.3px; line-height: 1.2; overflow-wrap: anywhere; color: #fff; }
+.stats__back { --hue: 50; }
+ul.stats__reqs { margin: 0; padding: 0; list-style: none; }
+ul.stats__reqs:empty::before { content: 'Todavía no tienes peticiones. Crea una o importa un cURL.'; font-size: .88rem; color: rgba(255,255,255,.55); }
+.stats__req > span { font-weight: 600; }
+.stats__req--link { border-color: rgba(255, 212, 0, .35); background: rgba(255, 212, 0, .07); }
+.stats__reqs-btns { justify-content: flex-start; }
+.stats__facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .4rem .8rem; margin: 0; padding: .75rem .85rem; border-radius: .8rem; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); font-size: .88rem; }
+.stats__facts dt { color: rgba(255,255,255,.6); }
+.stats__facts dd { margin: 0; overflow-wrap: anywhere; white-space: pre-line; font-family: var(--mono); font-size: .8rem; }
+.stats__menu { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
+.stats__menu .chat__send { width: 100%; }
+.stats__menu .holes__delete { grid-column: span 2; justify-self: center; }
+.stats__screen .stats__step:first-of-type { border-top: 0; padding-top: 0; }
+[data-stats-charts] ul:empty::before { content: 'Todavía no pusiste gráficos en el mundo.'; font-size: .88rem; color: rgba(255,255,255,.55); }
+[data-stats-charts], .stats__screen .stats__views { border-top: 0; padding-top: 0; }
+[data-stats-detail-charts] li { flex-wrap: wrap; }
+[data-stats-detail-charts] li > div { display: flex; gap: .35rem; flex-wrap: wrap; }
+@media (prefers-reduced-motion: reduce) { .stats__screen { animation: none; } }

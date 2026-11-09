@@ -559,7 +559,7 @@ settingsPanel.addEventListener('click', (e) => {
 document.addEventListener('pointerdown', (e) => {
     if (!settingsBox.contains(e.target)) setSettings(false);
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (!settingsPanel.hidden && menuBack()) return; setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; document.querySelector('[data-sign-box]').hidden = true; document.querySelector('[data-sign-view]').hidden = true; document.querySelector('[data-bot-box]').hidden = true; document.querySelector('[data-stats-box]').hidden = true; document.querySelector('[data-chart-view]').hidden = true; document.querySelector('[data-items-box]').hidden = true; document.querySelector('[data-item-view]').hidden = true; document.querySelector('[data-totem-panel]').hidden = true; } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (!settingsPanel.hidden && menuBack()) return; if (!statsBox.hidden && statsBack()) return; setSettings(false); closeProfile(); document.querySelector('[data-my-profile-box]').hidden = true; document.querySelector('[data-hole-box]').hidden = true; document.querySelector('[data-sign-box]').hidden = true; document.querySelector('[data-sign-view]').hidden = true; document.querySelector('[data-bot-box]').hidden = true; document.querySelector('[data-stats-box]').hidden = true; document.querySelector('[data-chart-view]').hidden = true; document.querySelector('[data-items-box]').hidden = true; document.querySelector('[data-item-view]').hidden = true; document.querySelector('[data-totem-panel]').hidden = true; } });
 
 // ---------- Primera persona ----------
 const fpBtn = document.querySelector('[data-fp]');
@@ -3243,16 +3243,66 @@ function fillRequestForm(r) {
     statsHeaders.replaceChildren();
     (r?.headers?.length ? r.headers : [{}]).forEach(addHeaderRow);
     syncMethod();
-    reqForm.querySelector('[data-stats-delete]').hidden = !r?.id;
     renderReqList();
     statsResponse.hidden = pivotForm.hidden = chartForm.hidden = true;
+    statsBox.querySelector('[data-stats-to-chart]').hidden = true;
     stats.fields = [];
 }
 function syncMethod() { statsBox.querySelector('[data-stats-body-label]').hidden = reqForm.method.value === 'GET'; }
 reqForm.method.addEventListener('change', syncMethod);
 
-// Lista de las peticiones guardadas: tocar una la abre para probarla o editarla; «+ Nueva
-// petición» deja el formulario en blanco y «Guardar» crea otra en vez de cambiar la abierta.
+// Pantallas del panel: lista de peticiones → una petición (traer data, crear gráfico, editar,
+// eliminar) → sus datos o el gráfico. «‹» (o Escape) vuelve a la pantalla anterior.
+const statsNav = ['home'];
+function statsShow(name) {
+    statsBox.querySelectorAll('[data-stats-screen]').forEach((sc) => { sc.hidden = sc.dataset.statsScreen !== name; });
+    statsBox.scrollTop = 0;
+}
+function statsGo(name, { replace = false, reset = false } = {}) {
+    if (reset) statsNav.splice(0, statsNav.length, 'home');
+    else if (replace && statsNav.length > 1) statsNav.pop();
+    if (statsNav[statsNav.length - 1] !== name) statsNav.push(name);
+    statsShow(name);
+}
+function statsBack() {
+    if (!stats.admin || statsNav.length < 2) return false;
+    statsNav.pop();
+    statsMessage('');
+    statsShow(statsNav[statsNav.length - 1]);
+    return true;
+}
+statsBox.querySelectorAll('[data-stats-back]').forEach((b) => b.addEventListener('click', statsBack));
+function currentRequest() { return stats.requests.find((r) => r.id === reqForm.saved.value); }
+function openRequest(r) {
+    stats.editing = null;
+    syncEditing();
+    fillRequestForm(r);
+    statsMessage('');
+    renderDetail();
+    statsGo('detail', { reset: true });
+}
+function renderDetail() {
+    const r = currentRequest();
+    if (!r) return;
+    statsBox.querySelector('[data-stats-title-detail]').textContent = r.name;
+    const facts = [
+        ['Método', r.method],
+        ['URL', r.url],
+        ['Headers', r.headers.length ? r.headers.map((h) => `${h.name} ${h.masked || ''}`.trim()).join('\n') : 'Ninguno'],
+        ['Registros', r.records_path || 'Se buscan solos en la respuesta'],
+    ];
+    statsBox.querySelector('[data-stats-detail]').replaceChildren(...facts.flatMap(([k, v]) => {
+        const dt = document.createElement('dt'); dt.textContent = k;
+        const dd = document.createElement('dd'); dd.textContent = v;
+        return [dt, dd];
+    }));
+    const del = statsBox.querySelector('[data-stats-delete]');
+    delete del.dataset.confirm; del.textContent = 'Eliminar';
+    const mine = stats.charts.filter((c) => c.request_id === r.id);
+    const box = statsBox.querySelector('[data-stats-detail-charts]');
+    box.hidden = !mine.length;
+    box.querySelector('ul').replaceChildren(...mine.map(chartRow));
+}
 const reqList = statsBox.querySelector('[data-stats-req-list]');
 function renderSavedSelect() {
     const current = reqForm.saved.value;
@@ -3261,13 +3311,11 @@ function renderSavedSelect() {
     renderReqList();
 }
 function renderReqList() {
-    const current = reqForm.saved.value;
     reqList.replaceChildren(...stats.requests.map((r) => {
         const li = document.createElement('li');
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'stats__req';
-        b.setAttribute('aria-pressed', String(r.id === current));
         const name = document.createElement('span');
         name.textContent = r.name;
         const info = document.createElement('small');
@@ -3276,14 +3324,12 @@ function renderReqList() {
         const used = stats.charts.filter((c) => c.request_id === r.id).length;
         info.textContent = `${r.method} ${host}${used ? ` · ${used} gráfico${used > 1 ? 's' : ''}` : ''}`;
         b.append(name, info);
-        b.addEventListener('click', () => fillRequestForm(r));
+        b.addEventListener('click', () => openRequest(r));
         li.append(b);
         return li;
     }));
-    const open = stats.requests.find((r) => r.id === current);
-    statsBox.querySelector('[data-stats-req-mode]').textContent = open
-        ? `Editando «${open.name}». «Guardar» cambia esta petición.`
-        : 'Nueva petición: «Guardar» la agrega a tu lista.';
+    const n = stats.charts.length;
+    statsBox.querySelector('[data-stats-charts-count]').textContent = n ? `${n} gráfico${n > 1 ? 's' : ''}` : 'Ninguno todavía';
 }
 // Importar cURL: se pega el comando (p. ej. «Copy as cURL» del navegador o de Postman) y se
 // arma una petición nueva con su método, URL, headers y body, lista para probar y guardar.
@@ -3402,6 +3448,8 @@ statsBox.querySelector('[data-stats-curl-apply]').addEventListener('click', () =
     area.value = '';
     curlBox.hidden = true;
     curlOpen.setAttribute('aria-expanded', 'false');
+    statsBox.querySelector('[data-stats-title-edit]').textContent = 'Nueva petición (cURL)';
+    statsGo('edit', { reset: true });
     statsMessage('', `Listo: ${req.method} con ${req.headers.length} header${req.headers.length === 1 ? '' : 's'}. Pruébala y toca «Guardar».`);
 });
 
@@ -3411,14 +3459,42 @@ statsBox.querySelector('[data-stats-new]').addEventListener('click', () => {
     fillRequestForm(null);
     chartForm.title.value = '';
     chartForm.description.value = '';
+    statsMessage('');
+    statsBox.querySelector('[data-stats-title-edit]').textContent = 'Nueva petición';
+    statsGo('edit', { reset: true });
     reqForm.name.focus();
 });
+statsBox.querySelector('[data-stats-edit]').addEventListener('click', () => {
+    statsMessage('');
+    statsBox.querySelector('[data-stats-title-edit]').textContent = `Editar «${currentRequest()?.name || ''}»`;
+    statsGo('edit');
+});
+// «Traer la data» muestra la respuesta; «Crear gráfico» la trae y salta directo a la tabla dinámica.
+function runCurrent(after) {
+    stats.afterRun = after;
+    statsMessage('', 'Haciendo la petición desde el servidor…');
+    net.send({ type: 'stats_run', request: readRequestForm() });
+}
+statsBox.querySelector('[data-stats-fetch]').addEventListener('click', () => runCurrent('data'));
+statsBox.querySelector('[data-stats-make-chart]').addEventListener('click', () => {
+    stats.editing = null;
+    syncEditing();
+    chartForm.title.value = currentRequest()?.name || '';
+    chartForm.description.value = '';
+    runCurrent('chart');
+});
+statsBox.querySelector('[data-stats-to-chart]').addEventListener('click', () => {
+    if (!chartForm.title.value) chartForm.title.value = reqForm.name.value;
+    statsGo('chart');
+});
+statsBox.querySelector('[data-stats-go-charts]').addEventListener('click', () => { statsMessage(''); statsGo('charts'); });
 reqForm.saved.addEventListener('change', () => fillRequestForm(stats.requests.find((r) => r.id === reqForm.saved.value)));
 statsBox.querySelector('[data-stats-add-header]').addEventListener('click', () => addHeaderRow());
 
 function renderChartsList() {
-    statsChartsList.hidden = !stats.charts.length;
-    statsChartsList.querySelector('ul').replaceChildren(...stats.charts.map((c) => {
+    statsChartsList.querySelector('ul').replaceChildren(...stats.charts.map(chartRow));
+}
+function chartRow(c) {
         const li = document.createElement('li');
         const name = document.createElement('span');
         const req = stats.requests.find((r) => r.id === c.request_id);
@@ -3438,7 +3514,6 @@ function renderChartsList() {
         });
         li.append(name, btns);
         return li;
-    }));
 }
 
 function fillFieldSelects(keep = {}) {
@@ -3483,6 +3558,7 @@ function editChart(c) {
     chartForm.kind.value = c.kind;
     chartForm.refresh_min.value = String(c.refresh_min || 0);
     syncEditing();
+    stats.afterRun = 'chart';
     statsMessage('', 'Probando la petición del gráfico…');
     net.send({ type: 'stats_run', request: readRequestForm() });
 }
@@ -3494,6 +3570,7 @@ function syncEditing() {
     note.hidden = !c;
     note.textContent = c ? `Editando «${c.title}». Al guardar, todos lo ven con los datos nuevos.` : '';
     chartForm.querySelector('[type=submit]').textContent = c ? 'Guardar cambios del gráfico' : 'Poner el gráfico delante de mí';
+    statsBox.querySelector('[data-stats-title-chart]').textContent = c ? `Editar «${c.title}»` : 'Nuevo gráfico 3D';
     if (!c) chartForm.move.checked = false;
 }
 statsBox.querySelector('[data-stats-cancel-edit]').addEventListener('click', () => { stats.editing = null; syncEditing(); });
@@ -3502,6 +3579,7 @@ function statsShowMain(on) {
     stats.admin = on;
     statsAuth.hidden = on;
     statsMain.hidden = !on;
+    statsBox.querySelectorAll('[data-stats-intro]').forEach((el) => { el.hidden = on; });
     statsBox.querySelector('[data-stats-lock]').hidden = !on;
 }
 
@@ -3570,6 +3648,7 @@ reqForm.addEventListener('submit', (e) => {
     e.preventDefault();
     statsMessage('', 'Haciendo la petición desde el servidor…');
     reqForm.querySelector('[type=submit]').disabled = true;
+    stats.afterRun = 'data';
     net.send({ type: 'stats_run', request: readRequestForm() });
 });
 statsBox.querySelector('[data-stats-save]').addEventListener('click', () => {
@@ -3580,9 +3659,10 @@ statsBox.querySelector('[data-stats-save]').addEventListener('click', () => {
 statsBox.querySelector('[data-stats-delete]').addEventListener('click', (e) => {
     const b = e.currentTarget;
     if (!b.dataset.confirm) { b.dataset.confirm = '1'; b.textContent = '¿Borrar la petición y sus gráficos?'; return; }
-    delete b.dataset.confirm; b.textContent = 'Borrar';
+    delete b.dataset.confirm; b.textContent = 'Eliminar';
     net.send({ type: 'stats_request_delete', id: reqForm.saved.value });
     fillRequestForm(null);
+    statsGo('home', { reset: true });
 });
 
 chartForm.addEventListener('submit', (e) => {
@@ -3614,6 +3694,7 @@ net.on('stats_state', (m) => {
         statsAuth.reset();
         statsMessage('');
         fillRequestForm(null);
+        statsGo('home', { reset: true });
     }
     statsShowMain(true);
     stats.requests = m.requests;
@@ -3625,13 +3706,20 @@ net.on('stats_state', (m) => {
         stats.selectAfter = null;
         if (saved) {
             reqForm.saved.value = saved.id;
-            reqForm.querySelector('[data-stats-delete]').hidden = false;
             // Lo escrito en los headers ya está en el servidor: aquí queda solo enmascarado.
             statsHeaders.replaceChildren();
             (saved.headers.length ? saved.headers : [{}]).forEach(addHeaderRow);
+            // Guardada: se ve la petición con sus botones, en lugar del formulario.
+            statsGo('detail', { replace: true });
         }
         renderReqList();
     }
+    // Si se borró la petición abierta (desde otra pestaña), se vuelve a la lista.
+    if (statsNav.length > 1 && !['charts', 'views'].includes(statsNav[statsNav.length - 1]) && reqForm.saved.value && !currentRequest()) {
+        fillRequestForm(null);
+        statsGo('home', { reset: true });
+    }
+    renderDetail();
     renderChartsList();
     syncEditing();
     if (!statsStatus.hidden && /Actualizando/.test(statsStatus.textContent)) statsMessage('', 'Listo.');
@@ -3639,7 +3727,7 @@ net.on('stats_state', (m) => {
 // Lista de quién tocó un gráfico: una fila por toque, lo más reciente arriba.
 const viewsBox = statsBox.querySelector('[data-stats-views]');
 net.on('stats_chart_views', (m) => {
-    viewsBox.querySelector('[data-stats-views-title]').textContent = `Quién tocó «${m.title}» (${m.views.length})`;
+    statsBox.querySelector('[data-stats-views-title]').textContent = `Quién tocó «${m.title}» (${m.views.length})`;
     viewsBox.querySelector('[data-stats-views-empty]').hidden = m.views.length > 0;
     viewsBox.querySelector('ol').replaceChildren(...m.views.map((v) => {
         const li = document.createElement('li');
@@ -3650,10 +3738,9 @@ net.on('stats_chart_views', (m) => {
         li.append(who, when);
         return li;
     }));
-    viewsBox.hidden = false;
-    viewsBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    statsMessage('');
+    statsGo('views');
 });
-viewsBox.querySelector('[data-stats-views-close]').addEventListener('click', () => { viewsBox.hidden = true; });
 
 net.on('stats_saved', (m) => {
     // El estado llega justo después: ahí se elige esta petición y se ocultan los valores escritos.
@@ -3677,19 +3764,26 @@ net.on('stats_error', (m) => {
 net.on('stats_response', (m) => {
     reqForm.querySelector('[type=submit]').disabled = false;
     statsResponse.hidden = false;
+    const toChart = statsBox.querySelector('[data-stats-to-chart]');
+    const after = stats.afterRun || 'data';
+    stats.afterRun = null;
+    statsBox.querySelector('[data-stats-title-data]').textContent = reqForm.name.value || 'La data';
     const summary = statsBox.querySelector('[data-stats-summary]');
     if (m.error) {
         summary.textContent = m.error;
         statsBox.querySelector('[data-stats-raw]').textContent = '';
-        pivotForm.hidden = chartForm.hidden = true;
+        pivotForm.hidden = chartForm.hidden = toChart.hidden = true;
+        statsGo('data');
         return statsMessage(m.error);
     }
     summary.textContent = `HTTP ${m.status} · ${m.ms} ms · ${m.records} registros${m.records_error ? ` · ${m.records_error}` : ''}`;
     statsBox.querySelector('[data-stats-raw]').textContent = m.preview;
     stats.fields = m.fields;
     const ok = m.records > 0 && m.fields.length > 0;
-    pivotForm.hidden = chartForm.hidden = !ok;
-    statsMessage(ok ? '' : (m.records_error || 'La respuesta no trae registros para la tabla.'), ok ? 'Arma la tabla dinámica con los campos de la respuesta.' : '');
+    pivotForm.hidden = chartForm.hidden = toChart.hidden = !ok;
+    statsGo(ok && after === 'chart' ? 'chart' : 'data');
+    statsMessage(ok ? '' : (m.records_error || 'La respuesta no trae registros para la tabla.'),
+        ok && after === 'chart' ? 'Arma la tabla dinámica con los campos de la respuesta.' : '');
     if (!ok) return;
     fillFieldSelects(stats.pendingPivot || readPivotSafe());
     stats.pendingPivot = null;
@@ -3706,6 +3800,7 @@ net.on('stats_chart_ok', () => {
     const was = stats.editing;
     stats.editing = null;
     syncEditing();
+    statsGo('charts', { reset: true });
     statsMessage('', was ? 'Gráfico actualizado para todos.' : 'Listo: el gráfico quedó delante de ti y todos lo ven.');
 });
 
