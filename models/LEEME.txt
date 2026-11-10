@@ -1,2 +1,10 @@
 Coloca aquí el modelo de Ruddy como ruddy.glb.
 Si incluye una animación llamada "idle", se reproduce sola.
+
+Versiones livianas (<id>-lod.glb): las usan las demás personas cuando están lejos.
+Se generan desde el GLB completo con lod-personajes.mjs (carpeta del proyecto
+mundo-3d/fuentes; necesita @gltf-transform/core, functions, extensions, meshoptimizer y sharp):
+  node lod-personajes.mjs ruddy.glb ruddy-lod.glb 25000 1024 free
+  node lod-personajes.mjs androide18.glb androide18-lod.glb 20000 1024
+  node lod-personajes.mjs candie.glb candie-lod.glb 45000 512
+Al agregar un personaje nuevo, crea también su -lod.glb y ponlo en «lite» de AVATARS (world.js).

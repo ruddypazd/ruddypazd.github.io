@@ -18,8 +18,9 @@ const NOISE = `
     float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++){ v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }
 `;
 
-export function createWormholes(renderer) {
-    const rtOpts = { type: THREE.HalfFloatType, samples: 4 };
+// samples: antialias del render intermedio (0 en pantallas de alta densidad, donde no hace falta).
+export function createWormholes(renderer, { samples = 4 } = {}) {
+    const rtOpts = { type: THREE.HalfFloatType, samples };
     const rtWorld = new THREE.WebGLRenderTarget(1, 1, { ...rtOpts, depthTexture: new THREE.DepthTexture(1, 1) });
     const rtOther = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
     const shared = { tWorld: { value: rtWorld.texture }, tOther: { value: rtOther.texture }, uTime: { value: 0 } };
@@ -44,6 +45,7 @@ export function createWormholes(renderer) {
 
     const holes = [];   // los que existen (en cualquier escena); cada uno sabe a qué escena pertenece
     const v = new THREE.Vector3();
+    let frame = 0, lastOther = null;
     const frustum = new THREE.Frustum();
     const projScreen = new THREE.Matrix4();
 
@@ -165,9 +167,13 @@ export function createWormholes(renderer) {
         for (const hole of shown) hole.update(camera, dt, t);
 
         // 1. El otro lado (a media resolución: solo se ve dentro del núcleo, y deformado).
+        // Lejos del agujero el núcleo se ve chico: el otro lado se redibuja uno de cada tres cuadros.
         const otherScene = other(nearest);
         const shadowAuto = renderer.shadowMap.autoUpdate;
-        if (otherScene) {
+        frame++;
+        const refresh = nearest !== lastOther || nearestD < 12 || frame % 3 === 0;
+        lastOther = nearest;
+        if (otherScene && refresh) {
             renderer.shadowMap.autoUpdate = false;
             renderer.setRenderTarget(rtOther);
             renderer.render(otherScene, camera);
