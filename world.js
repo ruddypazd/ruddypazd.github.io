@@ -5,7 +5,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { createWormholes, buildUniverse, hueFor, HOLE_R } from './wormholes.js?v=47';
+import { createWormholes, buildUniverse, hueFor, HOLE_R } from './wormholes.js?v=67';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
@@ -13,7 +13,10 @@ const loaderText = document.querySelector('[data-loader-text]');
 const modelNote = document.querySelector('[data-model-note]');
 
 // ---------- Renderer, escena y cámara ----------
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+// En pantallas de alta densidad (casi todos los celulares) el antialias por hardware cuesta mucho y
+// casi no se nota: los píxeles ya son chicos.
+const HIGH_DPI = window.devicePixelRatio >= 1.5;
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !HIGH_DPI, alpha: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -24,8 +27,8 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05060a);
 scene.fog = new THREE.Fog(0x05060a, 14, 70);
 
-// far: la ciudad cyberpunk de alrededor llega hasta el cielo, a 240 m.
-const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 300);
+// far: 80 m (la niebla termina en 70); con la ciudad cyberpunk sube a 300 (ver updateCity).
+const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 80);
 camera.position.set(0, 1.6, 4.2);
 
 const controls = new OrbitControls(camera, canvas);
@@ -328,19 +331,23 @@ function done(isPlaceholder) {
 
 // Personajes que cada quien puede elegir (Ajustes → Cambiar personaje). Todos usan las
 // animaciones de Ruddy (idle, walk, run, jump), pasadas a su esqueleto de Mixamo.
+// lite: el mismo personaje simplificado (~20-45 mil triángulos en vez de 150-300 mil, textura más
+// chica) para las demás personas cuando están lejos. Cómo se arma: models/LEEME.txt.
 const AVATARS = {
-    ruddy: { name: 'Ruddy', url: 'models/ruddy.glb', thumb: 'models/ruddy.jpg', mouth: true },
-    androide18: { name: 'Androide 18', url: 'models/androide18.glb', thumb: 'models/androide18.jpg' },
-    candie: { name: 'Candie', url: 'models/candie.glb', thumb: 'models/candie.jpg' },
+    ruddy: { name: 'Ruddy', url: 'models/ruddy.glb', lite: 'models/ruddy-lod.glb', thumb: 'models/ruddy.jpg', mouth: true },
+    androide18: { name: 'Androide 18', url: 'models/androide18.glb', lite: 'models/androide18-lod.glb', thumb: 'models/androide18.jpg' },
+    candie: { name: 'Candie', url: 'models/candie.glb', lite: 'models/candie-lod.glb', thumb: 'models/candie.jpg' },
 };
 const avatarIdOf = (id) => (AVATARS[id] ? id : 'ruddy');
 
 // Cada GLB se carga una vez y queda ajustado a 1.8 m; de ahí se clona para todos.
 const avatarCache = {};
-function loadAvatar(id, onProgress) {
+function loadAvatar(id, onProgress, lite = false) {
     id = avatarIdOf(id);
-    avatarCache[id] ??= new Promise((resolve, reject) => {
-        new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(AVATARS[id].url, (gltf) => {
+    const url = (lite && AVATARS[id].lite) || AVATARS[id].url;
+    const key = url;
+    avatarCache[key] ??= new Promise((resolve, reject) => {
+        new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(url, (gltf) => {
             const model = gltf.scene;
             model.traverse((o) => {
                 if (!o.isMesh) return;
@@ -364,8 +371,8 @@ function loadAvatar(id, onProgress) {
             resolve({ model, animations: anims });
         }, onProgress, reject);
     });
-    avatarCache[id].catch(() => { delete avatarCache[id]; });  // se puede reintentar
-    return avatarCache[id];
+    avatarCache[key].catch(() => { delete avatarCache[key]; });  // se puede reintentar
+    return avatarCache[key];
 }
 
 // Acciones idle/walk/run/jump de un clon; el salto se reproduce una sola vez.
@@ -1042,7 +1049,7 @@ const net = (() => {
 
     function sendLogin() {
         const p = getProfile();
-        if (p && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'login', world: true, ...p }));
+        if (p && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'login', world: true, batch: true, ...p }));
     }
 
     function connect() {
@@ -1233,32 +1240,41 @@ function makeNameLabel(name, online, lastSeen, sub = '', isBot = false) {
 }
 
 // Personaje de otra persona: el que eligió (llega en la lista y en los avisos de conexión).
-// Se carga su GLB si aún no está y se cambia cuando elige otro.
+// Se carga su GLB si aún no está y se cambia cuando elige otro. Cerca se ve el modelo completo;
+// lejos, la versión liviana (r.lod, ver updateRemotes): sigue con la misma animación al cambiar.
 function attachAvatar(r) {
-    if (!avatarTemplate || r.avatarShown === r.avatarId) return;
+    const lod = r.lod || 'lite';
+    const key = `${r.avatarId}:${lod}`;
+    if (!avatarTemplate || r.avatarShown === key) return;
     const id = r.avatarId;
-    r.avatarShown = id;
+    r.avatarShown = key;
     const put = (tpl) => {
-        if (r.avatarId !== id) return;  // eligió otro mientras cargaba
-        if (r.avatar) { r.group.remove(r.avatar); r.mixer?.stopAllAction(); }
+        if (r.avatarShown !== key) return;  // eligió otro (o cambió de distancia) mientras cargaba
+        const prev = r.current;
+        const playing = prev && r.actions && Object.keys(r.actions).find((k) => r.actions[k] === prev);
+        if (r.avatar) { r.group.remove(r.avatar); r.mixer?.stopAllAction(); r.mixer?.uncacheRoot(r.avatar); }
         r.mixer = r.actions = r.current = null;
-        r.jumping = false;
         if (tpl.model) {
             r.avatar = cloneSkinned(tpl.model);
             if (tpl.animations.length) {
                 r.mixer = new THREE.AnimationMixer(r.avatar);
                 r.actions = buildActions(r.mixer, tpl.animations, () => { r.jumping = false; });
-                r.current = r.actions.idle;
+                r.current = (playing && r.actions[playing]) || r.actions.idle;
                 r.current.play();
-            }
+                if (prev) r.current.time = prev.time;
+                if (r.current !== r.actions.jump) r.jumping = false;
+            } else r.jumping = false;
         } else {
             r.avatar = buildPlaceholder();
+            r.jumping = false;
         }
         r.avatar.traverse((o) => { if (o.isMesh) o.castShadow = true; });
         r.group.add(r.avatar);
     };
     if (!avatarTemplate.model) return put(avatarTemplate);
-    loadAvatar(id).then(put, () => loadAvatar('ruddy').then(put, () => put({ model: null, animations: [] })));
+    const full = () => loadAvatar(id);
+    (lod === 'lite' ? loadAvatar(id, undefined, true).catch(full) : full())
+        .then(put, () => loadAvatar('ruddy').then(put, () => put({ model: null, animations: [] })));
 }
 
 function upsertRemote(p) {
@@ -1454,6 +1470,14 @@ net.on('say', (m) => {
     if (r.group.visible) remoteSay(r, m.message);
 });
 net.on('player', upsertRemote);
+// Movimientos en lote (el servidor junta los de todos cada ~100 ms). No traen «online»: se conserva
+// el que ya se sabía, así un movimiento atrasado no vuelve a poner en línea a quien ya salió.
+net.on('moves', (m) => {
+    for (const p of m.players || []) {
+        const r = remotes.get(p.id);
+        upsertRemote(p.online === undefined ? { ...p, online: r ? r.online : true } : p);
+    }
+});
 
 function fadeRemote(r, next, duration) {
     if (next === r.current) return;
@@ -1473,7 +1497,29 @@ function remoteJump(r) {
     fadeRemote(r, r.actions.jump, 0.15);
 }
 
+// Rendimiento con mucha gente: la animación (esqueleto) de cada persona es lo más caro por persona.
+// Lejos o fuera de la vista se anima menos seguido (con el tiempo acumulado, así no se desfasa),
+// y más allá de la niebla no se dibuja.
+const remoteSphere = new THREE.Sphere(new THREE.Vector3(), 1.4);
+const viewFrustum = new THREE.Frustum();
+const viewMatrix = new THREE.Matrix4();
+const FAR_HIDE = 72;       // la niebla termina en 70 m: más lejos no se ve nada
+const LOD_NEAR = 9, LOD_FAR = 12;   // modelo completo a menos de 9 m; liviano a más de 12
+const MAX_FULL = 4;                 // y como mucho para 4 personas a la vez
+let remoteFrame = 0;
 function updateRemotes(dt) {
+    remoteFrame++;
+    camera.updateMatrixWorld();
+    viewMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    viewFrustum.setFromProjectionMatrix(viewMatrix);
+    // Modelo completo solo para los MAX_FULL más cercanos a menos de LOD_NEAR m (con margen hasta
+    // LOD_FAR para no cambiar a cada rato en el borde); los demás, el liviano. Se decide cada 10 cuadros.
+    if (remoteFrame % 10 === 0) {
+        const near = [];
+        for (const r of remotes.values()) if (r.group.visible) near.push([r, camera.position.distanceTo(r.group.position)]);
+        near.sort((a, b) => a[1] - b[1]);
+        near.forEach(([r, d], k) => { r.wantFull = k < MAX_FULL && d < (r.lod === 'full' ? LOD_FAR : LOD_NEAR); });
+    }
     for (const r of remotes.values()) {
         const dist = r.group.position.distanceTo(r.target);
         // Si quedó muy lejos (p. ej. volvió tras un rato), salta; si no, camina hasta ahí.
@@ -1482,13 +1528,26 @@ function updateRemotes(dt) {
         let diff = r.ry - r.group.rotation.y;
         diff = Math.atan2(Math.sin(diff), Math.cos(diff));
         r.group.rotation.y += diff * Math.min(1, dt * 8);
-        if (!r.mixer || !r.group.visible) continue;
+        if (!r.group.visible) continue;
+        const camDist = camera.position.distanceTo(r.group.position);
+        const lod = r.wantFull ? 'full' : 'lite';
+        if (lod !== r.lod) { r.lod = lod; attachAvatar(r); }
+        if (r.avatar) r.avatar.visible = camDist < FAR_HIDE;
+        if (r.label) r.label.visible = camDist < FAR_HIDE;
+        if (!r.mixer) continue;
+        r.animDt = (r.animDt || 0) + dt;
+        remoteSphere.center.copy(r.group.position).setY(1);
+        const inView = camDist < FAR_HIDE && viewFrustum.intersectsSphere(remoteSphere);
+        // Cada cuántos cuadros se anima: cerca y a la vista, siempre; lejos o desconectado, menos.
+        const every = !inView ? 15 : camDist < 14 ? 1 : camDist < 28 ? 2 : (!r.online && !r.isBot) || camDist > 45 ? 4 : 3;
+        if ((remoteFrame + (r.animSeed ??= Math.floor(Math.random() * 15))) % every) continue;
         if (!r.jumping) {
             const speed = dist * 6;   // m/s aproximados según lo que le falta por recorrer
             const gait = r.gait || (speed < 0.3 ? 'idle' : speed > 3.5 ? 'run' : 'walk');
             fadeRemote(r, (gait === 'run' && r.actions.run) || (gait !== 'idle' && r.actions.walk) || r.actions.idle, 0.25);
         }
-        r.mixer.update(dt);
+        r.mixer.update(Math.min(r.animDt, 0.5));
+        r.animDt = 0;
     }
 }
 
@@ -1503,7 +1562,7 @@ const ENTER_DIST = 0.9;    // a esta distancia del centro del agujero se entra
 const EXIT_DIST = 2.6;     // al cruzar, apareces a esta distancia delante del agujero de salida
 const ARM_DIST = 3.5;      // y hay que alejarse esto para que vuelva a funcionar (no se entra sin querer)
 const LABEL_DIST = 24;     // el cartel con el nombre se ve desde esta distancia
-const wormholes = createWormholes(renderer);
+const wormholes = createWormholes(renderer, { samples: HIGH_DPI ? 0 : 4 });
 // Se copia el escenario tal como está al cargar: todavía no hay puentes, notas ni recuerdos.
 const dest = buildUniverse(scene.children.filter((o) => o !== actors), obstacles);
 // Los cuadros también se abren desde allá.
@@ -1534,6 +1593,7 @@ function fillHoleLabel(el, title, text, owner, createdAt) {
     el.querySelector('span').textContent = text || '';
     el.querySelector('span').hidden = !text;
     el.querySelector('small').textContent = holeByline(owner, createdAt);
+    el.labelH = 0;   // cambió el texto: se vuelve a medir
 }
 // «Agujero de gusano de Ana · creado 24 oct, 14:30»
 function holeByline(owner, createdAt) {
@@ -1672,20 +1732,22 @@ function checkHoles() {
 
 // Carteles con nombre y descripción, flotando sobre cada agujero cercano.
 const labelPos = new THREE.Vector3();
+let labelTop = 64;   // se calcula una vez por cuadro (leer offsetHeight en cada cartel fuerza un reflow)
 function placeLabel(el, x, z) {
     labelPos.set(x, 3.75, z);
     const d = camera.position.distanceTo(labelPos);
     labelPos.project(camera);
     if (d > LABEL_DIST || labelPos.z > 1 || Math.abs(labelPos.x) > 1.2) { el.hidden = true; return; }
-    el.hidden = false;
+    if (el.hidden) { el.hidden = false; el.labelH = 0; }
     el.style.opacity = String(Math.min(1, (LABEL_DIST - d) / 6));
     const sx = (labelPos.x + 1) / 2 * window.innerWidth;
     // Si el agujero llena la pantalla, el cartel queda arriba sin taparse con el encabezado.
-    const top = 64 + (banner.hidden ? 0 : banner.offsetHeight + 12);
-    const sy = Math.max((1 - labelPos.y) / 2 * window.innerHeight, el.offsetHeight + top);
+    el.labelH ||= el.offsetHeight;
+    const sy = Math.max((1 - labelPos.y) / 2 * window.innerHeight, el.labelH + labelTop);
     el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
 }
 function updateHoleLabels() {
+    labelTop = 64 + (banner.hidden ? 0 : banner.offsetHeight + 12);
     for (const e of portals.values()) {
         if (here.id === MAIN) placeLabel(e.label, e.data.x, e.data.z);
         else e.label.hidden = true;
@@ -2562,6 +2624,10 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) stopV
 let city = null, cityLoading = null;
 function updateCity() {
     const wanted = [...items.values()].some((e) => e.data.kind === 'city' && e.data.scene === here.id);
+    // Sin ciudad, nada pasa de la niebla (70 m): con un plano lejano corto three.js ni siquiera
+    // manda a dibujar lo que queda más allá.
+    const far = wanted && city ? 300 : 80;
+    if (camera.far !== far) { camera.far = far; camera.updateProjectionMatrix(); }
     if (!wanted) { city?.group.parent?.remove(city.group); return; }
     if (!city) {
         cityLoading ||= import('./city.js?v=64').then(({ createCity }) => {
@@ -4521,8 +4587,50 @@ if (getProfile()) net.login(); else showLogin();
 
 const clock = new THREE.Clock();
 
+// ---------- Calidad adaptable ----------
+// Si el equipo no llega a ~40 cuadros por segundo se baja la resolución interna del lienzo (lo que
+// más pesa en celulares), y se vuelve a subir si sobra. Si bajar no ayuda (p. ej. el iPhone en modo
+// de ahorro limita a 30 cuadros), se deja como estaba.
+const quality = (() => {
+    const max = Math.min(window.devicePixelRatio, 2);
+    const steps = [max, ...[1.5, 1.25, 1, 0.85, 0.7].filter((v) => v < max - 0.01)];
+    let i = 0, acc = 0, frames = 0, good = 0, lastDrop = null, holdUntil = 0;
+    const failedAt = [];
+    function apply() {
+        renderer.setPixelRatio(steps[i]);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        resizeWormholes();
+    }
+    return {
+        tick(rawDt) {
+            if (document.hidden || rawDt > 0.5) return;   // pestaña oculta o pausa: no cuenta
+            acc += rawDt; frames++;
+            if (acc < 2) return;
+            const avg = acc / frames * 1000;
+            acc = frames = 0;
+            const now = performance.now();
+            if (lastDrop && avg > lastDrop.avg * 0.9) {
+                // Bajar no mejoró nada: no era la resolución. Se vuelve atrás y se espera un rato.
+                i = lastDrop.from; lastDrop = null; holdUntil = now + 60000; apply();
+                return;
+            }
+            lastDrop = null;
+            if (avg > 26 && i < steps.length - 1 && now > holdUntil) {
+                failedAt[i] = now;
+                lastDrop = { from: i, avg };
+                i++; good = 0; apply();
+            } else if (avg < 18.5 && i > 0) {
+                // Sobra: sube un paso, salvo que ese paso haya fallado hace poco.
+                if (++good >= 3 && !(now - (failedAt[i - 1] || -Infinity) < 60000)) { i--; good = 0; apply(); }
+            } else good = 0;
+        },
+    };
+})();
+
 renderer.setAnimationLoop(() => {
-    const dt = Math.min(clock.getDelta(), 0.05);
+    const rawDt = clock.getDelta();
+    const dt = Math.min(rawDt, 0.05);
+    quality.tick(rawDt);
     const t = clock.elapsedTime;
     if (mixer) mixer.update(dt);
     if (placeholder) placeholder.position.y = Math.sin(t * 1.6) * 0.03;
