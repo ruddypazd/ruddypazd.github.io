@@ -6,6 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { createWormholes, buildUniverse, hueFor, HOLE_R } from './wormholes.js?v=47';
+import { createGame, tierColor } from './game.js?v=1';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
@@ -1198,7 +1199,7 @@ function formatDate(iso) {
     }).replace('.', '');
 }
 
-function makeNameLabel(name, online, lastSeen, sub = '', isBot = false) {
+function makeNameLabel(name, online, lastSeen, sub = '', isBot = false, level = 1) {
     const c = document.createElement('canvas');
     c.width = 512; c.height = 192;
     const g = c.getContext('2d');
@@ -1213,7 +1214,8 @@ function makeNameLabel(name, online, lastSeen, sub = '', isBot = false) {
     g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText(name, 256 + 12, 66, w - 70);
     // Debajo del nombre: «En línea» o la fecha de su última conexión.
-    const seen = sub || (online ? 'En línea' : formatDate(lastSeen) && `Últ. vez ${formatDate(lastSeen)}`);
+    let seen = sub || (online ? 'En línea' : formatDate(lastSeen) && `Últ. vez ${formatDate(lastSeen)}`);
+    if (level > 1) seen = seen ? `Nv ${level} · ${seen}` : `Nivel ${level}`;   // nivel del juego (game.js)
     if (seen) {
         g.font = '500 30px "JetBrains Mono", monospace';
         const sw = Math.min(500, g.measureText(seen).width + 36);
@@ -1265,7 +1267,7 @@ function upsertRemote(p) {
     if (!p.id || p.id === net.myId) return;
     let r = remotes.get(p.id);
     if (!r) {
-        r = { group: new THREE.Group(), target: new THREE.Vector3(), ry: 0, label: null, avatar: null, avatarId: avatarIdOf(p.avatar) };
+        r = { id: p.id, group: new THREE.Group(), target: new THREE.Vector3(), ry: 0, label: null, avatar: null, avatarId: avatarIdOf(p.avatar) };
         r.group.position.set(p.x, 0, p.z);
         r.group.rotation.y = p.ry || 0;
         actors.add(r.group);
@@ -1307,16 +1309,30 @@ function upsertRemote(p) {
     }
     const sub = r.isBot ? `IA de ${r.ownerName}` : '';
     if (r.name !== p.name || r.online !== p.online || r.lastSeen !== lastSeen || r.sub !== sub) {
-        if (r.label) { r.group.remove(r.label); r.label.material.map.dispose(); r.label.material.dispose(); }
-        r.label = makeNameLabel(p.name || 'Visitante', p.online, lastSeen, sub, r.isBot);
         r.sub = sub;
-        r.group.add(r.label);
         r.name = p.name;
         r.online = p.online;
         r.lastSeen = lastSeen;
+        remoteLabel(r);
         r.hit.userData.hint = r.isBot ? `${p.name}, personaje IA de ${r.ownerName}` : `Ver el perfil de ${p.name || 'Visitante'}`;
         if (profileOf === r) fillProfile(r);
     }
+}
+
+// Etiqueta con el nombre (y el nivel del juego) y, desde el nivel 2, un aura del color de su nivel.
+function remoteLabel(r) {
+    const level = r.isBot ? 1 : game.levelOf(r.id);
+    if (r.label) { r.group.remove(r.label); r.label.material.map.dispose(); r.label.material.dispose(); }
+    r.label = makeNameLabel(r.name || 'Visitante', r.online, r.lastSeen, r.sub, r.isBot, level);
+    r.group.add(r.label);
+    r.level = level;
+    if (level > 1 && !r.aura) {
+        r.aura = new THREE.Mesh(ring.geometry, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.55 }));
+        r.aura.rotation.x = -Math.PI / 2;
+        r.aura.position.y = 0.005;
+        r.group.add(r.aura);
+    }
+    r.aura?.material.color.setHex(tierColor(level));
 }
 
 // Ventana de perfil de otra persona (nunca muestra teléfono ni email).
@@ -4519,6 +4535,13 @@ function openBotInfo(r) {
 }
 if (getProfile()) net.login(); else showLogin();
 
+// ---------- Juego: chispas, objetivos del día, niveles y ranking (game.js) ----------
+const game = createGame({
+    THREE, net, player, here, actors, camera,
+    onMyLevel: (level) => ring.material.color.setHex(tierColor(level)),
+    onLevel: (id, level) => { const r = remotes.get(id); if (r && r.level !== level) remoteLabel(r); },
+});
+
 const clock = new THREE.Clock();
 
 renderer.setAnimationLoop(() => {
@@ -4535,6 +4558,7 @@ renderer.setAnimationLoop(() => {
     updateRemotes(dt);
     updateCharts(dt);
     updateItems(dt, t);
+    game.update(dt, t);
     checkHoles();
     dest.update(t);
     syncPosition();
