@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=69">
+    <link rel="stylesheet" href="style.css?v=70">
     <script type="importmap">
     {
         "imports": {
@@ -97,6 +97,7 @@
                             <button class="settings__item" type="button" data-items-open data-desc="Objetos para poner en el mundo">🧸 Ítems</button>
                             <button class="settings__item" type="button" data-hole-open data-desc="Un portal hacia otro universo">🌀 Crear puente de Einstein-Rosen</button>
                             <button class="settings__item" type="button" data-stats-open data-desc="Datos de una API en un gráfico 3D">📊 Estadísticas</button>
+                            <button class="settings__item" type="button" data-edit-pick data-desc="Mueve, gira o agranda lo que pusiste">✋ Mover mis objetos</button>
                         </div>
                     </section>
 
@@ -520,6 +521,7 @@
             <p class="login__note chart-view__note" data-chart-note hidden></p>
             <div class="chart-view__actions">
                 <button class="chat__send stats__secondary" type="button" data-chart-refresh>↻ Actualizar</button>
+                <button class="chat__send stats__secondary" type="button" data-chart-move hidden>✋ Mover</button>
                 <button class="chat__send" type="button" data-chart-close>Cerrar</button>
             </div>
         </div>
@@ -581,6 +583,7 @@
             <p class="item-view__desc" data-item-desc></p>
             <div class="settings__list" data-item-slots hidden></div>
             <div class="settings__list item-view__actions">
+                <button class="settings__item" type="button" data-item-move data-desc="Arrástralo, gíralo, súbelo o agrándalo" hidden>✋ Mover y ajustar</button>
                 <button class="settings__item settings__item--danger" type="button" data-item-delete data-desc="Solo tú puedes quitarlo" hidden>🗑 Quitar ítem</button>
             </div>
             <p class="settings__foot item-view__foot">Desde <span data-item-created></span></p>
@@ -638,17 +641,57 @@
                 <dt>Publicado</dt><dd data-sign-created></dd>
                 <dt>Vence</dt><dd data-sign-expires></dd>
             </dl>
+            <button class="chat__send stats__secondary" type="button" data-sign-move hidden>✋ Mover y ajustar</button>
             <button class="holes__delete" type="button" data-sign-delete hidden>Borrar letrero</button>
             <button class="chat__send" type="button" data-sign-close>Cerrar</button>
         </div>
     </div>
+    <section class="editor" data-editor hidden aria-labelledby="editor-title">
+        <header class="editor__head">
+            <span class="editor__icon" data-ed-icon aria-hidden="true">✋</span>
+            <div class="editor__titles">
+                <p class="settings__crumb">Mover y ajustar</p>
+                <h2 id="editor-title" data-ed-name>Tus objetos</h2>
+            </div>
+            <button class="settings__close" type="button" data-ed-cancel aria-label="Cancelar">✕</button>
+        </header>
+        <p class="editor__hint" data-ed-hint></p>
+        <div class="editor__controls" data-ed-controls>
+            <div class="editor__row" data-ed-row="ry">
+                <span>Giro</span>
+                <button class="editor__btn" type="button" data-ed-turn="-1" aria-label="Girar a la izquierda">⟲</button>
+                <input type="range" min="0" max="360" step="1" data-ed-ry aria-label="Giro en grados">
+                <button class="editor__btn" type="button" data-ed-turn="1" aria-label="Girar a la derecha">⟳</button>
+                <output data-ed-out="ry"></output>
+            </div>
+            <div class="editor__row" data-ed-row="y">
+                <span>Altura</span>
+                <input type="range" min="0" max="8" step="0.05" data-ed-y aria-label="Altura sobre el piso en metros">
+                <output data-ed-out="y"></output>
+            </div>
+            <div class="editor__row" data-ed-row="s">
+                <span>Tamaño</span>
+                <input type="range" min="30" max="300" step="1" data-ed-s aria-label="Tamaño en porcentaje">
+                <output data-ed-out="s"></output>
+            </div>
+            <div class="editor__tools">
+                <button class="editor__chip" type="button" data-ed-here>📍 Traer delante de mí</button>
+                <button class="editor__chip" type="button" data-ed-reset>↺ Como estaba</button>
+            </div>
+        </div>
+        <p class="login__error" data-ed-error hidden></p>
+        <div class="editor__actions">
+            <button class="login__back" type="button" data-ed-cancel>Cancelar</button>
+            <button class="chat__send" type="button" data-ed-save>Guardar</button>
+        </div>
+    </section>
     <div class="scene-banner" data-scene-banner hidden>
         <p class="totem-panel__tag" data-scene-owner>Puente de Einstein-Rosen</p>
         <h2 data-scene-name></h2>
         <p data-scene-desc></p>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=70"></script>
+    <script type="module" src="world.js?v=71"></script>
     <script type="module" src="portafolio/firebase.js"></script>
 </body>
 </html>
