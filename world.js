@@ -340,6 +340,7 @@ const AVATARS = {
     candie: { name: 'Candie', url: 'models/candie.glb', lite: 'models/candie-lod.glb', thumb: 'models/candie.jpg' },
     leo: { name: 'Leo', url: 'models/leo.glb', lite: 'models/leo-lod.glb', thumb: 'models/leo.jpg' },
     sofia: { name: 'Sofía', url: 'models/sofia.glb', lite: 'models/sofia-lod.glb', thumb: 'models/sofia.jpg' },
+    marco: { name: 'Marco', url: 'models/marco.glb', lite: 'models/marco-lod.glb', thumb: 'models/marco.jpg' },
 };
 const avatarIdOf = (id) => (AVATARS[id] ? id : 'ruddy');
 
