@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=68">
+    <link rel="stylesheet" href="style.css?v=69">
     <script type="importmap">
     {
         "imports": {
@@ -586,6 +586,31 @@
             <p class="settings__foot item-view__foot">Desde <span data-item-created></span></p>
         </section>
     </div>
+    <div class="board-view" data-board-view hidden role="dialog" aria-modal="true" aria-labelledby="board-view-title">
+        <canvas class="board-view__canvas" data-board-canvas></canvas>
+        <div class="board-view__top">
+            <div class="board-view__title">
+                <h2 id="board-view-title" data-board-title>Pizarra</h2>
+                <p data-board-sub></p>
+            </div>
+            <button class="chat__send" type="button" data-board-close>Cerrar</button>
+        </div>
+        <div class="board-view__tools" role="toolbar" aria-label="Herramientas de la pizarra">
+            <div class="board-view__group" data-board-colors></div>
+            <div class="board-view__group" data-board-widths></div>
+            <div class="board-view__group">
+                <button type="button" class="board-view__btn" data-board-hand aria-pressed="false" title="Mover la pizarra (también con dos dedos)">✋</button>
+                <button type="button" class="board-view__btn" data-board-zoom="-1" title="Alejar">−</button>
+                <button type="button" class="board-view__btn board-view__zoom" data-board-fit title="Ver toda la pizarra">100%</button>
+                <button type="button" class="board-view__btn" data-board-zoom="1" title="Acercar">+</button>
+            </div>
+            <div class="board-view__group">
+                <button type="button" class="board-view__btn" data-board-undo title="Deshacer mi último trazo">↶</button>
+                <button type="button" class="board-view__btn" data-board-clear hidden title="Borrar toda la pizarra" aria-label="Borrar toda la pizarra">🗑</button>
+            </div>
+        </div>
+        <p class="board-view__msg" data-board-msg hidden></p>
+    </div>
     <div class="totem-panel" data-totem-panel hidden role="dialog" aria-modal="true" aria-labelledby="totem-title">
         <div class="totem-panel__card totem-panel__card--frame">
             <div class="totem-panel__bar">
@@ -617,7 +642,7 @@
         <p data-scene-desc></p>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=69"></script>
+    <script type="module" src="world.js?v=70"></script>
     <script type="module" src="portafolio/firebase.js"></script>
 </body>
 </html>
