@@ -836,3 +836,78 @@ ul.stats__reqs:empty::before { content: attr(data-empty); font-size: .88rem; col
     [data-board-colors] { flex-basis: 100%; justify-content: center; }
     .board-view__zbtn { display: none; }   /* en el celular el zoom es con dos dedos */
 }
+
+/* ---------- Mover y ajustar mis objetos ----------
+   Ventana de vidrio abajo a la derecha (en el celular, una hoja abajo de todo). Mientras está
+   abierta se esconden el joystick y los botones del celular: el objeto se arrastra con el dedo. */
+.editor {
+    --hue: 190;
+    position: fixed; right: clamp(.75rem, 3vw, 1.5rem); bottom: clamp(.75rem, 3vw, 1.5rem); z-index: 12;
+    width: min(23rem, calc(100% - 1.5rem)); padding: 1rem 1.05rem; border-radius: 22px; isolation: isolate;
+    display: grid; gap: .65rem; color: var(--text);
+    background:
+        linear-gradient(150deg, rgba(255, 255, 255, .13), rgba(255, 255, 255, .03) 38%, hsla(var(--hue), 90%, 60%, .07)),
+        rgba(12, 16, 30, .62);
+    backdrop-filter: blur(22px) saturate(170%); -webkit-backdrop-filter: blur(22px) saturate(170%);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .2), 0 0 46px hsla(var(--hue), 100%, 60%, .18);
+    opacity: 0; transform: translateY(24px) scale(.96);
+    transition: transform .4s cubic-bezier(.2, .8, .2, 1), opacity .3s ease;
+}
+.editor[hidden] { display: none; }
+.editor.is-open { opacity: 1; transform: none; }
+.editor::before {
+    content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; padding: 1px; pointer-events: none;
+    background: conic-gradient(from var(--edge), hsla(var(--hue), 100%, 70%, .95), rgba(255, 255, 255, .08) 25%, rgba(255, 255, 255, .08) 50%, hsla(calc(var(--hue) + 80), 100%, 70%, .9) 70%, rgba(255, 255, 255, .08) 85%, hsla(var(--hue), 100%, 70%, .95));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+            mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+    animation: menu-edge 6s linear infinite;
+}
+.editor__head { display: flex; align-items: center; gap: .7rem; }
+.editor__icon {
+    flex: none; display: grid; place-items: center; width: 2.6rem; height: 2.6rem; border-radius: 14px; font-size: 1.35rem;
+    background: hsla(var(--hue), 100%, 60%, .12); border: 1px solid hsla(var(--hue), 100%, 70%, .35);
+    box-shadow: 0 0 18px hsla(var(--hue), 100%, 60%, .25);
+}
+.editor__titles { flex: 1; min-width: 0; }
+.editor__titles h2 { font-size: 1.05rem; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editor__hint { font-size: .8rem; line-height: 1.4; color: var(--muted); }
+.editor__controls { display: grid; gap: .5rem; }
+.editor__controls[hidden], .editor__row[hidden] { display: none; }
+.editor__row {
+    display: grid; grid-template-columns: 4rem minmax(0, 1fr) 3.4rem; align-items: center; gap: .45rem;
+    font-size: .82rem;
+}
+.editor__row[data-ed-row="ry"] { grid-template-columns: 4rem 2rem minmax(0, 1fr) 2rem 3.4rem; }
+.editor__row > span { color: hsl(var(--hue), 100%, 78%); font-family: var(--mono); font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; }
+.editor__row output { font-family: var(--mono); font-size: .78rem; text-align: right; color: #fff; }
+.editor__row input[type=range] { width: 100%; accent-color: var(--cyan); height: 1.6rem; }
+.editor__btn {
+    width: 2rem; height: 2rem; border-radius: 10px; font-size: 1.05rem; color: #fff; cursor: pointer;
+    background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .16);
+    transition: border-color .2s, box-shadow .2s, transform .1s;
+}
+.editor__btn:hover, .editor__btn:focus-visible { border-color: var(--cyan); box-shadow: 0 0 12px rgba(0, 229, 255, .4); outline: none; }
+.editor__btn:active { transform: scale(.92); }
+.editor__tools { display: flex; flex-wrap: wrap; gap: .4rem; }
+.editor__chip {
+    flex: 1 1 auto; padding: .45rem .7rem; border-radius: 999px; font: inherit; font-size: .8rem; color: #fff; cursor: pointer;
+    background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .16);
+    transition: border-color .2s, box-shadow .2s;
+}
+.editor__chip:hover, .editor__chip:focus-visible { border-color: var(--cyan); box-shadow: 0 0 12px rgba(0, 229, 255, .35); outline: none; }
+.editor__actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: .5rem; align-items: center; }
+.editor__actions .login__back { margin: 0; }
+.editor__actions .chat__send[hidden] { display: none; }
+.editor__actions:has(.chat__send[hidden]) { grid-template-columns: 1fr; }
+.holes__move { color: var(--cyan); border-color: rgba(0, 229, 255, .35); }
+@media (max-width: 600px) {
+    .editor {
+        right: 0; bottom: 0; width: 100%; border-radius: 22px 22px 0 0; padding: .85rem 1rem calc(.85rem + env(safe-area-inset-bottom));
+        gap: .5rem; background-color: rgba(12, 16, 30, .78);
+    }
+    .editor__hint { font-size: .75rem; }
+    body.editing .joystick, body.editing .jump-btn, body.editing .run-btn, body.editing .write-btn { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .editor, .editor::before { transition: none; animation: none; } }
+.holes li .holes__move { margin-left: auto; }
+body.editing .hud__hint { visibility: hidden; }

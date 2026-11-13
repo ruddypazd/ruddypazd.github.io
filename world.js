@@ -1049,7 +1049,12 @@ const net = (() => {
     let timer = null;
     let queue = [];          // mensajes que deben llegar aunque el socket aún no esté listo
     const handlers = {};
-    const api = { loggedIn: false, myId: null, on: (type, fn) => { handlers[type] = fn; } };
+    const taps = {};         // oyentes extra de un tipo (además del principal de on)
+    const api = {
+        loggedIn: false, myId: null,
+        on: (type, fn) => { handlers[type] = fn; },
+        tap: (type, fn) => { (taps[type] ||= []).push(fn); },
+    };
 
     function sendLogin() {
         const p = getProfile();
@@ -1071,6 +1076,7 @@ const net = (() => {
             }
             if (m.type === 'login_required') sendLogin();
             handlers[m.type]?.(m);
+            taps[m.type]?.forEach((fn) => fn(m));
         });
         ws.addEventListener('close', () => { api.loggedIn = false; ws = null; schedule(); });
         ws.addEventListener('error', () => { try { ws.close(); } catch { /* ya cerrado */ } });
@@ -1631,6 +1637,8 @@ function addPortal(p) {
         portals.set(p.id, e);
     }
     e.data = p;
+    e.hole.group.position.x = p.x;
+    e.hole.group.position.z = p.z;
     fillHoleLabel(e.label, p.name, p.description, p.owner_name, p.created_at);
     if (here.id === p.id) fillBanner(p);
     refreshMyHoles();
@@ -1736,7 +1744,7 @@ function enterHole(id) {
 }
 
 function checkHoles() {
-    if (warping) return;
+    if (warping || editingPortal()) return;   // mientras mueves tu puente no te mete adentro
     let nearest = Infinity, hit = null;
     const test = (id, x, z) => {
         const d = Math.hypot(player.position.x - x, player.position.z - z);
@@ -1822,7 +1830,7 @@ function refreshMyHoles() {
             del.dataset.confirm = '1';
             del.textContent = '¿Borrar? Toca otra vez';
         });
-        li.append(name, del);
+        li.append(name, moveButton('portal', e.data.id), del);
         return li;
     }));
 }
@@ -2060,8 +2068,9 @@ function addSign(s) {
         adGalleries[s.scene === MAIN ? MAIN : 'other'].add(built.piece);
     } else {
         built = s.image ? buildPhotoSign(s) : buildNoteSign(s);
-        built.piece.position.set(s.x, 0, s.z);
+        built.piece.position.set(s.x, s.y || 0, s.z);
         built.piece.rotation.y = s.ry || 0;
+        built.piece.scale.setScalar(s.s || 1);
         (s.scene === MAIN ? scene : dest.scene).add(built.piece);
     }
     const { piece, hits } = built;
@@ -2121,6 +2130,7 @@ function openSign(id) {
     del.hidden = !canDeleteSign(s);
     del.textContent = onWall(s) ? 'Descolgar foto' : 'Borrar letrero';
     delete del.dataset.confirm;
+    q('move').hidden = !canEdit('sign', s);
     signView.hidden = false;
 }
 signView.querySelector('[data-sign-close]').addEventListener('click', () => { signView.hidden = true; });
@@ -2216,7 +2226,7 @@ function refreshMySigns() {
             del.dataset.confirm = '1';
             del.textContent = '¿Borrar? Toca otra vez';
         });
-        li.append(name, del);
+        li.append(name, ...(canEdit('sign', s) ? [moveButton('sign', s.id)] : []), del);
         return li;
     }));
 }
@@ -3540,6 +3550,7 @@ function addItem(it) {
     const { piece } = built;
     piece.position.set(it.x, 0, it.z);
     piece.rotation.y = built.noRotate ? 0 : (it.ry || 0);
+    applyPlacement(piece, it, built.obstacles);
     (it.scene === MAIN ? scene : dest.scene).add(piece);
     const own = built.ownActions || [];
     const hint = it.kind === 'wall' ? `Pared de museo de ${ownerOf(it)}: cuelga una foto` : `${itemKind(it.kind).name} de ${ownerOf(it)}`;
@@ -3600,6 +3611,7 @@ function openItem(id) {
     del.dataset.desc = it.kind === 'wall' ? 'Las fotos colgadas se van con ella' : 'Solo tú puedes quitarlo';
     delete del.dataset.confirm;
     renderWallSlots(it);
+    q('move').hidden = !canEdit('item', it);
     itemView.hidden = false;
 }
 
@@ -3811,7 +3823,7 @@ function refreshMyItems() {
             del.dataset.confirm = '1';
             del.textContent = '¿Quitar? Toca otra vez';
         });
-        li.append(name, del);
+        li.append(name, ...(canEdit('item', it) ? [moveButton('item', it.id)] : []), del);
         return li;
     }));
 }
@@ -4041,8 +4053,9 @@ function addChart(c) {
     removeChart(c.id);
     if (!c.data?.labels?.length || !c.data.series?.length) return;
     const group = new THREE.Group();
-    group.position.set(c.x, 0, c.z);
+    group.position.set(c.x, c.y || 0, c.z);
     group.rotation.y = c.ry || 0;
+    group.scale.setScalar(c.s || 1);
     const body = new THREE.Group();   // lo que crece al aparecer
     const built = c.kind === 'pie' ? buildPie(c, body) : c.kind === 'line' ? buildLine(c, body) : buildBars(c, body);
     const width = Math.max(built.width + 0.6, 3.4);
@@ -4139,6 +4152,7 @@ function openChart(id, keepNote = false) {
     const fromExcel = c.source === 'excel';
     const auto = fromExcel ? 'datos de un Excel' : REFRESH_NAMES[c.refresh_min] ? `se actualiza solo ${REFRESH_NAMES[c.refresh_min]}` : 'se actualiza al tocar «Actualizar»';
     chartRefreshBtn.hidden = fromExcel;
+    chartView.querySelector('[data-chart-move]').hidden = !canEdit('chart', c);
     chartView.querySelector('[data-chart-sub]').textContent =
         `${chartSubtitle(c.data)} · ${c.owner_name || ''} · datos del ${formatDate(c.refreshed_at || c.updated_at)} · ${auto}`;
     const description = chartView.querySelector('[data-chart-description]');
@@ -4688,6 +4702,7 @@ function chartRow(c) {
     };
     mk(`Visitas (${c.views || 0})`, () => net.send({ type: 'stats_chart_views', id: c.id }));
     mk('Editar', () => editChart(c));
+    if (charts.has(c.id)) mk('Mover', () => startEdit('chart', c.id));
     if (!c.dataset_id) mk('Actualizar', () => { statsMessage('', 'Actualizando…'); net.send({ type: 'stats_chart_refresh', id: c.id }); });
     mk('Borrar', (b) => {
         if (b.dataset.confirm) return net.send({ type: 'stats_chart_delete', id: c.id });
@@ -5120,6 +5135,413 @@ net.on('stats_chart_ok', () => {
     statsMessage('', was ? 'Gráfico actualizado para todos.' : 'Listo: el gráfico quedó delante de ti y todos lo ven.');
 });
 
+
+// ---------- Mover y ajustar mis objetos ----------
+// Quien puso algo (un ítem, un letrero, un gráfico o un puente) lo agarra y lo arrastra por el
+// piso, y con los controles de vidrio lo gira, lo sube o lo agranda. Mientras lo mueve, los demás
+// lo ven moverse (obj_move en vivo, sin guardar); al tocar «Guardar» el servidor lo valida, lo
+// guarda y todos reciben el objeto otra vez, como cuando se crea. Se entra desde el panel de cada
+// objeto, desde las listas de «Tus …» o desde Ajustes → Crear → Mover mis objetos.
+const ED_TURN = Math.PI / 12;          // 15° por toque o tecla
+const ED_LIVE_GAP = 90;                // ms entre dos envíos en vivo
+const ED = {
+    item: {
+        get: (id) => items.get(id), piece: (e) => e.piece,
+        fields: (d) => (d.kind === 'ball' ? [] : ['ry', 'y', 's']),
+        allowed: (d) => d.kind !== 'city',
+        name: (d) => itemKind(d.kind).name, icon: (d) => itemKind(d.kind).icon,
+        dist: (d) => itemKind(d.kind).dist || 2,
+    },
+    sign: {
+        get: (id) => signs.get(id), piece: (e) => e.piece,
+        fields: () => ['ry', 'y', 's'], allowed: (d) => !inGallery(d) && !onWall(d),   // las fotos de una pared van con ella
+        name: (d) => (d.title ? `«${d.title.slice(0, 30)}»` : 'Tu letrero'), icon: () => '📌', dist: () => 2.5,
+    },
+    chart: {
+        get: (id) => charts.get(id), piece: (e) => e.group,
+        fields: () => ['ry', 'y', 's'], allowed: () => true,
+        name: (d) => `«${(d.title || 'Gráfico').slice(0, 30)}»`, icon: () => '📊', dist: () => 5,
+    },
+    portal: {
+        get: (id) => portals.get(id), piece: (e) => e.hole.group,
+        fields: () => [], allowed: () => true,
+        name: (d) => d.name, icon: () => '🌀', dist: () => 3.5,
+    },
+};
+const editor = document.querySelector('[data-editor]');
+const edQ = (k) => editor.querySelector(`[data-ed-${k}]`);
+const ed = { mode: null, kind: null, id: null, orig: null, cur: null, drag: null, sentAt: 0, liveTimer: 0, saving: false, helpers: null, picks: [] };
+const edPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const edPoint = new THREE.Vector3();
+const edFwd = new THREE.Vector3();
+const edHelperMat = { color: 0x00e5ff, depthTest: false, transparent: true, opacity: 0.9 };
+
+const isMine = (d) => !!net.myId && d?.owner_id === net.myId;
+function canEdit(kind, d) { return !!d && isMine(d) && ED[kind].allowed(d); }
+function readPlace(d) { return { x: d.x, z: d.z, ry: d.ry || 0, y: d.y || 0, s: d.s || 1 }; }
+function samePlace(a, b) { return ['x', 'z', 'ry', 'y', 's'].every((k) => Math.abs((a[k] || 0) - (b[k] || 0)) < 1e-3); }
+
+// Coloca la pieza tal como dice t (sin reconstruirla). Sirve para lo propio y para lo que llega en vivo.
+function placePiece(kind, e, t) {
+    if (kind === 'portal') {
+        e.hole.group.position.x = t.x;
+        e.hole.group.position.z = t.z;
+        e.data = { ...e.data, x: t.x, z: t.z, ry: t.ry };   // el cartel y la entrada leen data
+        return;
+    }
+    if (kind === 'item' && playingVideo?.id === e.data.id) stopVideo();
+    const piece = ED[kind].piece(e);
+    piece.position.set(t.x, t.y || 0, t.z);
+    piece.rotation.y = kind === 'item' && e.noRotate ? 0 : (t.ry || 0);
+    piece.scale.setScalar(t.s || 1);
+}
+
+// Altura y tamaño guardados, al construir un ítem: los choques se agrandan con él y, si quedó
+// por encima de la cabeza, se puede pasar por debajo.
+function applyPlacement(piece, d, obstacles) {
+    const y = d.y || 0, s = d.s || 1;
+    piece.position.y = y;
+    piece.scale.setScalar(s);
+    if (!obstacles) return;
+    if (s !== 1) for (const o of obstacles) { o.x = d.x + (o.x - d.x) * s; o.z = d.z + (o.z - d.z) * s; o.r *= s; }
+    if (y > 2.2) obstacles.length = 0;
+}
+
+// Marco de luz alrededor del objeto y un aro en el piso.
+function makeEdHelper(piece, color, opacity) {
+    const box = new THREE.BoxHelper(piece, color);
+    Object.assign(box.material, { ...edHelperMat, color: new THREE.Color(color), opacity });
+    box.renderOrder = 999;
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 64),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: opacity * 0.7, depthWrite: false, depthTest: false, side: THREE.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2;
+    ring.renderOrder = 998;
+    const g = new THREE.Group();
+    g.add(box, ring);
+    g.userData = { box, ring, piece };
+    return g;
+}
+const edBox = new THREE.Box3(), edSize = new THREE.Vector3(), edCenter = new THREE.Vector3();
+function updateEdHelper(h, t) {
+    const { box, ring, piece } = h.userData;
+    box.setFromObject(piece);
+    edBox.setFromObject(piece);
+    if (edBox.isEmpty()) return;
+    edBox.getSize(edSize); edBox.getCenter(edCenter);
+    ring.position.set(edCenter.x, 0.03, edCenter.z);
+    ring.scale.setScalar(Math.max(0.6, Math.hypot(edSize.x, edSize.z) / 2 + 0.25) * (1 + Math.sin(t * 3) * 0.03));
+}
+function dropEdHelper(h) {
+    if (!h) return;
+    h.parent?.remove(h);
+    h.userData.box.geometry.dispose(); h.userData.box.material.dispose();
+    h.userData.ring.geometry.dispose(); h.userData.ring.material.dispose();
+}
+
+// Lo tuyo que está en la escena donde estás y se puede mover.
+function myEditables() {
+    const out = [];
+    const add = (kind, map) => {
+        for (const [id, e] of map) {
+            if (!canEdit(kind, e.data)) continue;
+            if (kind === 'portal' ? here.id !== MAIN : e.data.scene !== here.id) continue;
+            out.push({ kind, id, piece: ED[kind].piece(e) });
+        }
+    };
+    add('item', items); add('sign', signs); add('chart', charts); add('portal', portals);
+    return out;
+}
+
+function edMessage(text) {
+    edQ('error').hidden = !text;
+    edQ('error').textContent = text || '';
+}
+const TOUCH = window.matchMedia('(hover: none)').matches;
+function syncEditor() {
+    const editing = ed.mode === 'edit';
+    edQ('controls').hidden = !editing;
+    edQ('save').hidden = !editing;
+    if (!editing) return;
+    const d = ED[ed.kind].get(ed.id)?.data;
+    const fields = ED[ed.kind].fields(d);
+    for (const row of editor.querySelectorAll('[data-ed-row]')) row.hidden = !fields.includes(row.dataset.edRow);
+    const deg = Math.round(((ed.cur.ry * 180 / Math.PI) % 360 + 360) % 360);
+    edQ('ry').value = String(deg);
+    edQ('y').value = String(ed.cur.y);
+    edQ('s').value = String(Math.round(ed.cur.s * 100));
+    editor.querySelector('[data-ed-out="ry"]').textContent = `${deg}°`;
+    editor.querySelector('[data-ed-out="y"]').textContent = `${ed.cur.y.toFixed(2)} m`;
+    editor.querySelector('[data-ed-out="s"]').textContent = `${Math.round(ed.cur.s * 100)} %`;
+    edQ('save').disabled = ed.saving;
+    edQ('save').textContent = ed.saving ? 'Guardando…' : 'Guardar';
+}
+
+function openEditor() {
+    editor.hidden = false;
+    document.body.classList.add('editing');
+    requestAnimationFrame(() => editor.classList.add('is-open'));
+}
+
+// Elegir cuál: se marcan todos los tuyos y se toca uno.
+function startPick() {
+    if (!getProfile()) return showLogin();
+    stopEdit(false);
+    const mine = myEditables();
+    if (!mine.length) return flashHint('Todavía no tienes objetos para mover en este lugar. Pon uno desde Ajustes → Crear');
+    ed.mode = 'pick';
+    ed.picks = mine.map((m) => {
+        const h = makeEdHelper(m.piece, 0xa060ff, 0.55);
+        here.scene.add(h);
+        return { ...m, helper: h };
+    });
+    edQ('icon').textContent = '✋';
+    edQ('name').textContent = mine.length === 1 ? 'Tu objeto' : `Tus ${mine.length} objetos`;
+    edQ('hint').textContent = `${TOUCH ? 'Toca' : 'Haz clic en'} uno de tus objetos (los marcados) para moverlo y ajustarlo.`;
+    edMessage('');
+    syncEditor();
+    openEditor();
+}
+function clearPicks() {
+    for (const p of ed.picks) dropEdHelper(p.helper);
+    ed.picks = [];
+}
+
+function startEdit(kind, id) {
+    const e = ED[kind].get(id);
+    if (!e || !canEdit(kind, e.data)) return;
+    const scene = kind === 'portal' ? MAIN : e.data.scene;
+    if (scene !== here.id) return flashHint(`Está en ${sceneLabel(scene)}: entra ahí para moverlo`);
+    stopEdit(false);
+    for (const sel of ['[data-item-view]', '[data-sign-view]', '[data-chart-view]', '[data-items-box]', '[data-sign-box]', '[data-hole-box]', '[data-stats-box]']) {
+        document.querySelector(sel).hidden = true;
+    }
+    Object.assign(ed, { mode: 'edit', kind, id, orig: readPlace(e.data), drag: null, saving: false });
+    ed.cur = { ...ed.orig };
+    ed.helpers = makeEdHelper(ED[kind].piece(e), 0x00e5ff, 0.95);
+    here.scene.add(ed.helpers);
+    edQ('icon').textContent = ED[kind].icon(e.data);
+    edQ('name').textContent = ED[kind].name(e.data);
+    edQ('hint').textContent = TOUCH
+        ? 'Arrastra el objeto con el dedo para moverlo. Fuera de él, arrastra para mirar alrededor.'
+        : 'Arrastra el objeto con el mouse para moverlo · Q/E girar · R/F subir y bajar · +/− tamaño · Enter guarda · Esc cancela';
+    edMessage('');
+    syncEditor();
+    openEditor();
+}
+
+// Cierra el editor; si no se guardó, todo vuelve a como estaba (también para los demás).
+function stopEdit(revert = true) {
+    if (ed.mode === 'edit' && revert && ed.orig) {
+        const e = ED[ed.kind].get(ed.id);
+        if (e && !samePlace(ed.cur, ed.orig)) {
+            placePiece(ed.kind, e, ed.orig);
+            net.send({ type: 'obj_move', live: true, kind: ed.kind, id: ed.id, ...ed.orig });
+        }
+    }
+    clearTimeout(ed.liveTimer);
+    clearPicks();
+    dropEdHelper(ed.helpers);
+    Object.assign(ed, { mode: null, kind: null, id: null, orig: null, cur: null, drag: null, saving: false, helpers: null });
+    canvas.style.cursor = '';
+    editor.classList.remove('is-open');
+    editor.hidden = true;
+    document.body.classList.remove('editing');
+}
+
+// Aplica ed.cur a la pieza y lo manda en vivo (con pausa entre envíos; el último siempre sale).
+function edApply() {
+    const e = ED[ed.kind].get(ed.id);
+    if (!e) return;
+    const max = ed.kind === 'portal' ? Math.min(here.radius - 1, 47.5) : here.radius - 1;
+    const r = Math.hypot(ed.cur.x, ed.cur.z);
+    if (r > max) { ed.cur.x *= max / r; ed.cur.z *= max / r; }
+    placePiece(ed.kind, e, ed.cur);
+    syncEditor();
+    edMessage('');
+    const send = () => {
+        if (ed.mode !== 'edit') return;
+        ed.sentAt = performance.now();
+        net.send({ type: 'obj_move', live: true, kind: ed.kind, id: ed.id, ...ed.cur });
+    };
+    clearTimeout(ed.liveTimer);
+    const wait = ED_LIVE_GAP - (performance.now() - ed.sentAt);
+    if (wait <= 0) send(); else ed.liveTimer = setTimeout(send, wait);
+}
+function edChange(patch) {
+    if (ed.mode !== 'edit' || ed.saving) return;
+    const fields = ED[ed.kind].fields(ED[ed.kind].get(ed.id)?.data);
+    const next = { ...ed.cur, ...patch };
+    if (fields.includes('y')) next.y = Math.max(0, Math.min(8, Math.round(next.y * 100) / 100)); else next.y = ed.orig.y;
+    if (fields.includes('s')) next.s = Math.max(0.3, Math.min(3, Math.round(next.s * 100) / 100)); else next.s = ed.orig.s;
+    if (!fields.includes('ry')) next.ry = ed.orig.ry;
+    next.ry = ((next.ry % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+    ed.cur = next;
+    edApply();
+}
+
+function edSave() {
+    if (ed.mode !== 'edit' || ed.saving) return;
+    if (samePlace(ed.cur, ed.orig)) return stopEdit(false);
+    if (!net.loggedIn) return edMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
+    ed.saving = true;
+    syncEditor();
+    clearTimeout(ed.liveTimer);
+    net.send({ type: 'obj_move', kind: ed.kind, id: ed.id, ...ed.cur });
+}
+// Cuando vuelve guardado, llega como siempre (item, sign, chart o portal) y se reconstruye.
+for (const [type, key, kind] of [['item', 'item', 'item'], ['sign', 'sign', 'sign'], ['chart', 'chart', 'chart'], ['portal', 'portal', 'portal']]) {
+    net.tap(type, (m) => {
+        if (ed.mode !== 'edit' || ed.kind !== kind || m[key]?.id !== ed.id) return;
+        if (!ed.saving) { ed.orig = readPlace(m[key]); return; }   // otra pestaña tuya lo cambió
+        stopEdit(false);
+        flashHint('Listo: quedó guardado y todos lo ven así');
+    });
+}
+net.on('obj_error', (m) => {
+    if (ed.mode !== 'edit' || m.id !== ed.id) return flashHint(m.message);
+    ed.saving = false;
+    syncEditor();
+    edMessage(m.message);
+});
+// Lo que otra persona está moviendo ahora.
+net.on('obj_live', (m) => {
+    if (!ED[m.kind] || (ed.mode === 'edit' && ed.id === m.id)) return;
+    const e = ED[m.kind].get(m.id);
+    if (!e || ![m.x, m.z].every(Number.isFinite)) return;
+    placePiece(m.kind, e, { x: m.x, z: m.z, ry: m.ry ?? e.data.ry ?? 0, y: m.y || 0, s: m.s || 1 });
+});
+
+// Arrastrar: se toma el objeto y sigue al dedo o al mouse sobre el piso (a su altura).
+function edFloorAt(ev, y) {
+    pointerNdc.set((ev.clientX / window.innerWidth) * 2 - 1, -(ev.clientY / window.innerHeight) * 2 + 1);
+    raycaster.setFromCamera(pointerNdc, camera);
+    edPlane.constant = -y;
+    return raycaster.ray.intersectPlane(edPlane, edPoint);
+}
+function edHit(ev, pieces) {
+    pointerNdc.set((ev.clientX / window.innerWidth) * 2 - 1, -(ev.clientY / window.innerHeight) * 2 + 1);
+    raycaster.setFromCamera(pointerNdc, camera);
+    const hits = raycaster.intersectObjects(pieces, true);
+    for (const h of hits) for (let o = h.object; o; o = o.parent) if (pieces.includes(o)) return { piece: o, point: h.point };
+    return null;
+}
+// En captura, antes que la cámara (OrbitControls) y que el clic que abre los paneles.
+window.addEventListener('pointerdown', (ev) => {
+    if (!ed.mode || ev.target !== canvas) return;
+    if (ed.drag) { ev.stopPropagation(); return; }   // un segundo dedo mientras arrastras
+    if (ed.mode === 'pick') {
+        const hit = edHit(ev, ed.picks.map((p) => p.piece));
+        const pick = ed.picks.find((p) => p.piece === hit?.piece);
+        if (!pick) return;
+        ev.stopPropagation();
+        startEdit(pick.kind, pick.id);
+        return;
+    }
+    const e = ED[ed.kind].get(ed.id);
+    const hit = e && !ed.saving && edHit(ev, [ED[ed.kind].piece(e)]);
+    if (!hit) return;
+    ev.stopPropagation();
+    // Se arrastra sobre un plano horizontal a la altura del punto que tomaste: así lo alto
+    // (una pizarra, un letrero subido) también se puede agarrar de arriba.
+    ed.drag = { pointer: ev.pointerId, planeY: hit.point.y, dx: ed.cur.x - hit.point.x, dz: ed.cur.z - hit.point.z };
+    controls.autoRotate = false;
+    canvas.style.cursor = 'grabbing';
+}, true);
+window.addEventListener('pointermove', (ev) => {
+    if (ed.mode !== 'edit') return;
+    if (!ed.drag) {
+        if (ev.pointerType === 'mouse' && ev.target === canvas && !ev.buttons) {
+            const e = ED[ed.kind].get(ed.id);
+            canvas.style.cursor = e && edHit(ev, [ED[ed.kind].piece(e)]) ? 'grab' : '';
+        }
+        return;
+    }
+    if (ev.pointerId !== ed.drag.pointer) return;
+    const p = edFloorAt(ev, ed.drag.planeY);
+    if (!p || Math.hypot(p.x - player.position.x, p.z - player.position.z) > 60) return;   // casi en el horizonte: se ignora
+    edChange({ x: Math.round((p.x + ed.drag.dx) * 1000) / 1000, z: Math.round((p.z + ed.drag.dz) * 1000) / 1000 });
+}, true);
+const edDragEnd = (ev) => {
+    if (!ed.drag || ev.pointerId !== ed.drag.pointer) return;
+    ed.drag = null;
+    canvas.style.cursor = '';
+};
+window.addEventListener('pointerup', edDragEnd, true);
+window.addEventListener('pointercancel', edDragEnd, true);
+
+// Teclado (PC): Q/E giran, R/F suben y bajan, +/− cambian el tamaño, Enter guarda, Esc cancela.
+window.addEventListener('keydown', (ev) => {
+    if (!ed.mode || ev.target.matches?.('input:not([type=range]), textarea')) return;
+    const k = ev.code;
+    let used = true;
+    if (k === 'Escape') stopEdit();
+    else if (ed.mode !== 'edit') used = false;
+    else if (k === 'KeyQ') edChange({ ry: ed.cur.ry + ED_TURN });
+    else if (k === 'KeyE') edChange({ ry: ed.cur.ry - ED_TURN });
+    else if (k === 'KeyR') edChange({ y: ed.cur.y + 0.25 });
+    else if (k === 'KeyF') edChange({ y: ed.cur.y - 0.25 });
+    else if (k === 'Equal' || k === 'NumpadAdd') edChange({ s: ed.cur.s * 1.1 });
+    else if (k === 'Minus' || k === 'NumpadSubtract') edChange({ s: ed.cur.s / 1.1 });
+    else if (k === 'Enter' || k === 'NumpadEnter') edSave();
+    else used = false;
+    if (used) { ev.preventDefault(); ev.stopImmediatePropagation(); }
+}, true);
+
+edQ('ry').addEventListener('input', (ev) => edChange({ ry: Number(ev.target.value) * Math.PI / 180 }));
+edQ('y').addEventListener('input', (ev) => edChange({ y: Number(ev.target.value) }));
+edQ('s').addEventListener('input', (ev) => edChange({ s: Number(ev.target.value) / 100 }));
+for (const b of editor.querySelectorAll('[data-ed-turn]')) {
+    b.addEventListener('click', () => {
+        // Al girar con botones se alinea a múltiplos de 15°.
+        const steps = Math.round(ed.cur.ry / ED_TURN) + Number(b.dataset.edTurn);
+        edChange({ ry: steps * ED_TURN });
+    });
+}
+edQ('here').addEventListener('click', () => {
+    const d = ED[ed.kind].get(ed.id)?.data;
+    if (!d) return;
+    camera.getWorldDirection(edFwd);
+    const yaw = Math.atan2(edFwd.x, edFwd.z);
+    const dist = ED[ed.kind].dist(d);
+    edChange({ x: player.position.x + Math.sin(yaw) * dist, z: player.position.z + Math.cos(yaw) * dist, ry: yaw + Math.PI });
+});
+edQ('reset').addEventListener('click', () => edChange({ ...ed.orig }));
+edQ('save').addEventListener('click', edSave);
+for (const b of editor.querySelectorAll('[data-ed-cancel]')) b.addEventListener('click', () => stopEdit());
+document.querySelector('[data-edit-pick]').addEventListener('click', startPick);
+
+// Botón «Mover» en los paneles y en las listas de «Tus …» (lo ponen openItem, refreshMyItems, etc.).
+function moveButton(kind, id, className = 'holes__delete holes__move') {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = className;
+    b.textContent = 'Mover';
+    b.addEventListener('click', () => startEdit(kind, id));
+    return b;
+}
+itemView.querySelector('[data-item-move]').addEventListener('click', () => startEdit('item', itemView.dataset.id));
+signView.querySelector('[data-sign-move]').addEventListener('click', () => startEdit('sign', signView.dataset.id));
+chartView.querySelector('[data-chart-move]').addEventListener('click', () => startEdit('chart', chartView.dataset.id));
+
+// Cada cuadro: el marco sigue al objeto; si cambiaste de lugar o el objeto ya no está, se cierra.
+function updateEditor(t) {
+    if (ed.mode === 'pick') {
+        for (const p of ed.picks) updateEdHelper(p.helper, t);
+        return;
+    }
+    if (ed.mode !== 'edit') return;
+    const e = ED[ed.kind].get(ed.id);
+    const scene = ed.kind === 'portal' ? MAIN : e?.data.scene;
+    if (!e || scene !== here.id) { stopEdit(false); return; }
+    const piece = ED[ed.kind].piece(e);
+    if (ed.helpers.userData.piece !== piece) {   // se reconstruyó (otra pestaña): se vuelve a marcar
+        dropEdHelper(ed.helpers);
+        ed.helpers = makeEdHelper(piece, 0x00e5ff, 0.95);
+        here.scene.add(ed.helpers);
+    }
+    updateEdHelper(ed.helpers, t);
+}
+const editingPortal = () => ed.mode === 'edit' && ed.kind === 'portal';
 
 // ---------- Personaje IA ----------
 // Cada persona puede soltar un personaje con nombre y personalidad que camina, conversa y salta
@@ -5588,6 +6010,7 @@ renderer.setAnimationLoop(() => {
     updateRemotes(dt);
     updateCharts(dt);
     updateItems(dt, t);
+    updateEditor(t);
     game.update(dt, t);
     checkHoles();
     dest.update(t);
