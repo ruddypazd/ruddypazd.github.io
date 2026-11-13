@@ -749,3 +749,59 @@ ul.stats__reqs:empty::before { content: attr(data-empty); font-size: .88rem; col
 .stats__table.stats__table--data th:first-child, .stats__table.stats__table--data td:first-child { white-space: nowrap; overflow-wrap: normal; }
 .stats__legend { display: flex; flex-wrap: wrap; justify-content: center; gap: .3rem .8rem; margin-bottom: .3rem; }
 .stats__legend i { display: inline-block; width: .65rem; height: .65rem; border-radius: 2px; margin-right: .3rem; vertical-align: baseline; }
+
+/* ---------- Pizarra (ítem) en pantalla completa ---------- */
+.board-view {
+    position: fixed; inset: 0; z-index: 8; background: #2a2f3d; touch-action: none;
+    overscroll-behavior: contain; user-select: none; -webkit-user-select: none;
+}
+.board-view[hidden] { display: none; }
+.board-view__canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; touch-action: none; }
+.board-view__canvas.is-hand { cursor: grab; }
+.board-view__canvas.is-panning { cursor: grabbing; }
+.board-view__top {
+    position: absolute; top: max(.6rem, env(safe-area-inset-top)); left: .6rem; right: .6rem;
+    display: flex; align-items: center; justify-content: space-between; gap: .8rem; pointer-events: none;
+}
+.board-view__top > * { pointer-events: auto; }
+.board-view__title {
+    min-width: 0; padding: .45rem .9rem; border-radius: 14px; background: var(--panel);
+    border: 1px solid var(--panel-brd); backdrop-filter: blur(12px); font-family: var(--mono);
+}
+.board-view__title h2 { font: 600 1rem var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.board-view__title p { color: var(--muted); font-size: .72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.board-view__tools {
+    position: absolute; left: 50%; bottom: max(.7rem, env(safe-area-inset-bottom)); transform: translateX(-50%);
+    width: max-content; max-width: calc(100% - 1rem); display: flex; flex-wrap: wrap; justify-content: center; gap: .4rem;
+    padding: .45rem; border-radius: 18px; background: var(--panel); border: 1px solid var(--panel-brd);
+    backdrop-filter: blur(14px); box-shadow: 0 8px 30px rgba(0, 0, 0, .4);
+}
+.board-view__group { display: flex; align-items: center; gap: .25rem; }
+.board-view__group + .board-view__group { padding-left: .4rem; border-left: 1px solid var(--panel-brd); }
+.board-view__btn {
+    min-width: 2.3rem; height: 2.3rem; padding: 0 .5rem; border-radius: 12px; cursor: pointer;
+    border: 1px solid transparent; background: rgba(255, 255, 255, .06); color: var(--text);
+    font: 500 1.05rem var(--mono); display: grid; place-items: center;
+}
+.board-view__btn:hover { border-color: rgba(0, 229, 255, .45); }
+.board-view__btn[aria-pressed="true"] { border-color: var(--cyan); background: rgba(0, 229, 255, .16); box-shadow: 0 0 12px rgba(0, 229, 255, .3); }
+.board-view__btn[hidden] { display: none; }
+.board-view__zoom { font-size: .74rem; }
+.board-view__btn[data-confirm] { border-color: var(--pink); color: var(--pink); font-size: .72rem; }
+.board-view__swatch { width: 1.25rem; height: 1.25rem; border-radius: 50%; background: var(--c); border: 2px solid rgba(255, 255, 255, .85); }
+.board-view__swatch--eraser { background: #f4f3ee; border-color: #aaa; position: relative; }
+.board-view__swatch--eraser::after { content: ''; position: absolute; inset: 45% -2px auto; height: 2px; background: var(--pink); transform: rotate(-35deg); }
+.board-view__dot { border-radius: 50%; background: var(--text); }
+.board-view__msg {
+    position: absolute; left: 50%; top: 4.6rem; transform: translateX(-50%); max-width: calc(100% - 2rem);
+    padding: .5rem .9rem; border-radius: 12px; background: rgba(255, 61, 166, .9); color: #fff; font: .8rem var(--mono); text-align: center;
+}
+.board-view__msg[hidden] { display: none; }
+/* En el celular: los colores en una fila y el resto debajo. */
+@media (max-width: 560px) {
+    .board-view__btn { min-width: 2.05rem; height: 2.15rem; padding: 0 .3rem; }
+    .board-view__group { gap: .15rem; }
+    .board-view__group + .board-view__group { padding-left: 0; border-left: 0; }
+    .board-view__tools { gap: .3rem .5rem; padding: .35rem; }
+    [data-board-colors] { flex-basis: 100%; justify-content: center; }
+}

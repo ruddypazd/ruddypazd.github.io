@@ -608,6 +608,7 @@ const KEYMAP = {
 };
 window.addEventListener('keydown', (e) => {
     if (e.target.matches?.('input, textarea')) return;  // escribiendo: las teclas son del texto
+    if (document.body.classList.contains('board-open')) return;   // la pizarra usa sus propias teclas
     if (e.code === 'Enter' || e.code === 'NumpadEnter') { e.preventDefault(); openChat(); return; }
     if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) jump(); return; }
     // R alterna correr sin mantener Shift: muchos teclados no registran
@@ -2257,7 +2258,8 @@ net.on('sign_error', (m) => {
 
 // ---------- Ítems ----------
 // Objetos que cualquiera pone desde Ajustes → Ítems: la pelota, pilares y cubos neón, el tótem de
-// Medical Center, el letrero de video con música, una pared de museo y la ciudad cyberpunk. El
+// Medical Center, el letrero de video con música, una pared de museo, una pizarra para escribir
+// entre todos y la ciudad cyberpunk. El
 // servidor los guarda con su dueño (solo él los quita) y la escena donde están.
 const ITEM_CATALOG = [
     { kind: 'ball', icon: '⚽', name: 'Pelota', desc: 'Rueda y rebota. Todos la pueden patear.', dist: 1.6 },
@@ -2266,6 +2268,7 @@ const ITEM_CATALOG = [
     { kind: 'totem', icon: '🏥', name: 'Tótem Medical Center', desc: 'Pantalla táctil que abre el tótem de la clínica.', dist: 2 },
     { kind: 'video', icon: '📺', name: 'Letrero de video', desc: 'Pantalla grande con música de YouTube.', dist: 6.5, youtube: true },
     { kind: 'wall', icon: '🖼', name: 'Pared de museo', desc: 'Pared con focos para poner letreros delante.', dist: 4 },
+    { kind: 'board', icon: '🖍', name: 'Pizarra', desc: 'Pizarra grande: todos escriben y dibujan, y se ve en vivo.', dist: 5.5 },
     { kind: 'city', icon: '🌃', name: 'Ciudad cyberpunk', desc: 'Rascacielos y autos voladores alrededor de todo el lugar. Una por lugar.', dist: 0 },
 ];
 const itemKind = (k) => ITEM_CATALOG.find((c) => c.kind === k);
@@ -2660,7 +2663,534 @@ function buildCity() {
     return { piece: new THREE.Group(), hits: [], obstacles: [] };
 }
 
-const BUILDERS = { ball: buildBall, pillar: buildPillar, cube: buildCube, totem: buildTotem, video: buildVideo, wall: buildWall, city: buildCity };
+// ---------- Pizarra ----------
+// Cualquiera escribe o dibuja. En el mundo es una pizarra blanca con patas; al tocarla se abre en
+// pantalla completa, con zoom (rueda, botones o dos dedos) y para seguir escribiendo. Los trazos
+// van al servidor en pedacitos (~15 por segundo) y los demás que están en la misma escena los
+// ven aparecer en vivo, en la pizarra del mundo y en la de pantalla completa.
+const BOARD_W = 2400, BOARD_H = 1500;           // coordenadas de los trazos (las mismas del servidor)
+const BOARD_COLORS = ['#1b1f2a', '#2563eb', '#e11d48', '#16a34a', '#f97316', '#9333ea', '#0891b2'];
+const BOARD_ERASER = 7;
+const BOARD_PAPER = '#f4f3ee';
+const BOARD_WIDTHS = [3, 8, 22];                 // en píxeles de pantalla: con zoom se escribe más fino
+const BOARD_MAX_POINTS = 1900;                   // un trazo más largo sigue en otro (el servidor corta en 2000)
+const BOARD_SEND_MS = 66;
+const BW3 = 6, BH3 = BW3 * BOARD_H / BOARD_W, BOARD_BOTTOM = 0.9;   // tamaño en el mundo (metros)
+const BOARD_TEX_W = 1536, BOARD_TEX_H = BOARD_TEX_W * BOARD_H / BOARD_W;
+const boardFrameMat = sharedMat(new THREE.MeshStandardMaterial({ color: 0xb8c0cc, roughness: 0.35, metalness: 0.8 }));
+
+const strokeKey = (a, s) => `${a}:${s}`;
+// Dibuja un trazo (o solo sus puntos desde `from`) con escala k y desplazamiento (ox, oy).
+function paintStroke(ctx, st, k, ox, oy, from = 0) {
+    const p = st.p, n = p.length / 2;
+    if (!n) return;
+    const color = st.c === BOARD_ERASER ? BOARD_PAPER : (BOARD_COLORS[st.c] || BOARD_COLORS[0]);
+    const lw = Math.max(1, st.w * k);
+    if (n === 1) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(p[0] * k + ox, p[1] * k + oy, lw / 2, 0, Math.PI * 2);
+        ctx.fill();
+        return;
+    }
+    const start = Math.max(0, from - 1);
+    if (start >= n - 1) return;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(p[start * 2] * k + ox, p[start * 2 + 1] * k + oy);
+    for (let i = start + 1; i < n; i++) ctx.lineTo(p[i * 2] * k + ox, p[i * 2 + 1] * k + oy);
+    ctx.stroke();
+}
+
+function drawBoardTexture(e) {
+    const b = e.board, c = b.ctx;
+    const k = BOARD_TEX_W / BOARD_W;
+    c.fillStyle = BOARD_PAPER;
+    c.fillRect(0, 0, BOARD_TEX_W, BOARD_TEX_H);
+    if (!b.strokes.length) {
+        c.fillStyle = 'rgba(40, 50, 70, .35)';
+        c.textAlign = 'center';
+        c.font = 'bold 64px "Space Grotesk", sans-serif';
+        c.fillText(b.loaded ? 'Toca para escribir ✍' : 'Cargando…', BOARD_TEX_W / 2, BOARD_TEX_H / 2, BOARD_TEX_W - 80);
+        c.font = '34px "JetBrains Mono", monospace';
+        c.fillText(`Pizarra de ${ownerOf(e.data)} · todos la ven en vivo`, BOARD_TEX_W / 2, BOARD_TEX_H / 2 + 70, BOARD_TEX_W - 80);
+    }
+    for (const st of b.strokes) paintStroke(c, st, k, 0, 0);
+    b.tex.needsUpdate = true;
+}
+
+function buildBoard(it) {
+    const piece = new THREE.Group();
+    const centerY = BOARD_BOTTOM + BH3 / 2;
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(BW3 + 0.16, BH3 + 0.16, 0.08), boardFrameMat);
+    frame.position.set(0, centerY, -0.05);
+    frame.castShadow = true;
+    const cv = document.createElement('canvas');
+    cv.width = BOARD_TEX_W; cv.height = BOARD_TEX_H;
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    const surface = new THREE.Mesh(new THREE.PlaneGeometry(BW3, BH3), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+    surface.position.set(0, centerY, 0);
+    surface.userData = { hint: `Pizarra de ${ownerOf(it)}: toca para escribir ✍`, action: () => openBoard(it.id) };
+    const tray = new THREE.Mesh(new THREE.BoxGeometry(BW3 * 0.6, 0.05, 0.16), boardFrameMat);
+    tray.position.set(0, BOARD_BOTTOM - 0.06, 0.06);
+    piece.add(frame, surface, tray);
+    for (const side of [-1, 1]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, BOARD_BOTTOM + 0.3, 0.08), boardFrameMat);
+        leg.position.set(side * (BW3 / 2 - 0.5), (BOARD_BOTTOM + 0.3) / 2, -0.12);
+        const foot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.9), itemPoleMat);
+        foot.position.set(side * (BW3 / 2 - 0.5), 0.025, -0.12);
+        piece.add(leg, foot);
+    }
+    piece.position.set(it.x, 0, it.z);
+    piece.rotation.y = it.ry || 0;
+    const built = {
+        piece, hits: [surface, frame], ownActions: [surface],
+        board: { strokes: [], keys: new Map(), loaded: false, requested: false, ctx: cv.getContext('2d'), tex, writers: new Map() },
+        obstacles: lineObstacles(piece, BW3 - 1, 0.4, -0.12).filter((_, i, a) => i === 0 || i === a.length - 1),
+    };
+    built.data = it;
+    drawBoardTexture(built);
+    return built;
+}
+
+// Pide los trazos de las pizarras de la escena donde estás (las de otras escenas no reciben
+// los trazos en vivo, así que al volver se piden otra vez).
+function requestBoards() {
+    for (const e of items.values()) {
+        if (!e.board) continue;
+        if (e.data.scene !== here.id) { e.board.requested = false; continue; }
+        if (!e.board.requested && net.loggedIn) {
+            e.board.requested = true;
+            net.send({ type: 'board_get', id: e.data.id });
+        }
+    }
+}
+
+// Vista de pantalla completa.
+const boardView = document.querySelector('[data-board-view]');
+const bvCanvas = boardView.querySelector('[data-board-canvas]');
+const bvCtx = bvCanvas.getContext('2d');
+const bvMsg = boardView.querySelector('[data-board-msg]');
+const bvSub = boardView.querySelector('[data-board-sub]');
+const bvClear = boardView.querySelector('[data-board-clear]');
+const bvHand = boardView.querySelector('[data-board-hand]');
+const bvZoomLabel = boardView.querySelector('[data-board-fit]');
+const bv = {
+    id: null, s: 1, ox: 0, oy: 0, fit: 1, w: 0, h: 0, dpr: 1, color: 0, width: 1, hand: false,
+    pointers: new Map(), mode: null, stroke: null, sent: 0, sendTimer: 0, pending: null, pan: null, pinch: null,
+    space: false, dirty: false, msgTimer: 0,
+};
+const bvEntry = () => (bv.id ? items.get(bv.id) : null);
+
+function boardMessage(text) {
+    bvMsg.textContent = text;
+    bvMsg.hidden = !text;
+    clearTimeout(bv.msgTimer);
+    if (text) bv.msgTimer = setTimeout(() => { bvMsg.hidden = true; }, 4500);
+}
+
+function bvResize() {
+    bv.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = boardView.clientWidth, h = boardView.clientHeight;
+    // Mantiene el mismo punto de la pizarra en el centro.
+    if (bv.w) { bv.ox += (w - bv.w) / 2; bv.oy += (h - bv.h) / 2; }
+    bv.w = w; bv.h = h;
+    bvCanvas.width = Math.round(w * bv.dpr);
+    bvCanvas.height = Math.round(h * bv.dpr);
+    const top = 64, bottom = w < 560 ? 130 : 80;
+    bv.fit = Math.min((w - 24) / BOARD_W, (h - top - bottom) / BOARD_H);
+    bvRedraw();
+}
+function bvFit() {
+    bv.s = bv.fit;
+    const top = 64, bottom = bv.w < 560 ? 130 : 80;
+    bv.ox = (bv.w - BOARD_W * bv.s) / 2;
+    bv.oy = top + (bv.h - top - bottom - BOARD_H * bv.s) / 2;
+    bvRedraw();
+}
+function bvZoomAt(factor, cx, cy) {
+    const s = Math.min(Math.max(bv.s * factor, bv.fit * 0.5), bv.fit * 16);
+    const bx = (cx - bv.ox) / bv.s, by = (cy - bv.oy) / bv.s;
+    bv.s = s;
+    bv.ox = cx - bx * s;
+    bv.oy = cy - by * s;
+    bvClamp();
+    bvRedraw();
+}
+// Que la pizarra no se pierda de la pantalla al moverla.
+function bvClamp() {
+    const m = 80;
+    bv.ox = Math.min(Math.max(bv.ox, m - BOARD_W * bv.s), bv.w - m);
+    bv.oy = Math.min(Math.max(bv.oy, m - BOARD_H * bv.s), bv.h - m);
+}
+function bvClip(fn) {
+    bvCtx.save();
+    bvCtx.setTransform(bv.dpr, 0, 0, bv.dpr, 0, 0);
+    bvCtx.beginPath();
+    bvCtx.rect(bv.ox, bv.oy, BOARD_W * bv.s, BOARD_H * bv.s);
+    bvCtx.clip();
+    fn();
+    bvCtx.restore();
+}
+function bvRedraw() {
+    const e = bvEntry();
+    if (!e) return;
+    bvCtx.setTransform(bv.dpr, 0, 0, bv.dpr, 0, 0);
+    bvCtx.fillStyle = '#2a2f3d';
+    bvCtx.fillRect(0, 0, bv.w, bv.h);
+    bvCtx.save();
+    bvCtx.shadowColor = 'rgba(0, 0, 0, .45)';
+    bvCtx.shadowBlur = 24;
+    bvCtx.fillStyle = BOARD_PAPER;
+    bvCtx.fillRect(bv.ox, bv.oy, BOARD_W * bv.s, BOARD_H * bv.s);
+    bvCtx.restore();
+    bvClip(() => {
+        if (!e.board.strokes.length) {
+            bvCtx.fillStyle = 'rgba(40, 50, 70, .3)';
+            bvCtx.textAlign = 'center';
+            bvCtx.font = `bold ${Math.max(14, 64 * bv.s)}px "Space Grotesk", sans-serif`;
+            bvCtx.fillText(e.board.loaded ? 'Escribe o dibuja aquí ✍' : 'Cargando…', bv.ox + BOARD_W * bv.s / 2, bv.oy + BOARD_H * bv.s / 2);
+        }
+        for (const st of e.board.strokes) paintStroke(bvCtx, st, bv.s, bv.ox, bv.oy);
+    });
+    bvZoomLabel.textContent = `${Math.round((bv.s / bv.fit) * 100)}%`;
+}
+// Un trazo nuevo o que creció: se dibuja solo lo nuevo en el mundo y, si está abierta, en la vista.
+function paintNew(e, st, from) {
+    paintStroke(e.board.ctx, st, BOARD_TEX_W / BOARD_W, 0, 0, from);
+    e.board.tex.needsUpdate = true;
+    if (bv.id === e.data.id && !boardView.hidden) {
+        if (e.board.strokes.length === 1 && from === 0) return bvRedraw();   // se va el texto de «escribe aquí»
+        bvClip(() => paintStroke(bvCtx, st, bv.s, bv.ox, bv.oy, from));
+    }
+}
+function boardChanged(e) {
+    drawBoardTexture(e);
+    if (bv.id === e.data.id && !boardView.hidden) bvRedraw();
+}
+
+function updateWriters() {
+    const e = bvEntry();
+    if (!e) return;
+    const now = performance.now();
+    const names = [];
+    for (const [id, at] of e.board.writers) {
+        if (now - at > 2500) e.board.writers.delete(id);
+        else names.push(remotes.get(id)?.name || 'Alguien');
+    }
+    bvSub.textContent = names.length
+        ? `✍ ${names.slice(0, 3).join(', ')}${names.length > 3 ? ` y ${names.length - 3} más` : ''} escribiendo ahora`
+        : `Puesta por ${ownerOf(e.data)} · todos ven lo que escribes en vivo`;
+}
+setInterval(() => { if (!boardView.hidden) updateWriters(); }, 1000);
+
+function openBoard(id) {
+    const e = items.get(id);
+    if (!e?.board) return;
+    if (!getProfile()) return showLogin();
+    bv.id = id;
+    boardView.querySelector('[data-board-title]').textContent = `🖍 Pizarra de ${ownerOf(e.data)}`;
+    bvClear.hidden = !net.myId || e.data.owner_id !== net.myId;
+    delete bvClear.dataset.confirm;
+    bvClear.textContent = '🗑';
+    boardMessage('');
+    keys.clear();
+    document.body.classList.add('board-open');
+    boardView.hidden = false;
+    bv.w = 0;
+    bvResize();
+    bvFit();
+    updateWriters();
+    requestBoards();
+}
+function closeBoard() {
+    if (boardView.hidden) return;
+    bvEndStroke();
+    bv.pointers.clear();
+    bv.mode = null;
+    boardView.hidden = true;
+    bv.id = null;
+    document.body.classList.remove('board-open');
+}
+boardView.querySelector('[data-board-close]').addEventListener('click', closeBoard);
+window.addEventListener('resize', () => { if (!boardView.hidden) bvResize(); });
+
+// Herramientas: colores (el último es el borrador), grosores, mano, zoom, deshacer y borrar todo.
+const bvColors = boardView.querySelector('[data-board-colors]');
+const bvWidths = boardView.querySelector('[data-board-widths]');
+function toolButton(label, html, onClick) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'board-view__btn';
+    b.title = label;
+    b.setAttribute('aria-label', label);
+    b.innerHTML = html;
+    b.addEventListener('click', onClick);
+    return b;
+}
+const COLOR_NAMES = ['Negro', 'Azul', 'Rojo', 'Verde', 'Naranja', 'Violeta', 'Celeste'];
+bvColors.append(...BOARD_COLORS.map((c, i) => toolButton(COLOR_NAMES[i], `<span class="board-view__swatch" style="--c:${c}"></span>`, () => setBoardTool(i))),
+    toolButton('Borrador', '<span class="board-view__swatch board-view__swatch--eraser"></span>', () => setBoardTool(BOARD_ERASER)));
+bvWidths.append(...BOARD_WIDTHS.map((px, i) => toolButton(['Fino', 'Medio', 'Grueso'][i], `<span class="board-view__dot" style="width:${4 + i * 5}px;height:${4 + i * 5}px"></span>`, () => setBoardWidth(i))));
+function setBoardTool(c) {
+    bv.color = c;
+    bv.hand = false;
+    syncBoardTools();
+}
+function setBoardWidth(i) {
+    bv.width = i;
+    bv.hand = false;
+    syncBoardTools();
+}
+function syncBoardTools() {
+    [...bvColors.children].forEach((b, i) => b.setAttribute('aria-pressed', String(!bv.hand && (i === BOARD_COLORS.length ? bv.color === BOARD_ERASER : bv.color === i))));
+    [...bvWidths.children].forEach((b, i) => b.setAttribute('aria-pressed', String(i === bv.width)));
+    bvHand.setAttribute('aria-pressed', String(bv.hand));
+    bvCanvas.classList.toggle('is-hand', bv.hand || bv.space);
+}
+syncBoardTools();
+bvHand.addEventListener('click', () => { bv.hand = !bv.hand; syncBoardTools(); });
+boardView.querySelectorAll('[data-board-zoom]').forEach((b) => b.addEventListener('click', () => {
+    bvZoomAt(Number(b.dataset.boardZoom) > 0 ? 1.4 : 1 / 1.4, bv.w / 2, bv.h / 2);
+}));
+boardView.querySelector('[data-board-fit]').addEventListener('click', bvFit);
+boardView.querySelector('[data-board-undo]').addEventListener('click', () => {
+    const e = bvEntry();
+    if (!e) return;
+    if (!e.board.strokes.some((st) => st.a === net.myId)) return boardMessage('No tienes trazos para deshacer en esta pizarra.');
+    net.send({ type: 'board_undo', id: bv.id });
+});
+bvClear.addEventListener('click', () => {
+    if (!bvClear.dataset.confirm) { bvClear.dataset.confirm = '1'; bvClear.textContent = '¿Borrar todo?'; return; }
+    delete bvClear.dataset.confirm;
+    bvClear.textContent = '🗑';
+    net.send({ type: 'board_clear', id: bv.id });
+});
+
+// Dibujar.
+const toBoard = (ev) => {
+    const r = bvCanvas.getBoundingClientRect();
+    return [
+        Math.round(Math.min(Math.max((ev.clientX - r.left - bv.ox) / bv.s, 0), BOARD_W)),
+        Math.round(Math.min(Math.max((ev.clientY - r.top - bv.oy) / bv.s, 0), BOARD_H)),
+    ];
+};
+function bvBeginStroke(x, y) {
+    const e = bvEntry();
+    if (!e) return;
+    const w = Math.round(Math.min(160, Math.max(1, BOARD_WIDTHS[bv.width] * (bv.color === BOARD_ERASER ? 3 : 1) / bv.s)));
+    const st = { a: net.myId, s: Math.random().toString(36).slice(2, 10) || 'x', c: bv.color, w, p: [x, y] };
+    e.board.strokes.push(st);
+    e.board.keys.set(strokeKey(st.a, st.s), st);
+    bv.stroke = st;
+    bv.sent = 0;
+    paintNew(e, st, 0);
+    clearInterval(bv.sendTimer);
+    bv.sendTimer = setInterval(() => bvSend(false), BOARD_SEND_MS);
+}
+function bvAddPoint(x, y) {
+    const st = bv.stroke, e = bvEntry();
+    if (!st || !e) return;
+    const n = st.p.length / 2;
+    const lx = st.p[st.p.length - 2], ly = st.p[st.p.length - 1];
+    if (Math.hypot(x - lx, y - ly) < Math.max(1, 1.2 / bv.s)) return;
+    st.p.push(x, y);
+    paintNew(e, st, n);
+    if (st.p.length / 2 >= BOARD_MAX_POINTS) {
+        bvEndStroke();
+        bvBeginStroke(x, y);
+    }
+}
+function bvSend(end) {
+    const st = bv.stroke;
+    if (!st || !bv.id) return;
+    const n = st.p.length / 2;
+    if (n === bv.sent && !end) return;
+    net.send({ type: 'board_draw', id: bv.id, s: st.s, c: st.c, w: st.w, p: st.p.slice(bv.sent * 2), end: end ? 1 : undefined });
+    bv.sent = n;
+}
+function bvEndStroke() {
+    if (bv.pending) bv.pending = null;
+    if (!bv.stroke) return;
+    bvSend(true);
+    clearInterval(bv.sendTimer);
+    bv.stroke = null;
+}
+
+// En pantallas táctiles el trazo espera un instante: si llega un segundo dedo es zoom, no escritura.
+function bvStartDraw(ev) {
+    if (!net.loggedIn) { boardMessage('Sin conexión con el servidor. Prueba otra vez en un momento.'); return; }
+    const [x, y] = toBoard(ev);
+    if (ev.pointerType === 'touch') {
+        bv.pending = { x, y, sx: ev.clientX, sy: ev.clientY, t: performance.now(), pts: [] };
+    } else bvBeginStroke(x, y);
+    bv.mode = 'draw';
+}
+function bvFlushPending(force) {
+    const pd = bv.pending;
+    if (!pd) return;
+    if (!force && performance.now() - pd.t < 90) return;
+    bv.pending = null;
+    bvBeginStroke(pd.x, pd.y);
+    for (let i = 0; i < pd.pts.length; i += 2) bvAddPoint(pd.pts[i], pd.pts[i + 1]);
+}
+
+bvCanvas.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault();
+    bvCanvas.setPointerCapture?.(ev.pointerId);
+    bv.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (bv.pointers.size === 2) {
+        // Dos dedos: zoom y mover. El trazo que esperaba se descarta; uno ya empezado termina.
+        bv.pending = null;
+        bvEndStroke();
+        const [a, b] = [...bv.pointers.values()];
+        bv.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, s: bv.s, ox: bv.ox, oy: bv.oy };
+        bv.mode = 'pinch';
+        return;
+    }
+    if (bv.pointers.size > 2) return;
+    if (bv.hand || bv.space || ev.button === 1 || ev.button === 2) {
+        bv.pan = { x: ev.clientX, y: ev.clientY, ox: bv.ox, oy: bv.oy };
+        bv.mode = 'pan';
+        bvCanvas.classList.add('is-panning');
+        return;
+    }
+    if (ev.button === 0) bvStartDraw(ev);
+});
+bvCanvas.addEventListener('pointermove', (ev) => {
+    if (!bv.pointers.has(ev.pointerId)) return;
+    bv.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (bv.mode === 'pinch' && bv.pointers.size >= 2) {
+        const [a, b] = [...bv.pointers.values()];
+        const p = bv.pinch;
+        const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        const s = Math.min(Math.max(p.s * d / p.d, bv.fit * 0.5), bv.fit * 16);
+        // El punto que estaba bajo los dedos sigue bajo los dedos.
+        bv.ox = mx - (p.mx - p.ox) * (s / p.s);
+        bv.oy = my - (p.my - p.oy) * (s / p.s);
+        bv.s = s;
+        bvClamp();
+        bvRedraw();
+    } else if (bv.mode === 'pan') {
+        bv.ox = bv.pan.ox + ev.clientX - bv.pan.x;
+        bv.oy = bv.pan.oy + ev.clientY - bv.pan.y;
+        bvClamp();
+        bvRedraw();
+    } else if (bv.mode === 'draw') {
+        const evs = ev.getCoalescedEvents?.() || [ev];
+        for (const ce of (evs.length ? evs : [ev])) {
+            const [x, y] = toBoard(ce);
+            if (bv.pending) {
+                bv.pending.pts.push(x, y);
+                if (Math.hypot(ce.clientX - bv.pending.sx, ce.clientY - bv.pending.sy) > 12) bvFlushPending(true);
+                else bvFlushPending(false);
+            } else bvAddPoint(x, y);
+        }
+    }
+});
+function bvPointerEnd(ev) {
+    if (!bv.pointers.delete(ev.pointerId)) return;
+    if (bv.mode === 'draw') {
+        if (bv.pending) bvFlushPending(true);   // un toque corto es un punto
+        bvEndStroke();
+    }
+    if (bv.pointers.size === 0) {
+        bv.mode = null;
+        bvCanvas.classList.remove('is-panning');
+    } else if (bv.mode === 'pinch') bv.mode = 'wait';   // queda un dedo: no escribe hasta soltarlo
+}
+bvCanvas.addEventListener('pointerup', bvPointerEnd);
+bvCanvas.addEventListener('pointercancel', (ev) => { bv.pending = null; bvPointerEnd(ev); });
+bvCanvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
+bvCanvas.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    const r = bvCanvas.getBoundingClientRect();
+    bvZoomAt(Math.exp(-ev.deltaY * (ev.ctrlKey ? 0.01 : 0.0015)), ev.clientX - r.left, ev.clientY - r.top);
+}, { passive: false });
+// Teclado: Esc cierra, espacio mantenido mueve la pizarra, Ctrl+Z deshace, +/- hacen zoom.
+window.addEventListener('keydown', (ev) => {
+    if (boardView.hidden) return;
+    if (ev.key === 'Escape') { closeBoard(); return; }
+    if (ev.code === 'Space') { bv.space = true; syncBoardTools(); }
+    else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') boardView.querySelector('[data-board-undo]').click();
+    else if (ev.key === '+' || ev.key === '=') bvZoomAt(1.4, bv.w / 2, bv.h / 2);
+    else if (ev.key === '-') bvZoomAt(1 / 1.4, bv.w / 2, bv.h / 2);
+    else if (ev.key === '0') bvFit();
+    else return;
+    ev.preventDefault();
+}, true);
+window.addEventListener('keyup', (ev) => { if (ev.code === 'Space' && bv.space) { bv.space = false; syncBoardTools(); } });
+
+// Lo que llega del servidor.
+net.on('board', (m) => {
+    const e = items.get(m.id);
+    if (!e?.board || !Array.isArray(m.strokes)) return;
+    const b = e.board;
+    b.strokes = m.strokes.filter((st) => Array.isArray(st?.p));
+    // El trazo que estoy haciendo ahora sigue (lo que falta mandar llega después).
+    if (bv.id === m.id && bv.stroke && !b.strokes.some((st) => st.a === bv.stroke.a && st.s === bv.stroke.s)) b.strokes.push(bv.stroke);
+    b.keys = new Map(b.strokes.map((st) => [strokeKey(st.a, st.s), st]));
+    b.loaded = true;
+    boardChanged(e);
+});
+net.on('board_draw', (m) => {
+    const e = items.get(m.id);
+    if (!e?.board || !Array.isArray(m.p)) return;
+    const b = e.board;
+    const key = strokeKey(m.a, m.s);
+    let st = b.keys.get(key);
+    if (!st) {
+        st = { a: m.a, s: m.s, c: m.c ?? 0, w: m.w ?? 4, p: [] };
+        b.strokes.push(st);
+        b.keys.set(key, st);
+    }
+    const from = st.p.length / 2;
+    st.p.push(...m.p);
+    b.writers.set(m.a, performance.now());
+    if (b.strokes.length === 1 && from === 0) boardChanged(e);   // se va el texto de «toca para escribir»
+    else paintNew(e, st, from);
+    if (bv.id === m.id && !boardView.hidden && bvSub.textContent[0] !== '✍') updateWriters();
+});
+net.on('board_undo', (m) => {
+    const e = items.get(m.id);
+    if (!e?.board) return;
+    const st = e.board.keys.get(strokeKey(m.a, m.s));
+    if (!st) return;
+    e.board.keys.delete(strokeKey(m.a, m.s));
+    e.board.strokes.splice(e.board.strokes.indexOf(st), 1);
+    if (bv.stroke === st) { clearInterval(bv.sendTimer); bv.stroke = null; }
+    boardChanged(e);
+});
+net.on('board_clear', (m) => {
+    const e = items.get(m.id);
+    if (!e?.board) return;
+    e.board.strokes = [];
+    e.board.keys.clear();
+    if (bv.id === m.id && bv.stroke) { clearInterval(bv.sendTimer); bv.stroke = null; }
+    boardChanged(e);
+});
+net.on('board_error', (m) => {
+    if (!boardView.hidden) boardMessage(m.message);
+    else flashHint(m.message);
+    // El trazo que el servidor no aceptó se quita.
+    const e = items.get(m.id);
+    if (e?.board && bv.stroke && bv.id === m.id && m.s === bv.stroke.s) {
+        const st = bv.stroke;
+        clearInterval(bv.sendTimer);
+        bv.stroke = null;
+        e.board.keys.delete(strokeKey(st.a, st.s));
+        e.board.strokes = e.board.strokes.filter((x) => x !== st);
+        boardChanged(e);
+    }
+});
+
+const BUILDERS = { ball: buildBall, pillar: buildPillar, cube: buildCube, totem: buildTotem, video: buildVideo, wall: buildWall, board: buildBoard, city: buildCity };
 
 function addItem(it) {
     if (!BUILDERS[it.kind]) return;
@@ -2684,6 +3214,7 @@ function removeItem(id, quiet) {
     const e = items.get(id);
     if (!e) return;
     if (playingVideo?.id === id) stopVideo();
+    if (bv.id === id) closeBoard();
     e.piece.parent?.remove(e.piece);
     disposePiece(e.piece);
     for (const hit of e.hits) clickable.splice(clickable.indexOf(hit), 1);
@@ -2701,6 +3232,8 @@ function showItemsHere() {
         if (shown) itemObstacles.push(...e.obstacles);
     }
     if (playingVideo && items.get(playingVideo.id)?.data.scene !== here.id) stopVideo();
+    if (bv.id && items.get(bv.id)?.data.scene !== here.id) closeBoard();
+    requestBoards();
     updateCity();
 }
 
@@ -4653,7 +5186,8 @@ const quality = (() => {
 renderer.setAnimationLoop(() => {
     const rawDt = clock.getDelta();
     const dt = Math.min(rawDt, 0.05);
-    quality.tick(rawDt);
+    const boardOpen = document.body.classList.contains('board-open');
+    if (!boardOpen) quality.tick(rawDt);
     const t = clock.elapsedTime;
     if (mixer) mixer.update(dt);
     if (placeholder) placeholder.position.y = Math.sin(t * 1.6) * 0.03;
@@ -4678,7 +5212,8 @@ renderer.setAnimationLoop(() => {
     key.position.copy(player.position).add(KEY_OFFSET);
     key.target.position.copy(player.position);
     controls.update();
-    wormholes.render(here.scene, camera, dt, t, otherSide);
+    // Con la pizarra en pantalla completa el mundo sigue vivo pero no se dibuja (ahorra batería).
+    if (!boardOpen) wormholes.render(here.scene, camera, dt, t, otherSide);
     updateBubble();
     updateHoleLabels();
 });
