@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=70">
+    <link rel="stylesheet" href="style.css?v=71">
     <script type="importmap">
     {
         "imports": {
@@ -601,9 +601,10 @@
         <div class="board-view__tools" role="toolbar" aria-label="Herramientas de la pizarra">
             <div class="board-view__group" data-board-colors></div>
             <div class="board-view__group">
-                <button type="button" class="board-view__btn" data-board-select aria-pressed="false" title="Mover y agrandar fotos (V)">↖</button>
+                <button type="button" class="board-view__btn" data-board-select aria-pressed="false" title="Mover y agrandar fotos y textos (V)">↖</button>
+                <button type="button" class="board-view__btn board-view__t" data-board-texttool aria-pressed="false" title="Escribir texto (T)">T</button>
                 <button type="button" class="board-view__btn" data-board-photo title="Poner una foto (también puedes arrastrarla o pegarla)">🖼</button>
-                <button type="button" class="board-view__btn board-view__btn--danger" data-board-img-delete hidden title="Quitar la foto elegida (Supr)" aria-label="Quitar la foto elegida">✕</button>
+                <button type="button" class="board-view__btn board-view__btn--danger" data-board-img-delete hidden title="Quitar la foto o el texto elegido (Supr)" aria-label="Quitar lo elegido">✕</button>
                 <input type="file" accept="image/*" multiple data-board-file hidden>
             </div>
             <div class="board-view__group" data-board-widths></div>
@@ -618,6 +619,7 @@
                 <button type="button" class="board-view__btn" data-board-clear hidden title="Borrar toda la pizarra" aria-label="Borrar toda la pizarra">🗑</button>
             </div>
         </div>
+        <textarea class="board-view__text" data-board-text rows="1" spellcheck="false" aria-label="Texto de la pizarra" hidden></textarea>
         <p class="board-view__msg" data-board-msg hidden></p>
     </div>
     <div class="totem-panel" data-totem-panel hidden role="dialog" aria-modal="true" aria-labelledby="totem-title">

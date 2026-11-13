@@ -2743,7 +2743,8 @@ function buildCity() {
 // van al servidor en pedacitos (~15 por segundo) y los demás que están en la misma escena los
 // ven aparecer en vivo, en la pizarra del mundo y en la de pantalla completa. También se sueltan
 // fotos (arrastrar y soltar, pegar o elegir): quedan debajo de los trazos y, con la herramienta
-// «Mover», se mueven y se agrandan como en Figma; todos ven el movimiento en vivo.
+// «Mover», se mueven y se agrandan como en Figma; todos ven el movimiento en vivo. Y textos
+// (herramienta T): se ven mientras se escriben y se mueven y se agrandan igual que las fotos.
 const BOARD_W = 2400, BOARD_H = 1500;           // coordenadas de los trazos (las mismas del servidor)
 const BOARD_COLORS = ['#1b1f2a', '#2563eb', '#e11d48', '#16a34a', '#f97316', '#9333ea', '#0891b2'];
 const BOARD_ERASER = 7;
@@ -2789,6 +2790,34 @@ function paintImages(ctx, b, k, ox, oy) {
         else { ctx.fillStyle = 'rgba(40, 50, 70, .15)'; ctx.fillRect(x, y, w, h); }
     }
 }
+// Textos: encima de las fotos y debajo de los trazos. x, y es la esquina de arriba a la izquierda.
+const TEXT_FONT = '500 {px}px "Space Grotesk", system-ui, sans-serif';
+const TEXT_LINE = 1.25;
+const measureCtx = document.createElement('canvas').getContext('2d');
+function measureBoardText(t) {
+    measureCtx.font = TEXT_FONT.replace('{px}', t.size);
+    const lines = String(t.text || '').split('\n');
+    t.w = Math.max(t.size * 0.6, ...lines.map((l) => measureCtx.measureText(l).width));
+    t.h = lines.length * t.size * TEXT_LINE;
+    return t;
+}
+function paintTexts(ctx, b, k, ox, oy) {
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    for (const t of b.texts) {
+        if (t.id === bv.editing?.id && bv.id === bv.editing?.board) continue;   // se ve en el cuadro de edición
+        ctx.fillStyle = BOARD_COLORS[t.c] || BOARD_COLORS[0];
+        ctx.font = TEXT_FONT.replace('{px}', t.size * k);
+        String(t.text || '').split('\n').forEach((line, i) => ctx.fillText(line, t.x * k + ox, (t.y + i * t.size * TEXT_LINE) * k + oy + t.size * k * 0.1));
+    }
+}
+function setBoardText(e, data) {
+    const old = e.board.texts.find((x) => x.id === data.id);
+    if (old) return measureBoardText(Object.assign(old, data));
+    const t = measureBoardText({ ...data });
+    e.board.texts.push(t);
+    return t;
+}
 function loadBoardImage(e, im) {
     const el = new Image();
     el.crossOrigin = 'anonymous';   // si no, la textura del mundo no se puede subir a WebGL
@@ -2811,7 +2840,8 @@ function drawBoardTexture(e) {
     c.fillStyle = BOARD_PAPER;
     c.fillRect(0, 0, BOARD_TEX_W, BOARD_TEX_H);
     paintImages(c, b, k, 0, 0);
-    if (!b.strokes.length && !b.images.length) {
+    paintTexts(c, b, k, 0, 0);
+    if (!b.strokes.length && !b.images.length && !b.texts.length) {
         c.fillStyle = 'rgba(40, 50, 70, .35)';
         c.textAlign = 'center';
         c.font = 'bold 64px "Space Grotesk", sans-serif';
@@ -2851,7 +2881,7 @@ function buildBoard(it) {
     piece.rotation.y = it.ry || 0;
     const built = {
         piece, hits: [surface, frame], ownActions: [surface],
-        board: { strokes: [], images: [], keys: new Map(), loaded: false, requested: false, ctx: cv.getContext('2d'), tex, writers: new Map() },
+        board: { strokes: [], images: [], texts: [], keys: new Map(), loaded: false, requested: false, ctx: cv.getContext('2d'), tex, writers: new Map() },
         obstacles: lineObstacles(piece, BW3 - 1, 0.4, -0.12).filter((_, i, a) => i === 0 || i === a.length - 1),
     };
     built.data = it;
@@ -2886,6 +2916,7 @@ const bv = {
     pointers: new Map(), mode: null, stroke: null, sent: 0, sendTimer: 0, pending: null, pan: null, pinch: null,
     space: false, dirty: false, msgTimer: 0,
     select: false, selected: null, drag: null, moveSent: 0, raf: 0,
+    textTool: false, editing: null, lastTap: null,
 };
 const bvEntry = () => (bv.id ? items.get(bv.id) : null);
 
@@ -2953,7 +2984,8 @@ function bvRedraw() {
     bvCtx.restore();
     bvClip(() => {
         paintImages(bvCtx, e.board, bv.s, bv.ox, bv.oy);
-        if (!e.board.strokes.length && !e.board.images.length) {
+        paintTexts(bvCtx, e.board, bv.s, bv.ox, bv.oy);
+        if (!e.board.strokes.length && !e.board.images.length && !e.board.texts.length) {
             bvCtx.fillStyle = 'rgba(40, 50, 70, .3)';
             bvCtx.textAlign = 'center';
             bvCtx.font = `bold ${Math.max(14, 64 * bv.s)}px "Space Grotesk", sans-serif`;
@@ -2974,6 +3006,7 @@ function bvRedraw() {
         }
     }
     syncImageDelete();
+    placeTextEditor();
     bvZoomLabel.textContent = `${Math.round((bv.s / bv.fit) * 100)}%`;
 }
 // Un trazo nuevo o que creció: se dibuja solo lo nuevo en el mundo y, si está abierta, en la vista.
@@ -2996,7 +3029,11 @@ function bvRedrawSoon(e) {
 }
 
 // ----- Fotos: seleccionar, mover y agrandar -----
-const bvSelected = () => bvEntry()?.board.images.find((x) => x.id === bv.selected) || null;
+const bvSelected = () => {
+    const b = bvEntry()?.board;
+    return (b && bv.selected && (b.texts.find((x) => x.id === bv.selected) || b.images.find((x) => x.id === bv.selected))) || null;
+};
+const isText = (o) => typeof o?.text === 'string';
 const imgScreenRect = (im) => ({ x: bv.ox + im.x * bv.s, y: bv.oy + im.y * bv.s, w: im.w * bv.s, h: im.h * bv.s });
 const imgHandles = (r) => [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]];
 const canDeleteImage = (e, im) => !!net.myId && (im.a === net.myId || e.data.owner_id === net.myId);
@@ -3022,6 +3059,11 @@ function imageAt(px, py) {
             if (Math.abs(px - hs[i][0]) <= grab && Math.abs(py - hs[i][1]) <= grab) return { im: sel, corner: i };
         }
     }
+    for (let i = e.board.texts.length - 1; i >= 0; i--) {
+        const t = e.board.texts[i];
+        const r = imgScreenRect(t);
+        if (px >= r.x - 6 && px <= r.x + r.w + 6 && py >= r.y - 6 && py <= r.y + r.h + 6) return { im: t, corner: -1 };
+    }
     for (let i = e.board.images.length - 1; i >= 0; i--) {
         const r = imgScreenRect(e.board.images[i]);
         if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return { im: e.board.images[i], corner: -1 };
@@ -3033,7 +3075,8 @@ function sendMove(im, force) {
     const now = performance.now();
     if (!force && now - bv.moveSent < 80) return;
     bv.moveSent = now;
-    net.send({ type: 'board_move', id: bv.id, img: im.id, x: Math.round(im.x), y: Math.round(im.y), w: Math.round(im.w) });
+    if (isText(im)) net.send({ type: 'board_move', id: bv.id, img: im.id, x: Math.round(im.x), y: Math.round(im.y), size: Math.round(im.size) });
+    else net.send({ type: 'board_move', id: bv.id, img: im.id, x: Math.round(im.x), y: Math.round(im.y), w: Math.round(im.w) });
 }
 function bvStartImageDrag(ev) {
     const [px, py] = screenPoint(ev);
@@ -3049,10 +3092,19 @@ function bvStartImageDrag(ev) {
     }
     bv.selected = hit.im.id;
     const im = hit.im;
+    // Doble toque (o doble clic) en un texto: se edita.
+    const now = performance.now();
+    if (isText(im) && hit.corner < 0 && bv.lastTap?.id === im.id && now - bv.lastTap.t < 400) {
+        bv.lastTap = null;
+        bv.mode = null;
+        editBoardText(im);
+        return;
+    }
+    bv.lastTap = { id: im.id, t: now };
     // La esquina opuesta queda fija al agrandar.
     const fx = hit.corner === 0 || hit.corner === 2 ? im.x + im.w : im.x;
     const fy = hit.corner === 0 || hit.corner === 1 ? im.y + im.h : im.y;
-    bv.drag = { im, corner: hit.corner, px, py, x: im.x, y: im.y, w: im.w, fx, fy };
+    bv.drag = { im, corner: hit.corner, px, py, x: im.x, y: im.y, w: im.w, h: im.h, size: im.size, fx, fy };
     bv.mode = 'image';
     bvRedraw();
 }
@@ -3064,8 +3116,13 @@ function bvImageDragMove(ev) {
         im.y = d.y + (py - d.py) / bv.s;
     } else {
         const bx = (px - bv.ox) / bv.s, by = (py - bv.oy) / bv.s;
-        const ratio = im.ph / im.pw;
-        const w = Math.max(20, Math.max(Math.abs(bx - d.fx), Math.abs(by - d.fy) / ratio));
+        const ratio = isText(im) ? d.h / d.w : im.ph / im.pw;
+        let w = Math.max(20, Math.max(Math.abs(bx - d.fx), Math.abs(by - d.fy) / ratio));
+        if (isText(im)) {
+            // El texto se agranda cambiando el alto de la letra.
+            im.size = Math.min(600, Math.max(8, d.size * w / d.w));
+            w = d.w * im.size / d.size;
+        }
         im.w = w;
         im.h = w * ratio;
         im.x = d.corner === 0 || d.corner === 2 ? d.fx - w : d.fx;
@@ -3074,6 +3131,136 @@ function bvImageDragMove(ev) {
     sendMove(im, false);
     bvRedrawSoon(bvEntry());
 }
+
+// ----- Textos: escribir y editar -----
+// Un cuadro de texto encima de la pizarra, en el mismo lugar, tamaño y color del texto. Lo que se
+// escribe sale en vivo (cada ~0,3 s) para los demás; Enter termina (Shift+Enter, otra línea).
+const bvText = boardView.querySelector('[data-board-text]');
+const bvTextTool = boardView.querySelector('[data-board-texttool]');
+const canEditText = (e, t) => !!net.myId && (t.a === net.myId || e.data.owner_id === net.myId);
+function placeTextEditor() {
+    const ed = bv.editing;
+    if (!ed || boardView.hidden) { bvText.hidden = true; return; }
+    const t = bvEntry()?.board.texts.find((x) => x.id === ed.id);
+    if (!t) { bvText.hidden = true; return; }
+    const fs = t.size * bv.s;
+    Object.assign(bvText.style, {
+        left: `${bv.ox + t.x * bv.s - 4}px`, top: `${bv.oy + t.y * bv.s - 4}px`,
+        fontSize: `${fs}px`, lineHeight: String(TEXT_LINE), color: BOARD_COLORS[t.c] || BOARD_COLORS[0],
+    });
+    bvText.hidden = false;
+    fitTextEditor();
+}
+function fitTextEditor() {
+    bvText.style.width = '0px';
+    bvText.style.height = '0px';
+    bvText.style.width = `${Math.max(bvText.scrollWidth + 12, 40)}px`;
+    bvText.style.height = `${bvText.scrollHeight + 2}px`;
+}
+function editBoardText(t) {
+    const e = bvEntry();
+    if (!e) return;
+    if (!canEditText(e, t)) { boardMessage('Solo quien lo escribió (o puso la pizarra) puede cambiar este texto. Puedes moverlo con ↖.'); return; }
+    finishTextEdit();
+    bv.editing = { id: t.id, board: bv.id, sent: t.text, original: t.text, isNew: false, timer: 0 };
+    bv.selected = null;
+    bvText.value = t.text;
+    bvRedraw();
+    bvText.focus();
+    bvText.select();
+}
+function startNewText(ev) {
+    const e = bvEntry();
+    if (!e) return;
+    if (!net.loggedIn) { boardMessage('Sin conexión con el servidor. Prueba otra vez en un momento.'); return; }
+    finishTextEdit();
+    const [px, py] = screenPoint(ev);
+    const size = Math.round(Math.min(600, Math.max(8, 26 / bv.s)));
+    const t = setBoardText(e, {
+        id: `t${Math.random().toString(36).slice(2, 10)}`, a: net.myId, text: '',
+        x: Math.round((px - bv.ox) / bv.s), y: Math.round((py - bv.oy) / bv.s - size * 0.6), size,
+        c: bv.color === BOARD_ERASER ? 0 : bv.color, pending: true, local: true,
+    });
+    bv.editing = { id: t.id, board: bv.id, sent: '', original: '', isNew: true, timer: 0 };
+    bvText.value = '';
+    bvRedraw();
+    // En el celular el teclado solo se abre si el foco llega dentro del toque.
+    bvText.focus();
+}
+// Manda lo escrito: la primera vez crea el texto; después lo edita.
+function syncEditedText(force) {
+    const ed = bv.editing, e = bvEntry();
+    if (!ed || !e) return;
+    const t = e.board.texts.find((x) => x.id === ed.id);
+    if (!t) return;
+    const value = bvText.value.replace(/\s+$/, '');
+    t.text = bvText.value;
+    measureBoardText(t);
+    if (value === ed.sent && !force) return;
+    if (t.local) {
+        if (!value || t.creating) return;   // se crea con la primera letra; los cambios esperan al id
+        t.creating = true;
+        ed.sent = value;
+        net.send({ type: 'board_text', id: e.data.id, t: t.id.slice(1), text: value, x: t.x, y: t.y, size: t.size, c: t.c });
+        return;
+    }
+    ed.sent = value;
+    if (value) net.send({ type: 'board_text_edit', id: e.data.id, txt: t.id, text: value });
+}
+bvText.addEventListener('input', () => {
+    fitTextEditor();
+    const ed = bv.editing;
+    if (!ed) return;
+    clearTimeout(ed.timer);
+    ed.timer = setTimeout(() => syncEditedText(false), 300);
+});
+bvText.addEventListener('keydown', (ev) => {
+    ev.stopPropagation();
+    if (ev.key === 'Escape') { ev.preventDefault(); finishTextEdit(true); }
+    else if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); finishTextEdit(); }
+});
+bvText.addEventListener('blur', () => finishTextEdit());
+// Termina de editar: vacío = se quita; Esc deshace lo escrito.
+function finishTextEdit(cancel = false) {
+    const ed = bv.editing;
+    if (!ed) return;
+    bv.editing = null;
+    clearTimeout(ed.timer);
+    bvText.hidden = true;
+    const e = items.get(ed.board);
+    const t = e?.board.texts.find((x) => x.id === ed.id);
+    if (!e || !t) return;
+    let value = bvText.value.replace(/\s+$/, '');
+    if (cancel) value = ed.original;
+    if (!value) {
+        e.board.texts = e.board.texts.filter((x) => x !== t);
+        if (!t.local) net.send({ type: 'board_image_delete', id: e.data.id, img: t.id });
+        else if (t.creating) t.dropWhenCreated = true;
+    } else {
+        t.text = value;
+        measureBoardText(t);
+        if (t.local) {
+            if (!t.creating) {
+                t.creating = true;
+                net.send({ type: 'board_text', id: e.data.id, t: t.id.slice(1), text: value, x: t.x, y: t.y, size: t.size, c: t.c });
+            } else t.sendWhenCreated = value;
+        } else if (value !== ed.sent) net.send({ type: 'board_text_edit', id: e.data.id, txt: t.id, text: value });
+        if (bv.id === e.data.id) { bv.selected = t.id; }
+    }
+    boardChanged(e);
+}
+function setTextTool(on) {
+    finishTextEdit();
+    bv.textTool = on;
+    if (on) { bv.select = false; bv.hand = false; bv.selected = null; }
+    syncBoardTools();
+    if (!boardView.hidden) bvRedraw();
+}
+bvTextTool.addEventListener('click', () => setTextTool(!bv.textTool));
+bvCanvas.addEventListener('dblclick', (ev) => {
+    const hit = imageAt(...screenPoint(ev));
+    if (hit && isText(hit.im)) editBoardText(hit.im);
+});
 
 // ----- Fotos: soltar, pegar o elegir -----
 let uploadQueue = Promise.resolve();
@@ -3177,6 +3364,7 @@ function openBoard(id) {
 }
 function closeBoard() {
     if (boardView.hidden) return;
+    finishTextEdit();
     bvEndStroke();
     bv.pointers.clear();
     bv.mode = null;
@@ -3207,6 +3395,16 @@ bvWidths.append(...BOARD_WIDTHS.map((px, i) => toolButton(['Fino', 'Medio', 'Gru
 function setBoardTool(c) {
     bv.color = c;
     bv.hand = false;
+    // Con un texto elegido, el color se le aplica a ese texto (como en Figma).
+    const e = bvEntry(), t = bvSelected();
+    if (e && isText(t) && canEditText(e, t) && c !== BOARD_ERASER && !t.local) {
+        t.c = c;
+        net.send({ type: 'board_text_edit', id: e.data.id, txt: t.id, c });
+        syncBoardTools();
+        boardChanged(e);
+        return;
+    }
+    if (bv.textTool) { syncBoardTools(); return; }
     setSelectTool(false);
 }
 function setBoardWidth(i) {
@@ -3215,14 +3413,18 @@ function setBoardWidth(i) {
     setSelectTool(false);
 }
 function setSelectTool(on) {
+    finishTextEdit();
     bv.select = on;
+    bv.textTool = false;
     if (on) bv.hand = false;
     else bv.selected = null;
     syncBoardTools();
     if (!boardView.hidden) bvRedraw();
 }
 function syncBoardTools() {
-    const pen = !bv.hand && !bv.select;
+    const pen = !bv.hand && !bv.select && !bv.textTool;
+    bvTextTool.setAttribute('aria-pressed', String(bv.textTool));
+    bvCanvas.classList.toggle('is-text', bv.textTool);
     [...bvColors.children].forEach((b, i) => b.setAttribute('aria-pressed', String(pen && (i === BOARD_COLORS.length ? bv.color === BOARD_ERASER : bv.color === i))));
     bvSelect.setAttribute('aria-pressed', String(bv.select));
     bvCanvas.classList.toggle('is-select', bv.select);
@@ -3233,7 +3435,7 @@ function syncBoardTools() {
 const bvSelect = boardView.querySelector('[data-board-select]');
 bvSelect.addEventListener('click', () => setSelectTool(!bv.select));
 syncBoardTools();
-bvHand.addEventListener('click', () => { bv.hand = !bv.hand; if (bv.hand) bv.select = false; bv.selected = null; syncBoardTools(); bvRedraw(); });
+bvHand.addEventListener('click', () => { finishTextEdit(); bv.hand = !bv.hand; if (bv.hand) { bv.select = false; bv.textTool = false; } bv.selected = null; syncBoardTools(); bvRedraw(); });
 boardView.querySelectorAll('[data-board-zoom]').forEach((b) => b.addEventListener('click', () => {
     bvZoomAt(Number(b.dataset.boardZoom) > 0 ? 1.4 : 1 / 1.4, bv.w / 2, bv.h / 2);
 }));
@@ -3341,7 +3543,15 @@ bvCanvas.addEventListener('pointerdown', (ev) => {
         return;
     }
     if (ev.button !== 0) return;
-    if (bv.select) bvStartImageDrag(ev);
+    if (bv.editing) { finishTextEdit(); return; }   // tocar fuera termina de escribir
+    if (bv.textTool) {
+        // Sobre un texto: se edita (o se mueve si no es tuyo); en otro lugar: texto nuevo.
+        const hit = imageAt(...screenPoint(ev));
+        if (hit && isText(hit.im)) {
+            if (canEditText(bvEntry(), hit.im)) { ev.preventDefault(); editBoardText(hit.im); return; }
+        } else { startNewText(ev); return; }
+    }
+    if (bv.select || bv.textTool) bvStartImageDrag(ev);
     else bvStartDraw(ev);
 });
 bvCanvas.addEventListener('pointermove', (ev) => {
@@ -3410,8 +3620,9 @@ bvCanvas.addEventListener('wheel', (ev) => {
 // Teclado: Esc cierra, espacio mantenido mueve la pizarra, Ctrl+Z deshace, +/- hacen zoom.
 window.addEventListener('keydown', (ev) => {
     if (boardView.hidden) return;
+    if (ev.target === bvText) return;   // escribiendo un texto: las teclas son del texto
     if (ev.key === 'Escape') { closeBoard(); return; }
-    if (ev.code === 'Space') { bv.space = true; syncBoardTools(); }
+    if (ev.code === 'Space') { if (!bv.space) { bv.space = true; syncBoardTools(); } }
     else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') boardView.querySelector('[data-board-undo]').click();
     else if (ev.key === '+' || ev.key === '=') bvZoomAt(1.4, bv.w / 2, bv.h / 2);
     else if (ev.key === '-') bvZoomAt(1 / 1.4, bv.w / 2, bv.h / 2);
@@ -3419,6 +3630,8 @@ window.addEventListener('keydown', (ev) => {
     else if ((ev.key === 'Delete' || ev.key === 'Backspace') && bv.selected) deleteSelectedImage();
     else if (ev.key.toLowerCase() === 'v' && !ev.ctrlKey && !ev.metaKey) setSelectTool(true);
     else if (ev.key.toLowerCase() === 'p' && !ev.ctrlKey && !ev.metaKey) setSelectTool(false);
+    else if (ev.key.toLowerCase() === 't' && !ev.ctrlKey && !ev.metaKey) setTextTool(true);
+    else if (ev.key === 'Enter' && isText(bvSelected())) editBoardText(bvSelected());
     else return;
     ev.preventDefault();
 }, true);
@@ -3444,6 +3657,16 @@ net.on('board', (m) => {
         loadBoardImage(e, im);
     }
     b.images.push(...pending);
+    const localTexts = b.texts.filter((t) => t.local);
+    const editingId = bv.editing?.board === m.id ? bv.editing.id : null;
+    const knownTexts = new Map(b.texts.map((t) => [t.id, t]));
+    b.texts = (Array.isArray(m.texts) ? m.texts : []).map((data) => {
+        const old = knownTexts.get(data.id);
+        // El que estoy editando conserva lo que llevo escrito.
+        if (old && old.id === editingId) return measureBoardText(Object.assign(old, { ...data, text: old.text }));
+        return measureBoardText(old ? Object.assign(old, data) : { ...data });
+    });
+    b.texts.push(...localTexts);
     b.loaded = true;
     boardChanged(e);
 });
@@ -3492,11 +3715,38 @@ net.on('board_image', (m) => {
     setBoardImage(e, m.image);
     boardChanged(e);
 });
+net.on('board_text', (m) => {
+    const e = items.get(m.id);
+    if (!e?.board || !m.text?.id) return;
+    const mine = m.t && e.board.texts.find((x) => x.id === `t${m.t}`);
+    if (mine) {
+        // El mío ya se veía: toma el id del servidor y manda lo que escribí mientras tanto.
+        const oldId = mine.id;
+        Object.assign(mine, { id: m.text.id, a: m.text.a, local: false, pending: false, creating: false });
+        if (bv.editing?.id === oldId) bv.editing.id = mine.id;
+        if (bv.selected === oldId) bv.selected = mine.id;
+        if (mine.dropWhenCreated) {
+            e.board.texts = e.board.texts.filter((x) => x !== mine);
+            net.send({ type: 'board_image_delete', id: e.data.id, img: mine.id });
+        } else if (bv.editing?.id === mine.id) syncEditedText(false);
+        else if (mine.sendWhenCreated && mine.sendWhenCreated !== m.text.text) {
+            net.send({ type: 'board_text_edit', id: e.data.id, txt: mine.id, text: mine.sendWhenCreated });
+        }
+        boardChanged(e);
+        return;
+    }
+    if (bv.editing?.id === m.text.id) return;   // lo estoy editando yo
+    setBoardText(e, m.text);
+    e.board.writers.set(m.text.a, performance.now());
+    boardChanged(e);
+});
 net.on('board_move', (m) => {
     const e = items.get(m.id);
-    const im = e?.board?.images.find((x) => x.id === m.img);
+    const b = e?.board;
+    const im = b && (b.images.find((x) => x.id === m.img) || b.texts.find((x) => x.id === m.img));
     if (!im || bv.drag?.im === im) return;
-    Object.assign(im, { x: m.x, y: m.y, w: m.w, h: m.h });
+    if (isText(im)) measureBoardText(Object.assign(im, { x: m.x, y: m.y, size: m.size }));
+    else Object.assign(im, { x: m.x, y: m.y, w: m.w, h: m.h });
     boardMoved(e);
 });
 function boardMoved(e) {
@@ -3507,6 +3757,8 @@ net.on('board_image_removed', (m) => {
     const e = items.get(m.id);
     if (!e?.board) return;
     e.board.images = e.board.images.filter((x) => x.id !== m.img);
+    e.board.texts = e.board.texts.filter((x) => x.id !== m.img);
+    if (bv.editing?.id === m.img) { bv.editing = null; bvText.hidden = true; }
     if (bv.selected === m.img) bv.selected = null;
     boardChanged(e);
 });
@@ -3514,6 +3766,8 @@ net.on('board_clear', (m) => {
     const e = items.get(m.id);
     if (!e?.board) return;
     e.board.images = [];
+    e.board.texts = [];
+    if (bv.editing?.board === m.id) { bv.editing = null; bvText.hidden = true; }
     bv.selected = null;
     e.board.strokes = [];
     e.board.keys.clear();
@@ -3527,6 +3781,8 @@ net.on('board_error', (m) => {
     const eImg = items.get(m.id);
     if (eImg?.board && m.t) {
         eImg.board.images = eImg.board.images.filter((x) => x.id !== `t${m.t}`);
+        eImg.board.texts = eImg.board.texts.filter((x) => x.id !== `t${m.t}`);
+        if (bv.editing?.id === `t${m.t}`) { bv.editing = null; bvText.hidden = true; }
         boardChanged(eImg);
     }
     // El trazo que el servidor no aceptó se quita.
