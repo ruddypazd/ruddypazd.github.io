@@ -1883,6 +1883,7 @@ const hostOf = (url) => { try { return new URL(url).hostname.replace(/^www\./, '
 const kb = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.round(n / 1000)} KB`);
 const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const inGallery = (s) => Number.isInteger(s.slot);
+const onWall = (s) => Boolean(s.wall) && Number.isInteger(s.wall_slot);
 const ownerOf = (s) => s.owner_name || 'Visitante';
 function signColors(id) {
     const h = Math.round(hueFor(id) * 360);
@@ -1991,6 +1992,43 @@ function buildPhotoSign(s) {
     return { piece: group, hits: [photo, plaque] };
 }
 
+// Colgada en una pared de museo: la foto enmarcada en su espacio y una placa chica debajo. La
+// pieza se cuelga de la pared (coordenadas de la pared: x a lo ancho, z = 0 es su cara).
+const WALL_SLOTS = 3, WALL_SLOT_W = 2.1, WALL_SLOT_H = 2.3, WALL_PHOTO_Y = 2.55;
+function buildWallPhoto(s) {
+    const group = new THREE.Group();
+    const aspect = s.w / s.h || 4 / 3;
+    const pw = Math.min(WALL_SLOT_W, WALL_SLOT_H * aspect);
+    const ph = pw / aspect;
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(pw + 0.16, ph + 0.16, 0.08), frameMat);
+    frame.position.set(0, WALL_PHOTO_Y, 0.04);
+    const photoMat = new THREE.MeshBasicMaterial({ color: 0x222633, toneMapped: false });
+    const photo = new THREE.Mesh(new THREE.PlaneGeometry(pw, ph), photoMat);
+    photo.position.set(0, WALL_PHOTO_Y, 0.085);
+    photoLoader.load(signImageUrl(s.image), (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        photoMat.map = tex;
+        photoMat.color.set(0xffffff);
+        photoMat.needsUpdate = true;
+    });
+    const plaqueTex = makeLabelTexture(640, 128, (c, w, h) => {
+        c.fillStyle = '#14112a'; c.fillRect(0, 0, w, h);
+        c.strokeStyle = '#ffb070'; c.lineWidth = 4; c.strokeRect(4, 4, w - 8, h - 8);
+        c.textAlign = 'center'; c.fillStyle = '#fff';
+        c.font = '600 40px "Space Grotesk", sans-serif';
+        const head = s.title || (s.text ? s.text.replace(/\s+/g, ' ') : '') || (s.url ? hostOf(s.url) : 'Sin título');
+        c.fillText(wrapLines(c, head, w - 40, 1)[0] || '', w / 2, 58, w - 40);
+        c.font = '24px "JetBrains Mono", monospace'; c.fillStyle = '#ffd2a6';
+        c.fillText(`${s.url ? '🔗 ' : ''}De ${ownerOf(s)}`, w / 2, 100, w - 40);
+    });
+    const plaque = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 0.25), new THREE.MeshBasicMaterial({ map: plaqueTex, toneMapped: false }));
+    plaque.position.set(0, WALL_PHOTO_Y - ph / 2 - 0.32, 0.01);
+    group.add(frame, photo, plaque);
+    group.position.x = (s.wall_slot - (WALL_SLOTS - 1) / 2) * (WALL_W / WALL_SLOTS);
+    return { piece: group, hits: [photo, frame, plaque] };
+}
+
 // En un espacio de galería: un cuadro con su ficha (los de Roy traen subtítulo, créditos y colores).
 function buildGallerySign(s) {
     const text = s.text || (s.url ? hostOf(s.url) : '');
@@ -2011,7 +2049,10 @@ function buildGallerySign(s) {
 function addSign(s) {
     removeSign(s.id, true);
     let built;
-    if (inGallery(s)) {
+    if (onWall(s)) {
+        built = buildWallPhoto(s);
+        items.get(s.wall)?.piece.add(built.piece);   // si la pared llega después, addItem la cuelga
+    } else if (inGallery(s)) {
         built = buildGallerySign(s);
         adGalleries[s.scene === MAIN ? MAIN : 'other'].add(built.piece);
     } else {
@@ -2023,7 +2064,7 @@ function addSign(s) {
     const { piece, hits } = built;
     // Un cuadro con enlace lo abre directo (como siempre en la galería); lo demás abre el letrero.
     for (const hit of hits) {
-        if (!(inGallery(s) && s.url)) hit.userData = { hint: s.title ? `Ver «${s.title}»` : `Ver el letrero de ${ownerOf(s)}`, action: () => openSign(s.id) };
+        if (!(inGallery(s) && s.url && !onWall(s))) hit.userData = { hint: s.title ? `Ver «${s.title}»` : `Ver el letrero de ${ownerOf(s)}`, action: () => openSign(s.id) };
         clickable.push(hit);
     }
     signs.set(s.id, { data: s, piece, hits });
@@ -2042,12 +2083,18 @@ function removeSign(id, quiet) {
     for (const hit of e.hits) clickable.splice(clickable.indexOf(hit), 1);
     signs.delete(id);
     if (signView.dataset.id === id) signView.hidden = true;
-    if (!quiet) { showSignsHere(); refreshMySigns(); }
+    if (!quiet) { showSignsHere(); refreshMySigns(); refreshOpenWall(); }
 }
 
 // Solo los de la escena donde estás.
 function showSignsHere() {
     for (const e of signs.values()) e.piece.visible = e.data.scene === here.id;
+}
+
+// Lo borra su dueño; una foto colgada en una pared, también el dueño de la pared.
+function canDeleteSign(s) {
+    if (!net.myId) return false;
+    return s.owner_id === net.myId || (onWall(s) && items.get(s.wall)?.data.owner_id === net.myId);
 }
 
 function openSign(id) {
@@ -2068,8 +2115,8 @@ function openSign(id) {
     q('created').textContent = formatDate(s.created_at) || 'Sin dato';
     q('expires').textContent = s.expires_at ? formatDate(s.expires_at) : 'No vence';
     const del = q('delete');
-    del.hidden = !net.myId || s.owner_id !== net.myId;
-    del.textContent = 'Borrar letrero';
+    del.hidden = !canDeleteSign(s);
+    del.textContent = onWall(s) ? 'Descolgar foto' : 'Borrar letrero';
     delete del.dataset.confirm;
     signView.hidden = false;
 }
@@ -2135,8 +2182,12 @@ const signPreview = signBox.querySelector('[data-sign-preview]');
 const signInfo = signBox.querySelector('[data-sign-info]');
 const signExpires = signBox.querySelector('[data-sign-expiry]');
 const mySigns = signBox.querySelector('[data-my-signs]');
+const signFormTitle = signBox.querySelector('[data-sign-form-title]');
+const signFormNote = signBox.querySelector('[data-sign-form-note]');
+const SIGN_FORM_TEXT = [signFormTitle.textContent, signFormNote.textContent];
 let pendingImage = null;
 let publishing = false;
+let wallTarget = null;   // { wall, slot } cuando se cuelga una foto en una pared de museo
 function signMessage(text) {
     signError.hidden = !text;
     signError.textContent = text || '';
@@ -2152,7 +2203,7 @@ function refreshMySigns() {
         const li = document.createElement('li');
         const name = document.createElement('span');
         const t = s.title || s.text || (s.url ? hostOf(s.url) : 'Imagen');
-        name.textContent = `${t.slice(0, 40)}${t.length > 40 ? '…' : ''} · ${inGallery(s) ? 'galería, ' : ''}${sceneLabel(s.scene)}`;
+        name.textContent = `${t.slice(0, 40)}${t.length > 40 ? '…' : ''} · ${onWall(s) ? 'pared de museo, ' : inGallery(s) ? 'galería, ' : ''}${sceneLabel(s.scene)}`;
         const del = document.createElement('button');
         del.type = 'button';
         del.className = 'holes__delete';
@@ -2166,8 +2217,14 @@ function refreshMySigns() {
         return li;
     }));
 }
-function openSignBox() {
+function openSignBox(target) {
     if (!getProfile()) return showLogin();
+    wallTarget = target?.wall ? target : null;
+    signFormTitle.textContent = wallTarget ? 'Cuelga una foto en la pared' : SIGN_FORM_TEXT[0];
+    signFormNote.textContent = wallTarget
+        ? `Queda en el espacio ${wallTarget.slot + 1} de la pared de museo. Elige la foto; el título, el texto y el enlace son opcionales. Todos la ven y solo tú (o el dueño de la pared) pueden descolgarla.`
+        : SIGN_FORM_TEXT[1];
+    signForm.querySelector('[type=submit]').textContent = wallTarget ? 'Colgar foto' : 'Publicar';
     const today = new Date();
     signForm.expires.min = isoDay(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1));
     signForm.expires.max = isoDay(new Date(today.getFullYear() + 1, today.getMonth(), today.getDate()));
@@ -2177,7 +2234,7 @@ function openSignBox() {
     refreshMySigns();
     signBox.hidden = false;
 }
-document.querySelector('[data-sign-open]').addEventListener('click', openSignBox);
+document.querySelector('[data-sign-open]').addEventListener('click', () => openSignBox());
 signBox.querySelector('[data-sign-close]').addEventListener('click', () => { signBox.hidden = true; });
 signForm.expiring.addEventListener('change', () => { signExpires.hidden = !signForm.expiring.checked; });
 signForm.image.addEventListener('change', async () => {
@@ -2204,6 +2261,7 @@ signForm.addEventListener('submit', (e) => {
     const title = signForm.heading.value.trim();
     const text = signForm.text.value.trim();
     if (signForm.image.files[0] && !pendingImage) return signMessage('Espera a que la imagen esté lista.');
+    if (wallTarget && !pendingImage) return signMessage('Elige la foto que quieres colgar.');
     if (!title && !text && !pendingImage) return signMessage('Escribe un texto o elige una imagen.');
     let url = signForm.url.value.trim();
     if (url && !/^https?:\/\//i.test(url)) url = `https://${url}`;
@@ -2232,11 +2290,13 @@ signForm.addEventListener('submit', (e) => {
         x: player.position.x + Math.sin(yaw) * dist,
         z: player.position.z + Math.cos(yaw) * dist,
         ry: yaw + Math.PI,
+        ...(wallTarget && { wall: wallTarget.wall, wall_slot: wallTarget.slot }),
     });
 });
 net.on('sign', (m) => {
     addSign(m.sign);
     refreshMySigns();
+    refreshOpenWall();
     if (publishing && m.sign.owner_id === net.myId) {
         publishing = false;
         signForm.querySelector('[type=submit]').disabled = false;
@@ -2245,7 +2305,8 @@ net.on('sign', (m) => {
         pendingImage = null;
         signPreview.hidden = true;
         signInfo.textContent = '';
-        flashHint('Tu letrero quedó delante de ti. Todos pueden verlo');
+        flashHint(onWall(m.sign) ? 'Tu foto quedó colgada en la pared. Todos pueden verla' : 'Tu letrero quedó delante de ti. Todos pueden verlo');
+        wallTarget = null;
     }
 });
 net.on('sign_error', (m) => {
@@ -2265,7 +2326,7 @@ const ITEM_CATALOG = [
     { kind: 'cube', icon: '🧊', name: 'Cubo flotante', desc: 'Cubo de luz que gira y flota.', dist: 2, colors: true },
     { kind: 'totem', icon: '🏥', name: 'Tótem Medical Center', desc: 'Pantalla táctil que abre el tótem de la clínica.', dist: 2 },
     { kind: 'video', icon: '📺', name: 'Letrero de video', desc: 'Pantalla grande con música de YouTube.', dist: 6.5, youtube: true },
-    { kind: 'wall', icon: '🖼', name: 'Pared de museo', desc: 'Pared con focos para poner letreros delante.', dist: 4 },
+    { kind: 'wall', icon: '🖼', name: 'Pared de museo', desc: 'Pared con focos y tres espacios donde cualquiera puede colgar una foto.', dist: 4 },
     { kind: 'city', icon: '🌃', name: 'Ciudad cyberpunk', desc: 'Rascacielos y autos voladores alrededor de todo el lugar. Una por lugar.', dist: 0 },
 ];
 const itemKind = (k) => ITEM_CATALOG.find((c) => c.kind === k);
@@ -2672,11 +2733,13 @@ function addItem(it) {
     piece.rotation.y = built.noRotate ? 0 : (it.ry || 0);
     (it.scene === MAIN ? scene : dest.scene).add(piece);
     const own = built.ownActions || [];
+    const hint = it.kind === 'wall' ? `Pared de museo de ${ownerOf(it)}: cuelga una foto` : `${itemKind(it.kind).name} de ${ownerOf(it)}`;
     for (const hit of built.hits) {
-        if (!own.includes(hit)) hit.userData = { hint: `${itemKind(it.kind).name} de ${ownerOf(it)}`, action: () => openItem(it.id) };
+        if (!own.includes(hit)) hit.userData = { hint, action: () => openItem(it.id) };
         clickable.push(hit);
     }
     items.set(it.id, built);
+    for (const e of signs.values()) if (e.data.wall === it.id) piece.add(e.piece);
     piece.visible = it.scene === here.id;
 }
 
@@ -2685,6 +2748,8 @@ function removeItem(id, quiet) {
     if (!e) return;
     if (playingVideo?.id === id) stopVideo();
     e.piece.parent?.remove(e.piece);
+    // Las fotos colgadas no se desarman con la pared: si vuelve (o la actualizan) se cuelgan otra vez.
+    for (const s of signs.values()) if (s.data.wall === id) e.piece.remove(s.piece);
     disposePiece(e.piece);
     for (const hit of e.hits) clickable.splice(clickable.indexOf(hit), 1);
     items.delete(id);
@@ -2714,13 +2779,57 @@ function openItem(id) {
     q('icon').textContent = k.icon;
     q('name').textContent = k.name;
     q('desc').textContent = k.desc;
-    q('author').textContent = ownerOf(it);
+    q('author').textContent = `De ${ownerOf(it)}`;
     q('created').textContent = formatDate(it.created_at) || 'Sin dato';
+    itemView.querySelector('.settings__win').style.setProperty('--hue', it.kind === 'wall' ? 30 : 190);
     const del = q('delete');
     del.hidden = !net.myId || it.owner_id !== net.myId;
-    del.textContent = 'Quitar ítem';
+    del.textContent = it.kind === 'wall' ? '🗑 Quitar pared' : '🗑 Quitar ítem';
+    del.dataset.desc = it.kind === 'wall' ? 'Las fotos colgadas se van con ella' : 'Solo tú puedes quitarlo';
     delete del.dataset.confirm;
+    renderWallSlots(it);
     itemView.hidden = false;
+}
+
+// Los espacios de una pared de museo: libre (colgar una foto) u ocupado (ver la foto).
+function renderWallSlots(it) {
+    const box = itemView.querySelector('[data-item-slots]');
+    box.hidden = it.kind !== 'wall';
+    if (box.hidden) return box.replaceChildren();
+    const hung = new Map([...signs.values()].filter((e) => e.data.wall === it.id).map((e) => [e.data.wall_slot, e.data]));
+    box.replaceChildren(...Array.from({ length: WALL_SLOTS }, (_, i) => {
+        const s = hung.get(i);
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'settings__item settings__item--slot';
+        const thumb = document.createElement('span');
+        thumb.className = 'item-view__thumb';
+        const label = document.createElement('span');
+        label.className = 'item-view__slot';
+        const small = document.createElement('small');
+        if (s) {
+            const img = document.createElement('img');
+            img.src = signImageUrl(s.image);
+            img.alt = '';
+            thumb.append(img);
+            label.append(s.title || `Foto de ${ownerOf(s)}`);
+            small.textContent = `Espacio ${i + 1} · de ${ownerOf(s)}`;
+            b.addEventListener('click', () => { itemView.hidden = true; openSign(s.id); });
+        } else {
+            thumb.textContent = '＋';
+            label.append('Colgar una foto');
+            small.textContent = `Espacio ${i + 1} · libre`;
+            b.addEventListener('click', () => { itemView.hidden = true; openSignBox({ wall: it.id, slot: i }); });
+        }
+        label.append(small);
+        b.append(thumb, label);
+        return b;
+    }));
+}
+// Si alguien cuelga o descuelga una foto mientras la ventana de esa pared está abierta.
+function refreshOpenWall() {
+    const e = !itemView.hidden && items.get(itemView.dataset.id);
+    if (e && e.data.kind === 'wall') renderWallSlots(e.data);
 }
 itemView.querySelector('[data-item-close]').addEventListener('click', () => { itemView.hidden = true; });
 itemView.addEventListener('click', (e) => { if (e.target === itemView) itemView.hidden = true; });
