@@ -9,6 +9,7 @@ mundo-3d/fuentes; necesita @gltf-transform/core, functions, extensions, meshopti
   node lod-personajes.mjs candie.glb candie-lod.glb 45000 512
   node lod-personajes.mjs leo.glb leo-lod.glb 20000 512
   node lod-personajes.mjs sofia.glb sofia-lod.glb 20000 512
-Leo (Ch08) y Sofía (Ch41) son de Mixamo y vinieron sin animaciones: idle/walk/run/jump copiadas de candie.glb por
+  node lod-personajes.mjs marco.glb marco-lod.glb 20000 512
+Leo (Ch08), Sofía (Ch41) y Marco (Ch33) son de Mixamo y vinieron sin animaciones: idle/walk/run/jump copiadas de candie.glb por
 nombre de hueso con merge-ch08.mjs (mundo-3d/fuentes), texturas a 2048/1024 webp.
 Al agregar un personaje nuevo, crea también su -lod.glb y ponlo en «lite» de AVATARS (world.js).
