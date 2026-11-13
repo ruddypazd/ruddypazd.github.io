@@ -1076,8 +1076,7 @@ const net = (() => {
                 queue = [];
             }
             if (m.type === 'login_required') sendLogin();
-            handlers[m.type]?.(m);
-            taps[m.type]?.forEach((fn) => fn(m));
+            try { handlers[m.type]?.(m); } finally { taps[m.type]?.forEach((fn) => fn(m)); }
         });
         ws.addEventListener('close', () => { api.loggedIn = false; ws = null; schedule(); });
         ws.addEventListener('error', () => { try { ws.close(); } catch { /* ya cerrado */ } });
@@ -5596,6 +5595,7 @@ function stopEdit(revert = true) {
         }
     }
     clearTimeout(ed.liveTimer);
+    clearTimeout(ed.saveTimer);
     clearPicks();
     dropEdHelper(ed.helpers);
     Object.assign(ed, { mode: null, kind: null, id: null, orig: null, cur: null, drag: null, saving: false, helpers: null });
@@ -5644,6 +5644,16 @@ function edSave() {
     syncEditor();
     clearTimeout(ed.liveTimer);
     net.send({ type: 'obj_move', kind: ed.kind, id: ed.id, ...ed.cur });
+    // Si el servidor no contesta (sin conexión, o un servidor sin esta función), no se queda
+    // «Guardando…» para siempre: se avisa y se puede volver a intentar.
+    clearTimeout(ed.saveTimer);
+    const id = ed.id;
+    ed.saveTimer = setTimeout(() => {
+        if (ed.mode !== 'edit' || ed.id !== id || !ed.saving) return;
+        ed.saving = false;
+        syncEditor();
+        edMessage('No se pudo guardar: el servidor no respondió. Prueba otra vez en un momento.');
+    }, 8000);
 }
 // Cuando vuelve guardado, llega como siempre (item, sign, chart o portal) y se reconstruye.
 for (const [type, key, kind] of [['item', 'item', 'item'], ['sign', 'sign', 'sign'], ['chart', 'chart', 'chart'], ['portal', 'portal', 'portal']]) {
