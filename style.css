@@ -810,6 +810,15 @@ ul.stats__reqs:empty::before { content: attr(data-empty); font-size: .88rem; col
 .board-view__btn[hidden] { display: none; }
 .board-view__btn--danger { color: var(--pink); border-color: rgba(255, 61, 166, .5); }
 .board-view__canvas.is-select { cursor: default; }
+.board-view__canvas.is-text { cursor: text; }
+.board-view__t { font: 700 1.1rem var(--font); }
+/* Cuadro donde se escribe un texto: en el mismo lugar, tamaño y color que tendrá en la pizarra. */
+.board-view__text {
+    position: absolute; z-index: 1; min-width: 40px; padding: 3px; margin: 0; resize: none; overflow: hidden;
+    border: 2px dashed #0d99ff; border-radius: 4px; background: rgba(255, 255, 255, .55); outline: none;
+    font-family: "Space Grotesk", system-ui, sans-serif; font-weight: 500; white-space: pre; user-select: text; -webkit-user-select: text;
+}
+.board-view__text[hidden] { display: none; }
 /* Soltar fotos: la pizarra se marca mientras se arrastra un archivo encima. */
 .board-view.is-dropping::after {
     content: 'Suelta la foto en la pizarra'; position: absolute; inset: .6rem; pointer-events: none;
