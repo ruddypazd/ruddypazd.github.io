@@ -339,6 +339,7 @@ const AVATARS = {
     androide18: { name: 'Androide 18', url: 'models/androide18.glb', lite: 'models/androide18-lod.glb', thumb: 'models/androide18.jpg' },
     candie: { name: 'Candie', url: 'models/candie.glb', lite: 'models/candie-lod.glb', thumb: 'models/candie.jpg' },
     leo: { name: 'Leo', url: 'models/leo.glb', lite: 'models/leo-lod.glb', thumb: 'models/leo.jpg' },
+    sofia: { name: 'Sofía', url: 'models/sofia.glb', lite: 'models/sofia-lod.glb', thumb: 'models/sofia.jpg' },
 };
 const avatarIdOf = (id) => (AVATARS[id] ? id : 'ruddy');
 
