@@ -597,12 +597,18 @@
         </div>
         <div class="board-view__tools" role="toolbar" aria-label="Herramientas de la pizarra">
             <div class="board-view__group" data-board-colors></div>
+            <div class="board-view__group">
+                <button type="button" class="board-view__btn" data-board-select aria-pressed="false" title="Mover y agrandar fotos (V)">↖</button>
+                <button type="button" class="board-view__btn" data-board-photo title="Poner una foto (también puedes arrastrarla o pegarla)">🖼</button>
+                <button type="button" class="board-view__btn board-view__btn--danger" data-board-img-delete hidden title="Quitar la foto elegida (Supr)" aria-label="Quitar la foto elegida">✕</button>
+                <input type="file" accept="image/*" multiple data-board-file hidden>
+            </div>
             <div class="board-view__group" data-board-widths></div>
             <div class="board-view__group">
                 <button type="button" class="board-view__btn" data-board-hand aria-pressed="false" title="Mover la pizarra (también con dos dedos)">✋</button>
-                <button type="button" class="board-view__btn" data-board-zoom="-1" title="Alejar">−</button>
+                <button type="button" class="board-view__btn board-view__zbtn" data-board-zoom="-1" title="Alejar">−</button>
                 <button type="button" class="board-view__btn board-view__zoom" data-board-fit title="Ver toda la pizarra">100%</button>
-                <button type="button" class="board-view__btn" data-board-zoom="1" title="Acercar">+</button>
+                <button type="button" class="board-view__btn board-view__zbtn" data-board-zoom="1" title="Acercar">+</button>
             </div>
             <div class="board-view__group">
                 <button type="button" class="board-view__btn" data-board-undo title="Deshacer mi último trazo">↶</button>
