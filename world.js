@@ -2668,7 +2668,9 @@ function buildCity() {
 // Cualquiera escribe o dibuja. En el mundo es una pizarra blanca con patas; al tocarla se abre en
 // pantalla completa, con zoom (rueda, botones o dos dedos) y para seguir escribiendo. Los trazos
 // van al servidor en pedacitos (~15 por segundo) y los demás que están en la misma escena los
-// ven aparecer en vivo, en la pizarra del mundo y en la de pantalla completa.
+// ven aparecer en vivo, en la pizarra del mundo y en la de pantalla completa. También se sueltan
+// fotos (arrastrar y soltar, pegar o elegir): quedan debajo de los trazos y, con la herramienta
+// «Mover», se mueven y se agrandan como en Figma; todos ven el movimiento en vivo.
 const BOARD_W = 2400, BOARD_H = 1500;           // coordenadas de los trazos (las mismas del servidor)
 const BOARD_COLORS = ['#1b1f2a', '#2563eb', '#e11d48', '#16a34a', '#f97316', '#9333ea', '#0891b2'];
 const BOARD_ERASER = 7;
@@ -2706,12 +2708,37 @@ function paintStroke(ctx, st, k, ox, oy, from = 0) {
     ctx.stroke();
 }
 
+// Fotos: debajo de los trazos. Mientras cargan se ve un recuadro gris.
+function paintImages(ctx, b, k, ox, oy) {
+    for (const im of b.images) {
+        const x = im.x * k + ox, y = im.y * k + oy, w = im.w * k, h = im.h * k;
+        if (im.el?.complete && im.el.naturalWidth) ctx.drawImage(im.el, x, y, w, h);
+        else { ctx.fillStyle = 'rgba(40, 50, 70, .15)'; ctx.fillRect(x, y, w, h); }
+    }
+}
+function loadBoardImage(e, im) {
+    const el = new Image();
+    el.crossOrigin = 'anonymous';   // si no, la textura del mundo no se puede subir a WebGL
+    el.onload = () => boardChanged(e);
+    el.src = im.local || signImageUrl(im.url);
+    im.el = el;
+}
+function setBoardImage(e, data) {
+    const old = e.board.images.find((x) => x.id === data.id);
+    if (old) { Object.assign(old, data); return old; }
+    const im = { ...data };
+    e.board.images.push(im);
+    loadBoardImage(e, im);
+    return im;
+}
+
 function drawBoardTexture(e) {
     const b = e.board, c = b.ctx;
     const k = BOARD_TEX_W / BOARD_W;
     c.fillStyle = BOARD_PAPER;
     c.fillRect(0, 0, BOARD_TEX_W, BOARD_TEX_H);
-    if (!b.strokes.length) {
+    paintImages(c, b, k, 0, 0);
+    if (!b.strokes.length && !b.images.length) {
         c.fillStyle = 'rgba(40, 50, 70, .35)';
         c.textAlign = 'center';
         c.font = 'bold 64px "Space Grotesk", sans-serif';
@@ -2751,7 +2778,7 @@ function buildBoard(it) {
     piece.rotation.y = it.ry || 0;
     const built = {
         piece, hits: [surface, frame], ownActions: [surface],
-        board: { strokes: [], keys: new Map(), loaded: false, requested: false, ctx: cv.getContext('2d'), tex, writers: new Map() },
+        board: { strokes: [], images: [], keys: new Map(), loaded: false, requested: false, ctx: cv.getContext('2d'), tex, writers: new Map() },
         obstacles: lineObstacles(piece, BW3 - 1, 0.4, -0.12).filter((_, i, a) => i === 0 || i === a.length - 1),
     };
     built.data = it;
@@ -2785,6 +2812,7 @@ const bv = {
     id: null, s: 1, ox: 0, oy: 0, fit: 1, w: 0, h: 0, dpr: 1, color: 0, width: 1, hand: false,
     pointers: new Map(), mode: null, stroke: null, sent: 0, sendTimer: 0, pending: null, pan: null, pinch: null,
     space: false, dirty: false, msgTimer: 0,
+    select: false, selected: null, drag: null, moveSent: 0, raf: 0,
 };
 const bvEntry = () => (bv.id ? items.get(bv.id) : null);
 
@@ -2851,7 +2879,8 @@ function bvRedraw() {
     bvCtx.fillRect(bv.ox, bv.oy, BOARD_W * bv.s, BOARD_H * bv.s);
     bvCtx.restore();
     bvClip(() => {
-        if (!e.board.strokes.length) {
+        paintImages(bvCtx, e.board, bv.s, bv.ox, bv.oy);
+        if (!e.board.strokes.length && !e.board.images.length) {
             bvCtx.fillStyle = 'rgba(40, 50, 70, .3)';
             bvCtx.textAlign = 'center';
             bvCtx.font = `bold ${Math.max(14, 64 * bv.s)}px "Space Grotesk", sans-serif`;
@@ -2859,6 +2888,19 @@ function bvRedraw() {
         }
         for (const st of e.board.strokes) paintStroke(bvCtx, st, bv.s, bv.ox, bv.oy);
     });
+    const sel = bvSelected();
+    if (sel) {
+        const r = imgScreenRect(sel);
+        bvCtx.strokeStyle = '#0d99ff';
+        bvCtx.lineWidth = 2;
+        bvCtx.strokeRect(r.x, r.y, r.w, r.h);
+        bvCtx.fillStyle = '#fff';
+        for (const [hx, hy] of imgHandles(r)) {
+            bvCtx.fillRect(hx - 6, hy - 6, 12, 12);
+            bvCtx.strokeRect(hx - 6, hy - 6, 12, 12);
+        }
+    }
+    syncImageDelete();
     bvZoomLabel.textContent = `${Math.round((bv.s / bv.fit) * 100)}%`;
 }
 // Un trazo nuevo o que creció: se dibuja solo lo nuevo en el mundo y, si está abierta, en la vista.
@@ -2874,6 +2916,156 @@ function boardChanged(e) {
     drawBoardTexture(e);
     if (bv.id === e.data.id && !boardView.hidden) bvRedraw();
 }
+// Mientras se mueve una foto: una sola vez por cuadro.
+function bvRedrawSoon(e) {
+    if (bv.raf) return;
+    bv.raf = requestAnimationFrame(() => { bv.raf = 0; if (e && items.has(e.data.id)) boardChanged(e); });
+}
+
+// ----- Fotos: seleccionar, mover y agrandar -----
+const bvSelected = () => bvEntry()?.board.images.find((x) => x.id === bv.selected) || null;
+const imgScreenRect = (im) => ({ x: bv.ox + im.x * bv.s, y: bv.oy + im.y * bv.s, w: im.w * bv.s, h: im.h * bv.s });
+const imgHandles = (r) => [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]];
+const canDeleteImage = (e, im) => !!net.myId && (im.a === net.myId || e.data.owner_id === net.myId);
+const bvImgDelete = boardView.querySelector('[data-board-img-delete]');
+function syncImageDelete() {
+    const e = bvEntry(), im = bvSelected();
+    bvImgDelete.hidden = !(e && im && canDeleteImage(e, im));
+}
+function screenPoint(ev) {
+    const r = bvCanvas.getBoundingClientRect();
+    return [ev.clientX - r.left, ev.clientY - r.top];
+}
+// Qué hay bajo el puntero: un borde de la foto elegida (para agrandar) o la foto de más arriba.
+function imageAt(px, py) {
+    const e = bvEntry();
+    if (!e) return null;
+    const sel = bvSelected();
+    const grab = 14;
+    if (sel) {
+        const r = imgScreenRect(sel);
+        const hs = imgHandles(r);
+        for (let i = 0; i < 4; i++) {
+            if (Math.abs(px - hs[i][0]) <= grab && Math.abs(py - hs[i][1]) <= grab) return { im: sel, corner: i };
+        }
+    }
+    for (let i = e.board.images.length - 1; i >= 0; i--) {
+        const r = imgScreenRect(e.board.images[i]);
+        if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return { im: e.board.images[i], corner: -1 };
+    }
+    return null;
+}
+function sendMove(im, force) {
+    if (im.pending) return;
+    const now = performance.now();
+    if (!force && now - bv.moveSent < 80) return;
+    bv.moveSent = now;
+    net.send({ type: 'board_move', id: bv.id, img: im.id, x: Math.round(im.x), y: Math.round(im.y), w: Math.round(im.w) });
+}
+function bvStartImageDrag(ev) {
+    const [px, py] = screenPoint(ev);
+    const hit = imageAt(px, py);
+    if (!hit) {
+        // Fuera de las fotos: se suelta la selección y se mueve la pizarra.
+        bv.selected = null;
+        bv.pan = { x: ev.clientX, y: ev.clientY, ox: bv.ox, oy: bv.oy };
+        bv.mode = 'pan';
+        bvCanvas.classList.add('is-panning');
+        bvRedraw();
+        return;
+    }
+    bv.selected = hit.im.id;
+    const im = hit.im;
+    // La esquina opuesta queda fija al agrandar.
+    const fx = hit.corner === 0 || hit.corner === 2 ? im.x + im.w : im.x;
+    const fy = hit.corner === 0 || hit.corner === 1 ? im.y + im.h : im.y;
+    bv.drag = { im, corner: hit.corner, px, py, x: im.x, y: im.y, w: im.w, fx, fy };
+    bv.mode = 'image';
+    bvRedraw();
+}
+function bvImageDragMove(ev) {
+    const d = bv.drag, im = d.im;
+    const [px, py] = screenPoint(ev);
+    if (d.corner < 0) {
+        im.x = d.x + (px - d.px) / bv.s;
+        im.y = d.y + (py - d.py) / bv.s;
+    } else {
+        const bx = (px - bv.ox) / bv.s, by = (py - bv.oy) / bv.s;
+        const ratio = im.ph / im.pw;
+        const w = Math.max(20, Math.max(Math.abs(bx - d.fx), Math.abs(by - d.fy) / ratio));
+        im.w = w;
+        im.h = w * ratio;
+        im.x = d.corner === 0 || d.corner === 2 ? d.fx - w : d.fx;
+        im.y = d.corner === 0 || d.corner === 1 ? d.fy - im.h : d.fy;
+    }
+    sendMove(im, false);
+    bvRedrawSoon(bvEntry());
+}
+
+// ----- Fotos: soltar, pegar o elegir -----
+let uploadQueue = Promise.resolve();
+function boardFiles(files, px, py) {
+    const list = [...files].filter((f) => f.type.startsWith('image/')).slice(0, 10);
+    if (!list.length) return boardMessage('Eso no es una imagen.');
+    if (!net.loggedIn) return boardMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
+    list.forEach((file, i) => {
+        uploadQueue = uploadQueue.then(() => uploadBoardImage(file, px + i * 30, py + i * 30)).catch(() => {});
+    });
+}
+async function uploadBoardImage(file, px, py) {
+    const e = bvEntry();
+    if (!e) return;
+    boardMessage('Subiendo la foto…');
+    let p;
+    try { p = await compressPhoto(file); } catch { boardMessage('No se pudo leer la imagen.'); return; }
+    if (bvEntry() !== e) return;
+    // Del tamaño de media pantalla como máximo, centrada donde se soltó.
+    const maxW = Math.min(BOARD_W * 0.6, (bv.w * 0.5) / bv.s), maxH = Math.min(BOARD_H * 0.6, (bv.h * 0.5) / bv.s);
+    const k = Math.min(maxW / p.w, maxH / p.h, 1 / bv.s * 2);
+    const w = p.w * k, h = p.h * k;
+    const cx = (px - bv.ox) / bv.s, cy = (py - bv.oy) / bv.s;
+    const t = Math.random().toString(36).slice(2, 10);
+    // Se ve enseguida; cuando el servidor responde toma su id.
+    const im = setBoardImage(e, { id: `t${t}`, a: net.myId, x: cx - w / 2, y: cy - h / 2, w, h, pw: p.w, ph: p.h, local: p.dataUrl, pending: true });
+    bv.selected = im.id;
+    setSelectTool(true);
+    net.send({ type: 'board_image', id: e.data.id, t, photo: p.dataUrl, pw: p.w, ph: p.h, x: Math.round(im.x), y: Math.round(im.y), w: Math.round(w) });
+    // El servidor acepta una foto cada ~1 s por persona.
+    await new Promise((r) => setTimeout(r, 900));
+}
+boardView.addEventListener('dragover', (ev) => {
+    if (![...(ev.dataTransfer?.types || [])].includes('Files')) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'copy';
+    boardView.classList.add('is-dropping');
+});
+boardView.addEventListener('dragleave', (ev) => { if (ev.target === bvCanvas) boardView.classList.remove('is-dropping'); });
+boardView.addEventListener('drop', (ev) => {
+    ev.preventDefault();
+    boardView.classList.remove('is-dropping');
+    const [px, py] = screenPoint(ev);
+    if (ev.dataTransfer?.files?.length) boardFiles(ev.dataTransfer.files, px, py);
+});
+window.addEventListener('paste', (ev) => {
+    if (boardView.hidden) return;
+    const files = [...(ev.clipboardData?.items || [])].filter((i) => i.kind === 'file').map((i) => i.getAsFile()).filter(Boolean);
+    if (!files.length) return;
+    ev.preventDefault();
+    boardFiles(files, bv.w / 2, bv.h / 2);
+});
+const bvFileInput = boardView.querySelector('[data-board-file]');
+boardView.querySelector('[data-board-photo]').addEventListener('click', () => bvFileInput.click());
+bvFileInput.addEventListener('change', () => {
+    if (bvFileInput.files.length) boardFiles(bvFileInput.files, bv.w / 2, bv.h / 2);
+    bvFileInput.value = '';
+});
+function deleteSelectedImage() {
+    const e = bvEntry(), im = bvSelected();
+    if (!e || !im || !canDeleteImage(e, im)) return;
+    if (im.pending) return;
+    net.send({ type: 'board_image_delete', id: e.data.id, img: im.id });
+}
+bvImgDelete.addEventListener('click', deleteSelectedImage);
 
 function updateWriters() {
     const e = bvEntry();
@@ -2895,6 +3087,7 @@ function openBoard(id) {
     if (!e?.board) return;
     if (!getProfile()) return showLogin();
     bv.id = id;
+    bv.selected = null;
     boardView.querySelector('[data-board-title]').textContent = `🖍 Pizarra de ${ownerOf(e.data)}`;
     bvClear.hidden = !net.myId || e.data.owner_id !== net.myId;
     delete bvClear.dataset.confirm;
@@ -2941,21 +3134,33 @@ bvWidths.append(...BOARD_WIDTHS.map((px, i) => toolButton(['Fino', 'Medio', 'Gru
 function setBoardTool(c) {
     bv.color = c;
     bv.hand = false;
-    syncBoardTools();
+    setSelectTool(false);
 }
 function setBoardWidth(i) {
     bv.width = i;
     bv.hand = false;
+    setSelectTool(false);
+}
+function setSelectTool(on) {
+    bv.select = on;
+    if (on) bv.hand = false;
+    else bv.selected = null;
     syncBoardTools();
+    if (!boardView.hidden) bvRedraw();
 }
 function syncBoardTools() {
-    [...bvColors.children].forEach((b, i) => b.setAttribute('aria-pressed', String(!bv.hand && (i === BOARD_COLORS.length ? bv.color === BOARD_ERASER : bv.color === i))));
+    const pen = !bv.hand && !bv.select;
+    [...bvColors.children].forEach((b, i) => b.setAttribute('aria-pressed', String(pen && (i === BOARD_COLORS.length ? bv.color === BOARD_ERASER : bv.color === i))));
+    bvSelect.setAttribute('aria-pressed', String(bv.select));
+    bvCanvas.classList.toggle('is-select', bv.select);
     [...bvWidths.children].forEach((b, i) => b.setAttribute('aria-pressed', String(i === bv.width)));
     bvHand.setAttribute('aria-pressed', String(bv.hand));
     bvCanvas.classList.toggle('is-hand', bv.hand || bv.space);
 }
+const bvSelect = boardView.querySelector('[data-board-select]');
+bvSelect.addEventListener('click', () => setSelectTool(!bv.select));
 syncBoardTools();
-bvHand.addEventListener('click', () => { bv.hand = !bv.hand; syncBoardTools(); });
+bvHand.addEventListener('click', () => { bv.hand = !bv.hand; if (bv.hand) bv.select = false; bv.selected = null; syncBoardTools(); bvRedraw(); });
 boardView.querySelectorAll('[data-board-zoom]').forEach((b) => b.addEventListener('click', () => {
     bvZoomAt(Number(b.dataset.boardZoom) > 0 ? 1.4 : 1 / 1.4, bv.w / 2, bv.h / 2);
 }));
@@ -3049,6 +3254,7 @@ bvCanvas.addEventListener('pointerdown', (ev) => {
         // Dos dedos: zoom y mover. El trazo que esperaba se descarta; uno ya empezado termina.
         bv.pending = null;
         bvEndStroke();
+        if (bv.drag) { sendMove(bv.drag.im, true); bv.drag = null; }
         const [a, b] = [...bv.pointers.values()];
         bv.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, s: bv.s, ox: bv.ox, oy: bv.oy };
         bv.mode = 'pinch';
@@ -3061,7 +3267,9 @@ bvCanvas.addEventListener('pointerdown', (ev) => {
         bvCanvas.classList.add('is-panning');
         return;
     }
-    if (ev.button === 0) bvStartDraw(ev);
+    if (ev.button !== 0) return;
+    if (bv.select) bvStartImageDrag(ev);
+    else bvStartDraw(ev);
 });
 bvCanvas.addEventListener('pointermove', (ev) => {
     if (!bv.pointers.has(ev.pointerId)) return;
@@ -3083,6 +3291,8 @@ bvCanvas.addEventListener('pointermove', (ev) => {
         bv.oy = bv.pan.oy + ev.clientY - bv.pan.y;
         bvClamp();
         bvRedraw();
+    } else if (bv.mode === 'image' && bv.drag) {
+        bvImageDragMove(ev);
     } else if (bv.mode === 'draw') {
         const evs = ev.getCoalescedEvents?.() || [ev];
         for (const ce of (evs.length ? evs : [ev])) {
@@ -3101,12 +3311,22 @@ function bvPointerEnd(ev) {
         if (bv.pending) bvFlushPending(true);   // un toque corto es un punto
         bvEndStroke();
     }
+    if (bv.mode === 'image' && bv.drag) {
+        if (!bv.drag.im.pending) sendMove(bv.drag.im, true);
+        bv.drag = null;
+        boardChanged(bvEntry());
+    }
     if (bv.pointers.size === 0) {
         bv.mode = null;
         bvCanvas.classList.remove('is-panning');
     } else if (bv.mode === 'pinch') bv.mode = 'wait';   // queda un dedo: no escribe hasta soltarlo
 }
 bvCanvas.addEventListener('pointerup', bvPointerEnd);
+bvCanvas.addEventListener('pointermove', (ev) => {
+    if (!bv.select || bv.pointers.size || ev.pointerType !== 'mouse') return;
+    const hit = imageAt(...screenPoint(ev));
+    bvCanvas.style.cursor = !hit ? 'grab' : hit.corner === 0 || hit.corner === 3 ? 'nwse-resize' : hit.corner > 0 ? 'nesw-resize' : 'move';
+});
 bvCanvas.addEventListener('pointercancel', (ev) => { bv.pending = null; bvPointerEnd(ev); });
 bvCanvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
 bvCanvas.addEventListener('wheel', (ev) => {
@@ -3123,6 +3343,9 @@ window.addEventListener('keydown', (ev) => {
     else if (ev.key === '+' || ev.key === '=') bvZoomAt(1.4, bv.w / 2, bv.h / 2);
     else if (ev.key === '-') bvZoomAt(1 / 1.4, bv.w / 2, bv.h / 2);
     else if (ev.key === '0') bvFit();
+    else if ((ev.key === 'Delete' || ev.key === 'Backspace') && bv.selected) deleteSelectedImage();
+    else if (ev.key.toLowerCase() === 'v' && !ev.ctrlKey && !ev.metaKey) setSelectTool(true);
+    else if (ev.key.toLowerCase() === 'p' && !ev.ctrlKey && !ev.metaKey) setSelectTool(false);
     else return;
     ev.preventDefault();
 }, true);
@@ -3137,6 +3360,17 @@ net.on('board', (m) => {
     // El trazo que estoy haciendo ahora sigue (lo que falta mandar llega después).
     if (bv.id === m.id && bv.stroke && !b.strokes.some((st) => st.a === bv.stroke.a && st.s === bv.stroke.s)) b.strokes.push(bv.stroke);
     b.keys = new Map(b.strokes.map((st) => [strokeKey(st.a, st.s), st]));
+    const pending = b.images.filter((im) => im.pending);
+    const known = new Map(b.images.map((im) => [im.id, im]));
+    b.images = [];
+    for (const data of Array.isArray(m.images) ? m.images : []) {
+        const old = known.get(data.id);
+        if (old) { b.images.push(Object.assign(old, data)); continue; }
+        const im = { ...data };
+        b.images.push(im);
+        loadBoardImage(e, im);
+    }
+    b.images.push(...pending);
     b.loaded = true;
     boardChanged(e);
 });
@@ -3168,9 +3402,46 @@ net.on('board_undo', (m) => {
     if (bv.stroke === st) { clearInterval(bv.sendTimer); bv.stroke = null; }
     boardChanged(e);
 });
+net.on('board_image', (m) => {
+    const e = items.get(m.id);
+    if (!e?.board || !m.image?.id) return;
+    // La mía: la que ya se veía toma el id del servidor (y sigue donde la dejé si la moví).
+    const mine = m.t && e.board.images.find((x) => x.id === `t${m.t}`);
+    if (mine) {
+        const wasSelected = bv.selected === mine.id;
+        Object.assign(mine, { id: m.image.id, url: m.image.url, a: m.image.a, pending: false });
+        if (wasSelected) bv.selected = mine.id;
+        if (Math.abs(mine.x - m.image.x) > 1 || Math.abs(mine.y - m.image.y) > 1 || Math.abs(mine.w - m.image.w) > 1) sendMove(mine, true);
+        if (bvEntry() === e) boardMessage('');
+        boardChanged(e);
+        return;
+    }
+    setBoardImage(e, m.image);
+    boardChanged(e);
+});
+net.on('board_move', (m) => {
+    const e = items.get(m.id);
+    const im = e?.board?.images.find((x) => x.id === m.img);
+    if (!im || bv.drag?.im === im) return;
+    Object.assign(im, { x: m.x, y: m.y, w: m.w, h: m.h });
+    boardMoved(e);
+});
+function boardMoved(e) {
+    if (bv.id === e.data.id && !boardView.hidden) bvRedrawSoon(e);
+    else drawBoardTexture(e);
+}
+net.on('board_image_removed', (m) => {
+    const e = items.get(m.id);
+    if (!e?.board) return;
+    e.board.images = e.board.images.filter((x) => x.id !== m.img);
+    if (bv.selected === m.img) bv.selected = null;
+    boardChanged(e);
+});
 net.on('board_clear', (m) => {
     const e = items.get(m.id);
     if (!e?.board) return;
+    e.board.images = [];
+    bv.selected = null;
     e.board.strokes = [];
     e.board.keys.clear();
     if (bv.id === m.id && bv.stroke) { clearInterval(bv.sendTimer); bv.stroke = null; }
@@ -3179,6 +3450,12 @@ net.on('board_clear', (m) => {
 net.on('board_error', (m) => {
     if (!boardView.hidden) boardMessage(m.message);
     else flashHint(m.message);
+    // La foto que el servidor no aceptó se quita.
+    const eImg = items.get(m.id);
+    if (eImg?.board && m.t) {
+        eImg.board.images = eImg.board.images.filter((x) => x.id !== `t${m.t}`);
+        boardChanged(eImg);
+    }
     // El trazo que el servidor no aceptó se quita.
     const e = items.get(m.id);
     if (e?.board && bv.stroke && bv.id === m.id && m.s === bv.stroke.s) {

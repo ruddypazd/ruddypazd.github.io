@@ -786,6 +786,14 @@ ul.stats__reqs:empty::before { content: attr(data-empty); font-size: .88rem; col
 .board-view__btn:hover { border-color: rgba(0, 229, 255, .45); }
 .board-view__btn[aria-pressed="true"] { border-color: var(--cyan); background: rgba(0, 229, 255, .16); box-shadow: 0 0 12px rgba(0, 229, 255, .3); }
 .board-view__btn[hidden] { display: none; }
+.board-view__btn--danger { color: var(--pink); border-color: rgba(255, 61, 166, .5); }
+.board-view__canvas.is-select { cursor: default; }
+/* Soltar fotos: la pizarra se marca mientras se arrastra un archivo encima. */
+.board-view.is-dropping::after {
+    content: 'Suelta la foto en la pizarra'; position: absolute; inset: .6rem; pointer-events: none;
+    display: grid; place-items: center; border: 3px dashed var(--cyan); border-radius: 18px;
+    background: rgba(0, 229, 255, .08); color: var(--cyan); font: 600 1.2rem var(--mono);
+}
 .board-view__zoom { font-size: .74rem; }
 .board-view__btn[data-confirm] { border-color: var(--pink); color: var(--pink); font-size: .72rem; }
 .board-view__swatch { width: 1.25rem; height: 1.25rem; border-radius: 50%; background: var(--c); border: 2px solid rgba(255, 255, 255, .85); }
@@ -804,4 +812,5 @@ ul.stats__reqs:empty::before { content: attr(data-empty); font-size: .88rem; col
     .board-view__group + .board-view__group { padding-left: 0; border-left: 0; }
     .board-view__tools { gap: .3rem .5rem; padding: .35rem; }
     [data-board-colors] { flex-basis: 100%; justify-content: center; }
+    .board-view__zbtn { display: none; }   /* en el celular el zoom es con dos dedos */
 }
