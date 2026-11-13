@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=68">
+    <link rel="stylesheet" href="style.css?v=69">
     <script type="importmap">
     {
         "imports": {
@@ -527,8 +527,8 @@
     <div class="login login--scroll" data-sign-box role="dialog" aria-modal="true" aria-labelledby="sign-title" hidden>
         <form class="login__card" data-sign-form autocomplete="off">
             <p class="totem-panel__tag">Publicar</p>
-            <h2 id="sign-title">Publica un letrero</h2>
-            <p class="login__note">Queda delante de ti, en el lugar donde estás. Solo texto, una imagen, un enlace o todo junto: todos lo ven y solo tú puedes borrarlo.</p>
+            <h2 id="sign-title" data-sign-form-title>Publica un letrero</h2>
+            <p class="login__note" data-sign-form-note>Queda delante de ti, en el lugar donde estás. Solo texto, una imagen, un enlace o todo junto: todos lo ven y solo tú puedes borrarlo.</p>
             <label>Título (opcional)<input name="heading" type="text" maxlength="60" placeholder="Mi negocio"></label>
             <label>Texto (opcional)<textarea name="text" maxlength="500" rows="3" placeholder="Escribe tu mensaje…"></textarea></label>
             <label>Imagen (opcional)<input name="image" type="file" accept="image/*"></label>
@@ -568,19 +568,23 @@
             <button class="login__back" type="button" data-items-close>Cerrar</button>
         </form>
     </div>
-    <div class="totem-panel" data-item-view hidden role="dialog" aria-modal="true" aria-labelledby="item-view-name">
-        <div class="totem-panel__card profile memory-view">
-            <p class="items__big" data-item-icon aria-hidden="true"></p>
-            <p class="totem-panel__tag">Ítem</p>
-            <h2 id="item-view-name" data-item-name></h2>
-            <p class="memory-view__text" data-item-desc></p>
-            <dl class="profile__facts">
-                <dt>Puesto por</dt><dd data-item-author></dd>
-                <dt>Desde</dt><dd data-item-created></dd>
-            </dl>
-            <button class="holes__delete" type="button" data-item-delete hidden>Quitar ítem</button>
-            <button class="chat__send" type="button" data-item-close>Cerrar</button>
-        </div>
+    <div class="totem-panel item-view" data-item-view hidden role="dialog" aria-modal="true" aria-labelledby="item-view-name">
+        <section class="settings__win is-open is-top item-view__win">
+            <header class="settings__head">
+                <span class="settings__glyph" data-item-icon aria-hidden="true"></span>
+                <div class="settings__titles">
+                    <p class="settings__crumb">Ítem · <span data-item-author></span></p>
+                    <h2 id="item-view-name" data-item-name></h2>
+                </div>
+                <button class="settings__close" type="button" data-item-close aria-label="Cerrar">✕</button>
+            </header>
+            <p class="item-view__desc" data-item-desc></p>
+            <div class="settings__list" data-item-slots hidden></div>
+            <div class="settings__list item-view__actions">
+                <button class="settings__item settings__item--danger" type="button" data-item-delete data-desc="Solo tú puedes quitarlo" hidden>🗑 Quitar ítem</button>
+            </div>
+            <p class="settings__foot item-view__foot">Desde <span data-item-created></span></p>
+        </section>
     </div>
     <div class="board-view" data-board-view hidden role="dialog" aria-modal="true" aria-labelledby="board-view-title">
         <canvas class="board-view__canvas" data-board-canvas></canvas>
