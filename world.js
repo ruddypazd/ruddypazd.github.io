@@ -7,6 +7,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { createWormholes, buildUniverse, hueFor, HOLE_R } from './wormholes.js?v=67';
 import { createGame, tierColor } from './game.js?v=1';
+import { createVoice } from './voice.js?v=1';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
@@ -6218,6 +6219,68 @@ const game = createGame({
     onLevel: (id, level) => { const r = remotes.get(id); if (r && r.level !== level) remoteLabel(r); },
 });
 
+// ---------- Chat de voz por proximidad (voice.js) ----------
+// Escuchas a quienes están cerca, en tu misma escena; 🎤 abre tu micrófono para que te oigan.
+const voiceBtn = document.querySelector('[data-voice-mic]');
+const voiceToggle = document.querySelector('[data-voice-toggle]');
+const voice = createVoice({
+    net, camera, remotes,
+    getSelf: () => ({ x: player.position.x, z: player.position.z, scene: here.id }),
+    onChange: renderVoice,
+});
+function renderVoice(st) {
+    voiceBtn.setAttribute('aria-pressed', String(st.mic));
+    voiceBtn.querySelector('span').textContent = st.mic ? 'Hablando' : 'Micrófono';
+    voiceBtn.setAttribute('aria-label', st.mic ? 'Apagar tu micrófono (M)' : 'Activar tu micrófono para que te oigan los que están cerca (M)');
+    voiceToggle.setAttribute('aria-pressed', String(st.on));
+    voiceToggle.textContent = st.on ? '🔊 Chat de voz' : '🔈 Chat de voz apagado';
+    voiceToggle.dataset.desc = st.on ? 'Escuchas a quien está cerca' : 'Toca para escuchar a quien está cerca';
+    if (st.error) flashHint(st.error);
+}
+renderVoice(voice.state);
+voiceBtn.addEventListener('click', () => {
+    const wasOff = !voice.state.mic;
+    voice.toggleMic().then(() => {
+        if (wasOff && voice.state.mic && !voice.connectedCount()) flashHint('Micrófono activado: te oyen quienes estén a unos metros de ti.');
+    });
+});
+voiceToggle.addEventListener('click', () => voice.setOn(!voice.state.on));
+window.addEventListener('keydown', (e) => {
+    if (e.code !== 'KeyM' || e.repeat || e.target.matches?.('input, textarea')) return;
+    if (document.body.classList.contains('board-open')) return;
+    voiceBtn.click();
+});
+
+// Quien habla: un anillo verde bajo sus pies que late con su voz (y el tuyo, cuando hablas tú).
+const speakGeo = new THREE.RingGeometry(0.62, 0.78, 48);
+function speakRing() {
+    const m = new THREE.Mesh(speakGeo, new THREE.MeshBasicMaterial({ color: 0x3dff9a, transparent: true, opacity: 0, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.y = 0.012;
+    m.visible = false;
+    return m;
+}
+const mySpeak = speakRing();
+actors.add(mySpeak);
+function showSpeaking(mesh, level) {
+    const on = level > 0.06;
+    mesh.visible = on;
+    if (!on) return;
+    mesh.material.opacity = Math.min(1, 0.35 + level * 1.4);
+    mesh.scale.setScalar(1 + level * 0.5);
+}
+function updateVoice(dt) {
+    voice.update(dt);
+    for (const r of remotes.values()) {
+        if (!r.voiceLevel && !r.speak?.visible) continue;
+        if (!r.speak) { r.speak = speakRing(); r.group.add(r.speak); }
+        showSpeaking(r.speak, r.group.visible ? r.voiceLevel || 0 : 0);
+    }
+    mySpeak.position.set(player.position.x, 0.012, player.position.z);
+    showSpeaking(mySpeak, voice.state.myLevel);
+    voiceBtn.style.setProperty('--lv', voice.state.myLevel.toFixed(2));
+}
+
 const clock = new THREE.Clock();
 
 // ---------- Calidad adaptable ----------
@@ -6275,6 +6338,7 @@ renderer.setAnimationLoop(() => {
     faceCamera(dt);
     updateBot(dt);
     updateRemotes(dt);
+    updateVoice(dt);
     updateCharts(dt);
     updateItems(dt, t);
     updateEditor(t);

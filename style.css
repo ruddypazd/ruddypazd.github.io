@@ -117,6 +117,23 @@ body {
 .run-btn:hover, .run-btn[aria-pressed="true"] { border-color: var(--cyan); box-shadow: 0 0 16px rgba(0, 229, 255, .45); }
 .run-btn[aria-pressed="true"] { color: var(--cyan); }
 
+/* ---------- Micrófono del chat de voz (sobre el de correr); late con tu voz ---------- */
+.mic-btn {
+    --lv: 0;
+    position: fixed; z-index: 3;
+    left: max(1.2rem, env(safe-area-inset-left)); bottom: calc(13.6rem + env(safe-area-inset-bottom));
+    min-width: 84px; height: 40px; padding: 0 .7rem; border-radius: 999px;
+    border: 1px solid var(--panel-brd); background: var(--panel); backdrop-filter: blur(10px);
+    color: var(--text); font-family: var(--mono); font-size: .75rem; cursor: pointer; white-space: nowrap;
+    touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+    transition: border-color .2s, box-shadow .15s, background .2s;
+}
+.mic-btn:hover { border-color: var(--cyan); }
+.mic-btn[aria-pressed="true"] {
+    color: #3dff9a; border-color: rgba(61, 255, 154, .7);
+    box-shadow: 0 0 calc(8px + var(--lv) * 26px) rgba(61, 255, 154, calc(.3 + var(--lv) * .6));
+}
+
 /* ---------- Escribir: siempre a mano abajo al centro, sin tapar los controles ---------- */
 .write-btn {
     position: fixed; z-index: 3; left: 50%; transform: translateX(-50%);
