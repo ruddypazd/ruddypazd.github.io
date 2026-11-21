@@ -1676,7 +1676,7 @@ const banner = document.querySelector('[data-scene-banner]');
 let bannerTimer = 0;
 function fillBanner(p) {
     const isRoom = rooms.has(p.id);
-    const desc = isRoom ? 'Solo entra quien tiene el enlace. El puente del centro te lleva al mundo principal.' : p.description;
+    const desc = isRoom ? (p.description || 'Solo entra quien tiene el enlace. El puente del centro te lleva al mundo principal.') : p.description;
     banner.querySelector('[data-scene-name]').textContent = p.name;
     banner.querySelector('[data-scene-desc]').textContent = desc || '';
     banner.querySelector('[data-scene-desc]').hidden = !desc;
@@ -1910,6 +1910,43 @@ function roomUrl(id) {
     u.searchParams.set('sala', id);
     return u.toString();
 }
+// El enlace que se comparte pasa por el servidor: WhatsApp no ejecuta JavaScript, así que ahí se
+// arman las etiquetas og: (nombre, comentario e imagen de la sala) y redirige a roomUrl(id).
+const PREVIEW_BASE = WS_URL.replace(/^ws/, 'http').replace(/\/ws$/, '');
+function shareUrl(id) {
+    return `${PREVIEW_BASE}/sala/${id}`;
+}
+
+// Ícono de la pestaña: un orbe de colores al azar en el mundo principal y uno fijo para cada sala
+// (su color sale del id). Con el nombre de la sala como título de la pestaña.
+const BASE_TITLE = document.title;
+const mainHue = Math.random();
+function setFavicon(hue) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(24, 22, 4, 32, 32, 30);
+    grad.addColorStop(0, `hsl(${hue * 360} 95% 75%)`);
+    grad.addColorStop(0.6, `hsl(${(hue * 360 + 60) % 360} 85% 50%)`);
+    grad.addColorStop(1, `hsl(${(hue * 360 + 120) % 360} 80% 25%)`);
+    g.fillStyle = grad;
+    g.beginPath();
+    g.arc(32, 32, 30, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = 'rgba(255,255,255,.85)';
+    g.lineWidth = 3;
+    g.beginPath();
+    g.ellipse(32, 32, 26, 9, -0.5, 0, Math.PI * 2);
+    g.stroke();
+    const link = document.querySelector('[data-favicon]');
+    if (link) { link.type = 'image/png'; link.href = c.toDataURL('image/png'); }
+}
+function syncTab() {
+    const room = rooms.get(here.id);
+    document.title = room ? `${room.name} · Sala privada` : BASE_TITLE;
+    setFavicon(room ? hueFor(room.id) : mainHue);
+}
+setFavicon(mainHue);
 // La barra de direcciones dice en qué sala estás (copiarla sirve como enlace); al salir se limpia
 // para que recargar no te vuelva a meter.
 function syncRoomUrl() {
@@ -1917,9 +1954,10 @@ function syncRoomUrl() {
     if (rooms.has(here.id)) u.searchParams.set('sala', here.id);
     else u.searchParams.delete('sala');
     if (u.toString() !== location.href) history.replaceState(history.state, '', u);
+    syncTab();
 }
 async function copyRoomLink(id) {
-    const url = roomUrl(id);
+    const url = shareUrl(id);
     try {
         await navigator.clipboard.writeText(url);
         flashHint('Enlace de la sala copiado');
@@ -1935,7 +1973,7 @@ function showRoomLink(room) {
     roomLink.hidden = false;
     roomLink.dataset.id = room.id;
     roomLink.querySelector('[data-room-link-title]').textContent = `Listo: «${room.name}». Comparte este enlace con quien quieras invitar.`;
-    roomLink.querySelector('[data-room-url]').value = roomUrl(room.id);
+    roomLink.querySelector('[data-room-url]').value = shareUrl(room.id);
     roomLink.querySelector('[data-room-go]').href = roomUrl(room.id);
 }
 function refreshMyRooms() {
@@ -1990,12 +2028,12 @@ roomForm.addEventListener('submit', (e) => {
     if (!net.loggedIn) return roomMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
     creatingRoom = true;
     roomMessage('');
-    net.send({ type: 'room_create', name: roomForm.name.value.trim() });
+    net.send({ type: 'room_create', name: roomForm.name.value.trim(), description: roomForm.description.value.trim() });
 });
 roomBox.querySelector('[data-room-copy]').addEventListener('click', () => copyRoomLink(roomLink.dataset.id));
 roomShareBtn.addEventListener('click', () => {
     const r = rooms.get(roomLink.dataset.id);
-    navigator.share?.({ title: r?.name || 'Sala privada', text: 'Entra a mi sala privada del Mundo 3D', url: roomUrl(roomLink.dataset.id) }).catch(() => {});
+    navigator.share?.({ title: r?.name || 'Sala privada', text: 'Entra a mi sala privada del Mundo 3D', url: shareUrl(roomLink.dataset.id) }).catch(() => {});
 });
 roomLink.querySelector('[data-room-url]').addEventListener('focus', (e) => e.target.select());
 

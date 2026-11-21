@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Mundo 3D de Roy Ruddy Paz: explora a Ruddy en 3D.">
     <title>Mundo 3D · Roy Ruddy Paz</title>
-    <link rel="icon" type="image/jpeg" href="images/perfil.jpeg">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%237c4dff'/%3E%3C/svg%3E" data-favicon>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -282,6 +282,7 @@
             <h2 id="room-title">Crea tu sala privada</h2>
             <p class="login__note">No aparece en el mundo principal ni tiene puente: solo entra quien tenga el enlace. Adentro hay un puente para volver al mundo principal, y la voz y lo que publiquen se queda en la sala.</p>
             <label>Nombre (opcional)<input name="name" maxlength="40" placeholder="Reunión del equipo"></label>
+            <label>Comentario (opcional)<textarea name="description" maxlength="160" rows="2" placeholder="Se ve al compartir el enlace por WhatsApp"></textarea></label>
             <p class="login__error" data-room-error hidden></p>
             <button class="chat__send" type="submit" data-room-create>Crear sala privada</button>
             <div class="room-link" data-room-link hidden>
