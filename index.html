@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=71">
+    <link rel="stylesheet" href="style.css?v=72">
     <script type="importmap">
     {
         "imports": {
@@ -41,6 +41,7 @@
                         </header>
                         <div class="settings__quick">
                             <button class="settings__item settings__item--quick" type="button" data-chat-open data-desc="Ruddy lo dice" aria-expanded="false">💬 Escribir un mensaje</button>
+                            <button class="settings__item settings__item--quick" type="button" data-voice-toggle data-desc="Escuchas a quien está cerca" aria-pressed="true">🔊 Chat de voz</button>
                         </div>
                         <nav class="settings__nav" aria-label="Secciones">
                             <button class="settings__tile" type="button" data-menu-go="personaje" style="--k:0; --hue:190">
@@ -174,12 +175,13 @@
 
     <button class="jump-btn" type="button" data-jump aria-label="Saltar" hidden>Saltar</button>
     <button class="run-btn" type="button" data-run aria-pressed="false">Correr</button>
+    <button class="mic-btn" type="button" data-voice-mic aria-pressed="false" aria-label="Activar tu micrófono">🎤 <span>Micrófono</span></button>
     <button class="write-btn" type="button" data-chat-open aria-expanded="false" aria-label="Escribir un mensaje">💬 Escribir</button>
 
     <footer class="hud hud--bottom">
         <p data-model-note hidden>Modelo provisional: el avatar real de Ruddy llegará pronto.</p>
         <p class="hud__link" data-link-hint hidden></p>
-        <p class="hud__hint">Atrapa las chispas ✦ y mira tus objetivos arriba · Joystick o WASD para moverte · R, Shift o «Correr» para correr · Espacio salta · Enter escribe un mensaje · ⚙️ ajustes: personaje, publicar, primera persona · Toca un cuadro para abrirlo</p>
+        <p class="hud__hint">Atrapa las chispas ✦ y mira tus objetivos arriba · Joystick o WASD para moverte · R, Shift o «Correr» para correr · Espacio salta · Enter escribe un mensaje · 🎤 o M para hablar con quien está cerca · ⚙️ ajustes: personaje, publicar, primera persona · Toca un cuadro para abrirlo</p>
     </footer>
 
     <div class="login" data-login role="dialog" aria-modal="true" aria-labelledby="login-title" hidden>
@@ -693,7 +695,7 @@
         <p data-scene-desc></p>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=73"></script>
+    <script type="module" src="world.js?v=74"></script>
     <script type="module" src="portafolio/firebase.js"></script>
 </body>
 </html>
