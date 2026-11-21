@@ -829,6 +829,9 @@ ul.stats__reqs:empty::before { content: attr(data-empty); font-size: .88rem; col
 .board-view__canvas.is-select { cursor: default; }
 .board-view__canvas.is-text { cursor: text; }
 .board-view__t { font: 700 1.1rem var(--font); }
+.board-view__canvas.is-shape { cursor: crosshair; }
+.board-view__sq span { width: 1.05rem; height: .8rem; border: 2px solid currentColor; border-radius: 3px; background: rgba(255, 255, 255, .12); }
+.board-view__btn--word { font-size: .74rem; padding: 0 .55rem; white-space: nowrap; }
 /* Cuadro donde se escribe un texto: en el mismo lugar, tamaño y color que tendrá en la pizarra. */
 .board-view__text {
     position: absolute; z-index: 1; min-width: 40px; padding: 3px; margin: 0; resize: none; overflow: hidden;

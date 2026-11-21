@@ -2938,6 +2938,9 @@ function buildCity() {
 // fotos (arrastrar y soltar, pegar o elegir): quedan debajo de los trazos y, con la herramienta
 // «Mover», se mueven y se agrandan como en Figma; todos ven el movimiento en vivo. Y textos
 // (herramienta T): se ven mientras se escriben y se mueven y se agrandan igual que las fotos.
+// Y cuadrados (herramienta ▢): quedan debajo de todo, de fondo para textos y fotos. Fotos, textos y
+// cuadrados se agrupan (elegir varios con Mayús o arrastrando un recuadro, y «Agrupar»): los de un
+// mismo grupo se eligen y se mueven juntos, y todos lo ven en vivo.
 const BOARD_W = 2400, BOARD_H = 1500;           // coordenadas de los trazos (las mismas del servidor)
 const BOARD_COLORS = ['#1b1f2a', '#2563eb', '#e11d48', '#16a34a', '#f97316', '#9333ea', '#0891b2'];
 const BOARD_ERASER = 7;
@@ -2975,6 +2978,29 @@ function paintStroke(ctx, st, k, ox, oy, from = 0) {
     ctx.stroke();
 }
 
+// Cuadrados: debajo de todo. Relleno suave del color y borde del mismo color.
+function paintShapes(ctx, b, k, ox, oy) {
+    for (const q of b.shapes) {
+        const x = q.x * k + ox, y = q.y * k + oy, w = q.w * k, h = q.h * k;
+        const color = BOARD_COLORS[q.c] || BOARD_COLORS[0];
+        const r = Math.min(14 * k, w / 2, h / 2);
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h);
+        ctx.fillStyle = color + '22';
+        ctx.fill();
+        ctx.lineWidth = Math.max(1, 5 * k);
+        ctx.strokeStyle = color;
+        ctx.stroke();
+    }
+}
+function setBoardShape(e, data) {
+    const old = e.board.shapes.find((x) => x.id === data.id);
+    if (old) return Object.assign(old, data);
+    const q = { ...data, isShape: true };
+    e.board.shapes.push(q);
+    return q;
+}
+const boardEmpty = (b) => !b.strokes.length && !b.images.length && !b.texts.length && !b.shapes.length;
 // Fotos: debajo de los trazos. Mientras cargan se ve un recuadro gris.
 function paintImages(ctx, b, k, ox, oy) {
     for (const im of b.images) {
@@ -3032,9 +3058,10 @@ function drawBoardTexture(e) {
     const k = BOARD_TEX_W / BOARD_W;
     c.fillStyle = BOARD_PAPER;
     c.fillRect(0, 0, BOARD_TEX_W, BOARD_TEX_H);
+    paintShapes(c, b, k, 0, 0);
     paintImages(c, b, k, 0, 0);
     paintTexts(c, b, k, 0, 0);
-    if (!b.strokes.length && !b.images.length && !b.texts.length) {
+    if (boardEmpty(b)) {
         c.fillStyle = 'rgba(40, 50, 70, .35)';
         c.textAlign = 'center';
         c.font = 'bold 64px "Space Grotesk", sans-serif';
@@ -3074,7 +3101,7 @@ function buildBoard(it) {
     piece.rotation.y = it.ry || 0;
     const built = {
         piece, hits: [surface, frame], ownActions: [surface],
-        board: { strokes: [], images: [], texts: [], keys: new Map(), loaded: false, requested: false, ctx: cv.getContext('2d'), tex, writers: new Map() },
+        board: { strokes: [], images: [], texts: [], shapes: [], keys: new Map(), loaded: false, requested: false, ctx: cv.getContext('2d'), tex, writers: new Map() },
         obstacles: lineObstacles(piece, BW3 - 1, 0.4, -0.12).filter((_, i, a) => i === 0 || i === a.length - 1),
     };
     built.data = it;
@@ -3108,9 +3135,11 @@ const bv = {
     id: null, s: 1, ox: 0, oy: 0, fit: 1, w: 0, h: 0, dpr: 1, color: 0, width: 1, hand: false,
     pointers: new Map(), mode: null, stroke: null, sent: 0, sendTimer: 0, pending: null, pan: null, pinch: null,
     space: false, dirty: false, msgTimer: 0,
-    select: false, selected: null, drag: null, moveSent: 0, raf: 0,
-    textTool: false, editing: null, lastTap: null,
+    select: false, selected: null, extra: new Set(), drag: null, moveSent: 0, raf: 0, marquee: null,
+    textTool: false, editing: null, lastTap: null, shapeTool: false, newShape: null,
 };
+// Elige un solo objeto (o ninguno): se olvida lo que estaba elegido con Mayús o con el recuadro.
+function bvSelect1(id) { bv.selected = id; bv.extra.clear(); }
 const bvEntry = () => (bv.id ? items.get(bv.id) : null);
 
 function boardMessage(text) {
@@ -3176,9 +3205,11 @@ function bvRedraw() {
     bvCtx.fillRect(bv.ox, bv.oy, BOARD_W * bv.s, BOARD_H * bv.s);
     bvCtx.restore();
     bvClip(() => {
+        paintShapes(bvCtx, e.board, bv.s, bv.ox, bv.oy);
+        if (bv.newShape) paintShapes(bvCtx, { shapes: [bv.newShape] }, bv.s, bv.ox, bv.oy);
         paintImages(bvCtx, e.board, bv.s, bv.ox, bv.oy);
         paintTexts(bvCtx, e.board, bv.s, bv.ox, bv.oy);
-        if (!e.board.strokes.length && !e.board.images.length && !e.board.texts.length) {
+        if (boardEmpty(e.board) && !bv.newShape) {
             bvCtx.fillStyle = 'rgba(40, 50, 70, .3)';
             bvCtx.textAlign = 'center';
             bvCtx.font = `bold ${Math.max(14, 64 * bv.s)}px "Space Grotesk", sans-serif`;
@@ -3186,17 +3217,33 @@ function bvRedraw() {
         }
         for (const st of e.board.strokes) paintStroke(bvCtx, st, bv.s, bv.ox, bv.oy);
     });
-    const sel = bvSelected();
-    if (sel) {
-        const r = imgScreenRect(sel);
-        bvCtx.strokeStyle = '#0d99ff';
-        bvCtx.lineWidth = 2;
+    const all = bvSelectedAll();
+    bvCtx.strokeStyle = '#0d99ff';
+    bvCtx.lineWidth = 2;
+    if (all.length === 1) {
+        const r = imgScreenRect(all[0]);
         bvCtx.strokeRect(r.x, r.y, r.w, r.h);
         bvCtx.fillStyle = '#fff';
         for (const [hx, hy] of imgHandles(r)) {
             bvCtx.fillRect(hx - 6, hy - 6, 12, 12);
             bvCtx.strokeRect(hx - 6, hy - 6, 12, 12);
         }
+    } else if (all.length > 1) {
+        // Varios (o un grupo): cada uno con un borde fino y el conjunto con un recuadro.
+        bvCtx.lineWidth = 1;
+        for (const o of all) { const r = imgScreenRect(o); bvCtx.strokeRect(r.x, r.y, r.w, r.h); }
+        const r = imgScreenRect(boundsOf(all));
+        bvCtx.lineWidth = 2;
+        bvCtx.setLineDash(isGrouped(all) ? [] : [6, 4]);
+        bvCtx.strokeRect(r.x - 6, r.y - 6, r.w + 12, r.h + 12);
+        bvCtx.setLineDash([]);
+    }
+    if (bv.marquee) {
+        const m = bv.marquee;
+        bvCtx.fillStyle = 'rgba(13, 153, 255, .12)';
+        bvCtx.fillRect(Math.min(m.x0, m.x1), Math.min(m.y0, m.y1), Math.abs(m.x1 - m.x0), Math.abs(m.y1 - m.y0));
+        bvCtx.lineWidth = 1;
+        bvCtx.strokeRect(Math.min(m.x0, m.x1), Math.min(m.y0, m.y1), Math.abs(m.x1 - m.x0), Math.abs(m.y1 - m.y0));
     }
     syncImageDelete();
     placeTextEditor();
@@ -3222,18 +3269,38 @@ function bvRedrawSoon(e) {
 }
 
 // ----- Fotos: seleccionar, mover y agrandar -----
-const bvSelected = () => {
-    const b = bvEntry()?.board;
-    return (b && bv.selected && (b.texts.find((x) => x.id === bv.selected) || b.images.find((x) => x.id === bv.selected))) || null;
-};
+const findBoardObj = (b, id) => (b && id && (b.texts.find((x) => x.id === id) || b.images.find((x) => x.id === id) || b.shapes.find((x) => x.id === id))) || null;
+const bvSelected = () => findBoardObj(bvEntry()?.board, bv.selected);
 const isText = (o) => typeof o?.text === 'string';
+const isShape = (o) => !!o?.isShape;
+// Todo lo elegido: el objeto principal, los agregados con Mayús o el recuadro, y sus grupos.
+function bvSelectedAll() {
+    const b = bvEntry()?.board;
+    const first = findBoardObj(b, bv.selected);
+    if (!first) return [];
+    const picked = [first, ...[...bv.extra].map((id) => findBoardObj(b, id)).filter(Boolean)];
+    const groups = new Set(picked.map((o) => o.g).filter(Boolean));
+    const out = new Set(picked);
+    if (groups.size) for (const o of [...b.shapes, ...b.images, ...b.texts]) if (groups.has(o.g)) out.add(o);
+    return [...out];
+}
+const isGrouped = (list) => list.length > 1 && !!list[0].g && list.every((o) => o.g === list[0].g);
+function boundsOf(list) {
+    const x = Math.min(...list.map((o) => o.x)), y = Math.min(...list.map((o) => o.y));
+    return { x, y, w: Math.max(...list.map((o) => o.x + o.w)) - x, h: Math.max(...list.map((o) => o.y + o.h)) - y };
+}
 const imgScreenRect = (im) => ({ x: bv.ox + im.x * bv.s, y: bv.oy + im.y * bv.s, w: im.w * bv.s, h: im.h * bv.s });
 const imgHandles = (r) => [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]];
 const canDeleteImage = (e, im) => !!net.myId && (im.a === net.myId || e.data.owner_id === net.myId);
 const bvImgDelete = boardView.querySelector('[data-board-img-delete]');
+const bvGroupBtn = boardView.querySelector('[data-board-group]');
+const bvUngroupBtn = boardView.querySelector('[data-board-ungroup]');
 function syncImageDelete() {
-    const e = bvEntry(), im = bvSelected();
-    bvImgDelete.hidden = !(e && im && canDeleteImage(e, im));
+    const e = bvEntry(), all = bvSelectedAll();
+    bvImgDelete.hidden = !(e && all.some((o) => !o.pending && canDeleteImage(e, o)));
+    const real = all.filter((o) => !o.pending);
+    bvGroupBtn.hidden = real.length < 2 || isGrouped(real);
+    bvUngroupBtn.hidden = !real.some((o) => o.g);
 }
 function screenPoint(ev) {
     const r = bvCanvas.getBoundingClientRect();
@@ -3243,7 +3310,8 @@ function screenPoint(ev) {
 function imageAt(px, py) {
     const e = bvEntry();
     if (!e) return null;
-    const sel = bvSelected();
+    const all = bvSelectedAll();
+    const sel = all.length === 1 ? all[0] : null;   // un grupo no se agranda
     const grab = 14;
     if (sel) {
         const r = imgScreenRect(sel);
@@ -3261,30 +3329,53 @@ function imageAt(px, py) {
         const r = imgScreenRect(e.board.images[i]);
         if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return { im: e.board.images[i], corner: -1 };
     }
+    for (let i = e.board.shapes.length - 1; i >= 0; i--) {
+        const r = imgScreenRect(e.board.shapes[i]);
+        if (px >= r.x - 4 && px <= r.x + r.w + 4 && py >= r.y - 4 && py <= r.y + r.h + 4) return { im: e.board.shapes[i], corner: -1 };
+    }
     return null;
 }
-function sendMove(im, force) {
-    if (im.pending) return;
+const moveOf = (im) => (isText(im) ? { img: im.id, x: Math.round(im.x), y: Math.round(im.y), size: Math.round(im.size) }
+    : isShape(im) ? { img: im.id, x: Math.round(im.x), y: Math.round(im.y), w: Math.round(im.w), h: Math.round(im.h) }
+        : { img: im.id, x: Math.round(im.x), y: Math.round(im.y), w: Math.round(im.w) });
+function sendMove(im, force, list) {
     const now = performance.now();
     if (!force && now - bv.moveSent < 80) return;
+    // Un grupo: todas las posiciones en un solo mensaje.
+    const real = (list || [im]).filter((o) => !o.pending);
+    if (!real.length) return;
     bv.moveSent = now;
-    if (isText(im)) net.send({ type: 'board_move', id: bv.id, img: im.id, x: Math.round(im.x), y: Math.round(im.y), size: Math.round(im.size) });
-    else net.send({ type: 'board_move', id: bv.id, img: im.id, x: Math.round(im.x), y: Math.round(im.y), w: Math.round(im.w) });
+    if (real.length > 1) net.send({ type: 'board_moves', id: bv.id, items: real.map(moveOf) });
+    else net.send({ type: 'board_move', id: bv.id, ...moveOf(real[0]) });
 }
 function bvStartImageDrag(ev) {
     const [px, py] = screenPoint(ev);
     const hit = imageAt(px, py);
     if (!hit) {
-        // Fuera de las fotos: se suelta la selección y se mueve la pizarra.
-        bv.selected = null;
-        bv.pan = { x: ev.clientX, y: ev.clientY, ox: bv.ox, oy: bv.oy };
-        bv.mode = 'pan';
-        bvCanvas.classList.add('is-panning');
+        // En un lugar vacío: un recuadro para elegir varios (la pizarra se mueve con ✋, espacio o dos dedos).
+        if (!ev.shiftKey) bvSelect1(null);
+        bv.marquee = { x0: px, y0: py, x1: px, y1: py, add: ev.shiftKey };
+        bv.mode = 'marquee';
         bvRedraw();
         return;
     }
-    bv.selected = hit.im.id;
     const im = hit.im;
+    // Mayús: agrega o quita de lo elegido (con su grupo).
+    if (ev.shiftKey && bv.selected && hit.corner < 0) {
+        const inSel = bvSelectedAll().includes(im);
+        if (inSel) {
+            const drop = new Set(im.g ? bvSelectedAll().filter((o) => o.g === im.g).map((o) => o.id) : [im.id]);
+            const keep = [bv.selected, ...bv.extra].filter((id) => !drop.has(id));
+            bv.selected = keep[0] || null;
+            bv.extra = new Set(keep.slice(1));
+        } else bv.extra.add(im.id);
+        bv.mode = null;
+        bvRedraw();
+        return;
+    }
+    // Lo que ya estaba elegido (varios o un grupo) se arrastra entero; si no, se elige este.
+    if (!bvSelectedAll().includes(im)) bvSelect1(im.id);
+    else if (bvSelectedAll().length === 1) bv.selected = im.id;
     // Doble toque (o doble clic) en un texto: se edita.
     const now = performance.now();
     if (isText(im) && hit.corner < 0 && bv.lastTap?.id === im.id && now - bv.lastTap.t < 400) {
@@ -3297,16 +3388,40 @@ function bvStartImageDrag(ev) {
     // La esquina opuesta queda fija al agrandar.
     const fx = hit.corner === 0 || hit.corner === 2 ? im.x + im.w : im.x;
     const fy = hit.corner === 0 || hit.corner === 1 ? im.y + im.h : im.y;
-    bv.drag = { im, corner: hit.corner, px, py, x: im.x, y: im.y, w: im.w, h: im.h, size: im.size, fx, fy };
+    const list = hit.corner < 0 ? bvSelectedAll().map((o) => ({ o, x: o.x, y: o.y })) : [];
+    bv.drag = { im, corner: hit.corner, px, py, x: im.x, y: im.y, w: im.w, h: im.h, size: im.size, fx, fy, list };
     bv.mode = 'image';
+    bvRedraw();
+}
+// Termina el recuadro: se eligen las fotos, textos y cuadrados que toca.
+function bvEndMarquee() {
+    const m = bv.marquee, e = bvEntry();
+    bv.marquee = null;
+    if (!m || !e) return;
+    const x0 = (Math.min(m.x0, m.x1) - bv.ox) / bv.s, x1 = (Math.max(m.x0, m.x1) - bv.ox) / bv.s;
+    const y0 = (Math.min(m.y0, m.y1) - bv.oy) / bv.s, y1 = (Math.max(m.y0, m.y1) - bv.oy) / bv.s;
+    if (Math.abs(m.x1 - m.x0) > 4 || Math.abs(m.y1 - m.y0) > 4) {
+        const hits = [...e.board.shapes, ...e.board.images, ...e.board.texts]
+            .filter((o) => o.x < x1 && o.x + o.w > x0 && o.y < y1 && o.y + o.h > y0).map((o) => o.id);
+        const ids = [...new Set([...(m.add ? [bv.selected, ...bv.extra].filter(Boolean) : []), ...hits])];
+        bv.selected = ids[0] || null;
+        bv.extra = new Set(ids.slice(1));
+    }
     bvRedraw();
 }
 function bvImageDragMove(ev) {
     const d = bv.drag, im = d.im;
     const [px, py] = screenPoint(ev);
     if (d.corner < 0) {
-        im.x = d.x + (px - d.px) / bv.s;
-        im.y = d.y + (py - d.py) / bv.s;
+        const dx = (px - d.px) / bv.s, dy = (py - d.py) / bv.s;
+        for (const it of d.list) { it.o.x = it.x + dx; it.o.y = it.y + dy; }
+    } else if (isShape(im)) {
+        // Un cuadrado se estira libre (no guarda la proporción).
+        const bx = (px - bv.ox) / bv.s, by = (py - bv.oy) / bv.s;
+        im.w = Math.max(20, Math.abs(bx - d.fx));
+        im.h = Math.max(20, Math.abs(by - d.fy));
+        im.x = bx < d.fx ? d.fx - im.w : d.fx;
+        im.y = by < d.fy ? d.fy - im.h : d.fy;
     } else {
         const bx = (px - bv.ox) / bv.s, by = (py - bv.oy) / bv.s;
         const ratio = isText(im) ? d.h / d.w : im.ph / im.pw;
@@ -3321,7 +3436,7 @@ function bvImageDragMove(ev) {
         im.x = d.corner === 0 || d.corner === 2 ? d.fx - w : d.fx;
         im.y = d.corner === 0 || d.corner === 1 ? d.fy - im.h : d.fy;
     }
-    sendMove(im, false);
+    sendMove(im, false, d.list.length ? d.list.map((it) => it.o) : null);
     bvRedrawSoon(bvEntry());
 }
 
@@ -3356,7 +3471,7 @@ function editBoardText(t) {
     if (!canEditText(e, t)) { boardMessage('Solo quien lo escribió (o puso la pizarra) puede cambiar este texto. Puedes moverlo con ↖.'); return; }
     finishTextEdit();
     bv.editing = { id: t.id, board: bv.id, sent: t.text, original: t.text, isNew: false, timer: 0 };
-    bv.selected = null;
+    bvSelect1(null);
     bvText.value = t.text;
     bvRedraw();
     bvText.focus();
@@ -3438,14 +3553,14 @@ function finishTextEdit(cancel = false) {
                 net.send({ type: 'board_text', id: e.data.id, t: t.id.slice(1), text: value, x: t.x, y: t.y, size: t.size, c: t.c });
             } else t.sendWhenCreated = value;
         } else if (value !== ed.sent) net.send({ type: 'board_text_edit', id: e.data.id, txt: t.id, text: value });
-        if (bv.id === e.data.id) { bv.selected = t.id; }
+        if (bv.id === e.data.id) bvSelect1(t.id);
     }
     boardChanged(e);
 }
 function setTextTool(on) {
     finishTextEdit();
     bv.textTool = on;
-    if (on) { bv.select = false; bv.hand = false; bv.selected = null; }
+    if (on) { bv.select = false; bv.hand = false; bv.shapeTool = false; bvSelect1(null); }
     syncBoardTools();
     if (!boardView.hidden) bvRedraw();
 }
@@ -3480,7 +3595,7 @@ async function uploadBoardImage(file, px, py) {
     const t = Math.random().toString(36).slice(2, 10);
     // Se ve enseguida; cuando el servidor responde toma su id.
     const im = setBoardImage(e, { id: `t${t}`, a: net.myId, x: cx - w / 2, y: cy - h / 2, w, h, pw: p.w, ph: p.h, local: p.dataUrl, pending: true });
-    bv.selected = im.id;
+    bvSelect1(im.id);
     setSelectTool(true);
     net.send({ type: 'board_image', id: e.data.id, t, photo: p.dataUrl, pw: p.w, ph: p.h, x: Math.round(im.x), y: Math.round(im.y), w: Math.round(w) });
     // El servidor acepta una foto cada ~1 s por persona.
@@ -3513,11 +3628,75 @@ bvFileInput.addEventListener('change', () => {
     bvFileInput.value = '';
 });
 function deleteSelectedImage() {
-    const e = bvEntry(), im = bvSelected();
-    if (!e || !im || !canDeleteImage(e, im)) return;
-    if (im.pending) return;
-    net.send({ type: 'board_image_delete', id: e.data.id, img: im.id });
+    const e = bvEntry();
+    if (!e) return;
+    for (const o of bvSelectedAll()) {
+        if (!o.pending && canDeleteImage(e, o)) net.send({ type: 'board_image_delete', id: e.data.id, img: o.id });
+    }
 }
+
+// ----- Cuadrados -----
+// Con la herramienta ▢ se arrastra para dibujarlo (un toque pone uno de tamaño normal). Al soltarlo
+// queda elegido con ↖ para moverlo, agrandarlo o escribirle encima con T.
+const bvShapeTool = boardView.querySelector('[data-board-shapetool]');
+function setShapeTool(on) {
+    finishTextEdit();
+    bv.shapeTool = on;
+    if (on) { bv.select = false; bv.hand = false; bv.textTool = false; bvSelect1(null); }
+    syncBoardTools();
+    if (!boardView.hidden) bvRedraw();
+}
+bvShapeTool.addEventListener('click', () => setShapeTool(!bv.shapeTool));
+function bvStartShape(ev) {
+    if (!net.loggedIn) { boardMessage('Sin conexión con el servidor. Prueba otra vez en un momento.'); return; }
+    const [px, py] = screenPoint(ev);
+    const x = (px - bv.ox) / bv.s, y = (py - bv.oy) / bv.s;
+    bv.newShape = { id: `t${Math.random().toString(36).slice(2, 10)}`, a: net.myId, x, y, w: 0, h: 0, x0: x, y0: y,
+        c: bv.color === BOARD_ERASER ? 0 : bv.color, isShape: true, pending: true, local: true };
+    bv.mode = 'shape';
+}
+function bvShapeMove(ev) {
+    const q = bv.newShape;
+    const [px, py] = screenPoint(ev);
+    const x = (px - bv.ox) / bv.s, y = (py - bv.oy) / bv.s;
+    q.x = Math.min(x, q.x0); q.y = Math.min(y, q.y0);
+    q.w = Math.abs(x - q.x0); q.h = Math.abs(y - q.y0);
+    bvRedrawSoon(bvEntry());
+}
+function bvEndShape() {
+    const q = bv.newShape, e = bvEntry();
+    bv.newShape = null;
+    if (!q || !e) return;
+    // Muy chico (un toque): uno de tamaño normal que empieza donde se tocó.
+    if (q.w * bv.s < 12 && q.h * bv.s < 12) {
+        q.w = Math.round(Math.min(BOARD_W * 0.4, Math.min(260, bv.w * 0.4) / bv.s)); q.h = Math.round(q.w * 0.62);
+    }
+    q.w = Math.max(20, q.w); q.h = Math.max(20, q.h);
+    delete q.x0; delete q.y0;
+    e.board.shapes.push(q);
+    net.send({ type: 'board_shape', id: e.data.id, t: q.id.slice(1), x: Math.round(q.x), y: Math.round(q.y), w: Math.round(q.w), h: Math.round(q.h), c: q.c });
+    setSelectTool(true);
+    bvSelect1(q.id);
+    boardChanged(e);
+}
+
+// ----- Agrupar -----
+function groupSelected(on) {
+    const e = bvEntry();
+    if (!e) return;
+    const list = bvSelectedAll().filter((o) => !o.pending);
+    if (on && list.length < 2) return boardMessage('Elige dos o más cosas para agruparlas (Mayús + clic o arrastra un recuadro).');
+    if (!list.length) return;
+    const g = on ? `g${Math.random().toString(36).slice(2, 10)}` : null;
+    for (const o of list) { if (g) o.g = g; else delete o.g; }
+    net.send({ type: 'board_group', id: e.data.id, ids: list.map((o) => o.id), g });
+    if (on) boardMessage('Agrupados: ahora se mueven juntos.');
+    bvSelect1(list[0].id);
+    if (!on) bv.extra = new Set(list.slice(1).map((o) => o.id));
+    bvRedraw();
+}
+bvGroupBtn.addEventListener('click', () => groupSelected(true));
+bvUngroupBtn.addEventListener('click', () => groupSelected(false));
 bvImgDelete.addEventListener('click', deleteSelectedImage);
 
 function updateWriters() {
@@ -3540,7 +3719,7 @@ function openBoard(id) {
     if (!e?.board) return;
     if (!getProfile()) return showLogin();
     bv.id = id;
-    bv.selected = null;
+    bvSelect1(null);
     boardView.querySelector('[data-board-title]').textContent = `🖍 Pizarra de ${ownerOf(e.data)}`;
     bvClear.hidden = !net.myId || e.data.owner_id !== net.myId;
     delete bvClear.dataset.confirm;
@@ -3588,16 +3767,20 @@ bvWidths.append(...BOARD_WIDTHS.map((px, i) => toolButton(['Fino', 'Medio', 'Gru
 function setBoardTool(c) {
     bv.color = c;
     bv.hand = false;
-    // Con un texto elegido, el color se le aplica a ese texto (como en Figma).
-    const e = bvEntry(), t = bvSelected();
-    if (e && isText(t) && canEditText(e, t) && c !== BOARD_ERASER && !t.local) {
-        t.c = c;
-        net.send({ type: 'board_text_edit', id: e.data.id, txt: t.id, c });
+    // Con textos o cuadrados elegidos, el color se les aplica a ellos (como en Figma).
+    const e = bvEntry();
+    const paint = e && c !== BOARD_ERASER ? bvSelectedAll().filter((o) => (isText(o) || isShape(o)) && !o.local && canEditText(e, o)) : [];
+    if (paint.length) {
+        for (const o of paint) {
+            o.c = c;
+            if (isText(o)) net.send({ type: 'board_text_edit', id: e.data.id, txt: o.id, c });
+            else net.send({ type: 'board_shape_edit', id: e.data.id, shp: o.id, c });
+        }
         syncBoardTools();
         boardChanged(e);
         return;
     }
-    if (bv.textTool) { syncBoardTools(); return; }
+    if (bv.textTool || bv.shapeTool) { syncBoardTools(); return; }
     setSelectTool(false);
 }
 function setBoardWidth(i) {
@@ -3609,14 +3792,17 @@ function setSelectTool(on) {
     finishTextEdit();
     bv.select = on;
     bv.textTool = false;
+    bv.shapeTool = false;
     if (on) bv.hand = false;
-    else bv.selected = null;
+    else bvSelect1(null);
     syncBoardTools();
     if (!boardView.hidden) bvRedraw();
 }
 function syncBoardTools() {
-    const pen = !bv.hand && !bv.select && !bv.textTool;
+    const pen = !bv.hand && !bv.select && !bv.textTool && !bv.shapeTool;
     bvTextTool.setAttribute('aria-pressed', String(bv.textTool));
+    bvShapeTool.setAttribute('aria-pressed', String(bv.shapeTool));
+    bvCanvas.classList.toggle('is-shape', bv.shapeTool);
     bvCanvas.classList.toggle('is-text', bv.textTool);
     [...bvColors.children].forEach((b, i) => b.setAttribute('aria-pressed', String(pen && (i === BOARD_COLORS.length ? bv.color === BOARD_ERASER : bv.color === i))));
     bvSelect.setAttribute('aria-pressed', String(bv.select));
@@ -3628,7 +3814,7 @@ function syncBoardTools() {
 const bvSelect = boardView.querySelector('[data-board-select]');
 bvSelect.addEventListener('click', () => setSelectTool(!bv.select));
 syncBoardTools();
-bvHand.addEventListener('click', () => { finishTextEdit(); bv.hand = !bv.hand; if (bv.hand) { bv.select = false; bv.textTool = false; } bv.selected = null; syncBoardTools(); bvRedraw(); });
+bvHand.addEventListener('click', () => { finishTextEdit(); bv.hand = !bv.hand; if (bv.hand) { bv.select = false; bv.textTool = false; bv.shapeTool = false; } bvSelect1(null); syncBoardTools(); bvRedraw(); });
 boardView.querySelectorAll('[data-board-zoom]').forEach((b) => b.addEventListener('click', () => {
     bvZoomAt(Number(b.dataset.boardZoom) > 0 ? 1.4 : 1 / 1.4, bv.w / 2, bv.h / 2);
 }));
@@ -3722,7 +3908,9 @@ bvCanvas.addEventListener('pointerdown', (ev) => {
         // Dos dedos: zoom y mover. El trazo que esperaba se descarta; uno ya empezado termina.
         bv.pending = null;
         bvEndStroke();
-        if (bv.drag) { sendMove(bv.drag.im, true); bv.drag = null; }
+        if (bv.drag) { sendMove(bv.drag.im, true, bv.drag.list.length ? bv.drag.list.map((it) => it.o) : null); bv.drag = null; }
+        if (bv.newShape) bvEndShape();
+        bv.marquee = null;
         const [a, b] = [...bv.pointers.values()];
         bv.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, s: bv.s, ox: bv.ox, oy: bv.oy };
         bv.mode = 'pinch';
@@ -3744,7 +3932,8 @@ bvCanvas.addEventListener('pointerdown', (ev) => {
             if (canEditText(bvEntry(), hit.im)) { ev.preventDefault(); editBoardText(hit.im); return; }
         } else { startNewText(ev); return; }
     }
-    if (bv.select || bv.textTool) bvStartImageDrag(ev);
+    if (bv.shapeTool) bvStartShape(ev);
+    else if (bv.select || bv.textTool) bvStartImageDrag(ev);
     else bvStartDraw(ev);
 });
 bvCanvas.addEventListener('pointermove', (ev) => {
@@ -3769,6 +3958,11 @@ bvCanvas.addEventListener('pointermove', (ev) => {
         bvRedraw();
     } else if (bv.mode === 'image' && bv.drag) {
         bvImageDragMove(ev);
+    } else if (bv.mode === 'shape' && bv.newShape) {
+        bvShapeMove(ev);
+    } else if (bv.mode === 'marquee' && bv.marquee) {
+        [bv.marquee.x1, bv.marquee.y1] = screenPoint(ev);
+        bvRedrawSoon(bvEntry());
     } else if (bv.mode === 'draw') {
         const evs = ev.getCoalescedEvents?.() || [ev];
         for (const ce of (evs.length ? evs : [ev])) {
@@ -3788,10 +3982,12 @@ function bvPointerEnd(ev) {
         bvEndStroke();
     }
     if (bv.mode === 'image' && bv.drag) {
-        if (!bv.drag.im.pending) sendMove(bv.drag.im, true);
+        sendMove(bv.drag.im, true, bv.drag.list.length ? bv.drag.list.map((it) => it.o) : null);
         bv.drag = null;
         boardChanged(bvEntry());
     }
+    if (bv.mode === 'shape') bvEndShape();
+    if (bv.mode === 'marquee') bvEndMarquee();
     if (bv.pointers.size === 0) {
         bv.mode = null;
         bvCanvas.classList.remove('is-panning');
@@ -3817,6 +4013,7 @@ window.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape') { closeBoard(); return; }
     if (ev.code === 'Space') { if (!bv.space) { bv.space = true; syncBoardTools(); } }
     else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') boardView.querySelector('[data-board-undo]').click();
+    else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'g') groupSelected(!ev.shiftKey);
     else if (ev.key === '+' || ev.key === '=') bvZoomAt(1.4, bv.w / 2, bv.h / 2);
     else if (ev.key === '-') bvZoomAt(1 / 1.4, bv.w / 2, bv.h / 2);
     else if (ev.key === '0') bvFit();
@@ -3824,6 +4021,7 @@ window.addEventListener('keydown', (ev) => {
     else if (ev.key.toLowerCase() === 'v' && !ev.ctrlKey && !ev.metaKey) setSelectTool(true);
     else if (ev.key.toLowerCase() === 'p' && !ev.ctrlKey && !ev.metaKey) setSelectTool(false);
     else if (ev.key.toLowerCase() === 't' && !ev.ctrlKey && !ev.metaKey) setTextTool(true);
+    else if (ev.key.toLowerCase() === 'r' && !ev.ctrlKey && !ev.metaKey) setShapeTool(true);
     else if (ev.key === 'Enter' && isText(bvSelected())) editBoardText(bvSelected());
     else return;
     ev.preventDefault();
@@ -3860,6 +4058,14 @@ net.on('board', (m) => {
         return measureBoardText(old ? Object.assign(old, data) : { ...data });
     });
     b.texts.push(...localTexts);
+    const localShapes = b.shapes.filter((q) => q.local);
+    const knownShapes = new Map(b.shapes.map((q) => [q.id, q]));
+    b.shapes = (Array.isArray(m.shapes) ? m.shapes : []).map((data) => {
+        const old = knownShapes.get(data.id);
+        if (old) { delete old.g; return Object.assign(old, data); }
+        return { ...data, isShape: true };
+    });
+    b.shapes.push(...localShapes);
     b.loaded = true;
     boardChanged(e);
 });
@@ -3936,11 +4142,51 @@ net.on('board_text', (m) => {
 net.on('board_move', (m) => {
     const e = items.get(m.id);
     const b = e?.board;
-    const im = b && (b.images.find((x) => x.id === m.img) || b.texts.find((x) => x.id === m.img));
-    if (!im || bv.drag?.im === im) return;
+    if (applyBoardMove(b, m)) boardMoved(e);
+});
+// Una posición que llega: no se toca lo que estoy arrastrando yo.
+function applyBoardMove(b, m) {
+    const im = findBoardObj(b, m.img);
+    if (!im || bv.drag?.im === im || bv.drag?.list.some((it) => it.o === im)) return false;
     if (isText(im)) measureBoardText(Object.assign(im, { x: m.x, y: m.y, size: m.size }));
     else Object.assign(im, { x: m.x, y: m.y, w: m.w, h: m.h });
+    return true;
+}
+net.on('board_moves', (m) => {
+    const e = items.get(m.id);
+    if (!e?.board || !Array.isArray(m.items)) return;
+    let any = false;
+    for (const it of m.items) any = applyBoardMove(e.board, it) || any;
+    if (any) boardMoved(e);
+});
+net.on('board_group', (m) => {
+    const e = items.get(m.id);
+    if (!e?.board || !Array.isArray(m.ids)) return;
+    for (const id of m.ids) {
+        const o = findBoardObj(e.board, id);
+        if (!o) continue;
+        if (m.g) o.g = m.g; else delete o.g;
+    }
     boardMoved(e);
+});
+net.on('board_shape', (m) => {
+    const e = items.get(m.id);
+    if (!e?.board || !m.shape?.id) return;
+    const mine = m.t && e.board.shapes.find((x) => x.id === `t${m.t}`);
+    if (mine) {
+        // El mío ya se veía: toma el id del servidor; si lo moví mientras tanto, manda dónde quedó.
+        const oldId = mine.id;
+        mine.id = m.shape.id;
+        mine.pending = false;
+        mine.local = false;
+        if (bv.selected === oldId) bv.selected = mine.id;
+        if (['x', 'y', 'w', 'h'].some((k) => Math.abs(mine[k] - m.shape[k]) > 1) && bv.drag?.im !== mine) sendMove(mine, true);
+        if (mine.c !== m.shape.c) net.send({ type: 'board_shape_edit', id: e.data.id, shp: mine.id, c: mine.c });
+        boardChanged(e);
+        return;
+    }
+    setBoardShape(e, m.shape);
+    boardChanged(e);
 });
 function boardMoved(e) {
     if (bv.id === e.data.id && !boardView.hidden) bvRedrawSoon(e);
@@ -3951,8 +4197,10 @@ net.on('board_image_removed', (m) => {
     if (!e?.board) return;
     e.board.images = e.board.images.filter((x) => x.id !== m.img);
     e.board.texts = e.board.texts.filter((x) => x.id !== m.img);
+    e.board.shapes = e.board.shapes.filter((x) => x.id !== m.img);
     if (bv.editing?.id === m.img) { bv.editing = null; bvText.hidden = true; }
-    if (bv.selected === m.img) bv.selected = null;
+    bv.extra.delete(m.img);
+    if (bv.selected === m.img) { bv.selected = [...bv.extra][0] || null; bv.extra.delete(bv.selected); }
     boardChanged(e);
 });
 net.on('board_clear', (m) => {
@@ -3960,8 +4208,9 @@ net.on('board_clear', (m) => {
     if (!e?.board) return;
     e.board.images = [];
     e.board.texts = [];
+    e.board.shapes = [];
     if (bv.editing?.board === m.id) { bv.editing = null; bvText.hidden = true; }
-    bv.selected = null;
+    bvSelect1(null);
     e.board.strokes = [];
     e.board.keys.clear();
     if (bv.id === m.id && bv.stroke) { clearInterval(bv.sendTimer); bv.stroke = null; }
@@ -3975,6 +4224,7 @@ net.on('board_error', (m) => {
     if (eImg?.board && m.t) {
         eImg.board.images = eImg.board.images.filter((x) => x.id !== `t${m.t}`);
         eImg.board.texts = eImg.board.texts.filter((x) => x.id !== `t${m.t}`);
+        eImg.board.shapes = eImg.board.shapes.filter((x) => x.id !== `t${m.t}`);
         if (bv.editing?.id === `t${m.t}`) { bv.editing = null; bvText.hidden = true; }
         boardChanged(eImg);
     }
