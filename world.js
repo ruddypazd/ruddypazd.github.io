@@ -1060,7 +1060,9 @@ const net = (() => {
 
     function sendLogin() {
         const p = getProfile();
-        if (p && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'login', world: true, batch: true, ...p }));
+        // ?sala=<uuid>: el servidor manda esa sala privada para entrar directo.
+        const room = new URLSearchParams(location.search).get('sala') || undefined;
+        if (p && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'login', world: true, batch: true, ...p, room }));
     }
 
     function connect() {
@@ -1309,7 +1311,8 @@ function upsertRemote(p) {
     r.target.set(p.x, 0, p.z);
     r.ry = p.ry || 0;
     // Escena donde está (mundo principal o un agujero de gusano): solo se ve si es la tuya.
-    const sceneId = p.scene === MAIN || portals.has(p.scene) ? p.scene : MAIN;
+    // "sala": está en una sala privada que no es la tuya (el servidor no dice cuál): no se ve.
+    const sceneId = p.scene === MAIN || p.scene === HIDDEN_ROOM || portals.has(p.scene) || rooms.has(p.scene) ? p.scene : MAIN;
     if (r.scene !== sceneId) {
         // Al cambiar de escena aparece directo en su lugar, sin caminar desde el otro mundo.
         if (r.scene) r.group.position.copy(r.target);
@@ -1600,6 +1603,10 @@ for (const o of [...clickable]) {
 }
 const returnHole = wormholes.makeHole({ scene: dest.scene, x: 0, z: 0 });
 const portals = new Map();   // id -> { data, hole, label }
+// Salas privadas que conoces (las tuyas y la del enlace con el que entraste): id -> datos.
+// No tienen puente en el mundo principal; adentro está el mismo puente de regreso.
+const rooms = new Map();
+const HIDDEN_ROOM = 'sala';
 // Dónde estás: la escena, sus límites y sus obstáculos.
 const here = { id: MAIN, scene, radius: WORLD_RADIUS, obstacles };
 let pendingScene = null;
@@ -1668,12 +1675,21 @@ function showRemote(r) {
 const banner = document.querySelector('[data-scene-banner]');
 let bannerTimer = 0;
 function fillBanner(p) {
+    const isRoom = rooms.has(p.id);
+    const desc = isRoom ? 'Solo entra quien tiene el enlace. El puente del centro te lleva al mundo principal.' : p.description;
     banner.querySelector('[data-scene-name]').textContent = p.name;
-    banner.querySelector('[data-scene-desc]').textContent = p.description || '';
-    banner.querySelector('[data-scene-desc]').hidden = !p.description;
-    banner.querySelector('[data-scene-owner]').textContent = holeByline(p.owner_name, p.created_at) || 'Puente de Einstein-Rosen';
+    banner.querySelector('[data-scene-desc]').textContent = desc || '';
+    banner.querySelector('[data-scene-desc]').hidden = !desc;
+    banner.querySelector('[data-scene-owner]').textContent = isRoom
+        ? ['🔒 Sala privada' + (p.owner_name ? ` de ${p.owner_name}` : ''), formatDate(p.created_at) && `creada ${formatDate(p.created_at)}`].filter(Boolean).join(' · ')
+        : holeByline(p.owner_name, p.created_at) || 'Puente de Einstein-Rosen';
+    banner.querySelector('[data-scene-copy]').hidden = !isRoom;
 }
 banner.addEventListener('click', () => banner.classList.toggle('is-compact'));
+banner.querySelector('[data-scene-copy]').addEventListener('click', (e) => {
+    e.stopPropagation();
+    copyRoomLink(here.id);
+});
 
 // Pasa a otra escena. pos: posición guardada (al recargar); from: agujero por el que se sale.
 function goTo(id, { from = null, pos = null } = {}) {
@@ -1720,8 +1736,9 @@ function goTo(id, { from = null, pos = null } = {}) {
     }
     holeArmed = false;
     banner.hidden = toMain;
+    syncRoomUrl();
     if (!toMain) {
-        fillBanner(portals.get(id)?.data || { name: 'Puente de Einstein-Rosen' });
+        fillBanner(portals.get(id)?.data || rooms.get(id) || { name: 'Puente de Einstein-Rosen' });
         banner.classList.remove('is-compact');
         clearTimeout(bannerTimer);
         bannerTimer = setTimeout(() => banner.classList.add('is-compact'), 7000);
@@ -1798,7 +1815,7 @@ net.on('portals', (m) => {
     if (pendingScene) {
         const ps = pendingScene;
         pendingScene = null;
-        if (portals.has(ps.scene)) goTo(ps.scene, { pos: ps });
+        if (portals.has(ps.scene) || rooms.has(ps.scene)) goTo(ps.scene, { pos: ps });
     }
 });
 net.on('portal_removed', (m) => removePortal(m.id));
@@ -1872,6 +1889,144 @@ net.on('portal', (m) => {
     }
 });
 net.on('portal_error', (m) => { creating = false; holeMessage(m.message); });
+
+// ---------- Salas privadas ----------
+// Como un puente, pero sin puente: la sala no aparece en el mundo principal. Se crea en Ajustes →
+// Crear sala privada, que da su enlace (?sala=<uuid>); con ese enlace se entra directo, y adentro
+// el puente del centro devuelve al mundo principal.
+const roomBox = document.querySelector('[data-room-box]');
+const roomForm = roomBox.querySelector('[data-room-form]');
+const roomError = roomBox.querySelector('[data-room-error]');
+const roomLink = roomBox.querySelector('[data-room-link]');
+const myRooms = roomBox.querySelector('[data-my-rooms]');
+const roomShareBtn = roomBox.querySelector('[data-room-share]');
+let creatingRoom = false;
+let linkRoomEntered = false;
+
+function roomUrl(id) {
+    const u = new URL(location.href);
+    u.search = '';
+    u.hash = '';
+    u.searchParams.set('sala', id);
+    return u.toString();
+}
+// La barra de direcciones dice en qué sala estás (copiarla sirve como enlace); al salir se limpia
+// para que recargar no te vuelva a meter.
+function syncRoomUrl() {
+    const u = new URL(location.href);
+    if (rooms.has(here.id)) u.searchParams.set('sala', here.id);
+    else u.searchParams.delete('sala');
+    if (u.toString() !== location.href) history.replaceState(history.state, '', u);
+}
+async function copyRoomLink(id) {
+    const url = roomUrl(id);
+    try {
+        await navigator.clipboard.writeText(url);
+        flashHint('Enlace de la sala copiado');
+    } catch {
+        window.prompt('Copia el enlace de la sala:', url);
+    }
+}
+function roomMessage(text) {
+    roomError.hidden = !text;
+    roomError.textContent = text || '';
+}
+function showRoomLink(room) {
+    roomLink.hidden = false;
+    roomLink.dataset.id = room.id;
+    roomLink.querySelector('[data-room-link-title]').textContent = `Listo: «${room.name}». Comparte este enlace con quien quieras invitar.`;
+    roomLink.querySelector('[data-room-url]').value = roomUrl(room.id);
+    roomLink.querySelector('[data-room-go]').href = roomUrl(room.id);
+}
+function refreshMyRooms() {
+    const mine = [...rooms.values()].filter((r) => net.myId && r.owner_id === net.myId);
+    myRooms.hidden = !mine.length;
+    myRooms.querySelector('ul').replaceChildren(...mine.map((r) => {
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        name.textContent = r.name;
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.className = 'holes__delete holes__move';
+        copy.textContent = 'Enlace';
+        copy.addEventListener('click', () => { showRoomLink(r); copyRoomLink(r.id); });
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'holes__delete';
+        del.textContent = 'Borrar';
+        del.addEventListener('click', () => {
+            if (del.dataset.confirm) return net.send({ type: 'room_delete', id: r.id });
+            del.dataset.confirm = '1';
+            del.textContent = '¿Borrar? Toca otra vez';
+        });
+        li.append(name, copy, del);
+        return li;
+    }));
+}
+function removeRoom(id) {
+    if (!rooms.has(id)) return;
+    const name = rooms.get(id).name;
+    if (here.id === id) {
+        goTo(MAIN);
+        flashHint(`La sala «${name}» se cerró y volviste al mundo principal`);
+    }
+    rooms.delete(id);
+    for (const r of remotes.values()) if (r.scene === id) { r.scene = HIDDEN_ROOM; showRemote(r); }
+    if (roomLink.dataset.id === id) roomLink.hidden = true;
+    refreshMyRooms();
+}
+
+document.querySelector('[data-room-open]').addEventListener('click', () => {
+    if (!getProfile()) return showLogin();
+    roomMessage('');
+    roomShareBtn.hidden = !navigator.share;
+    refreshMyRooms();
+    roomBox.hidden = false;
+    setTimeout(() => roomForm.name.focus(), 50);
+});
+roomBox.querySelector('[data-room-close]').addEventListener('click', () => { roomBox.hidden = true; });
+roomForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!net.loggedIn) return roomMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
+    creatingRoom = true;
+    roomMessage('');
+    net.send({ type: 'room_create', name: roomForm.name.value.trim() });
+});
+roomBox.querySelector('[data-room-copy]').addEventListener('click', () => copyRoomLink(roomLink.dataset.id));
+roomShareBtn.addEventListener('click', () => {
+    const r = rooms.get(roomLink.dataset.id);
+    navigator.share?.({ title: r?.name || 'Sala privada', text: 'Entra a mi sala privada del Mundo 3D', url: roomUrl(roomLink.dataset.id) }).catch(() => {});
+});
+roomLink.querySelector('[data-room-url]').addEventListener('focus', (e) => e.target.select());
+
+net.on('rooms', (m) => {
+    for (const r of m.rooms) rooms.set(r.id, r);
+    refreshMyRooms();
+    // Entró con ?sala=: directo a la sala (una sola vez por visita; al reconectar ya está adentro).
+    if (m.link && rooms.has(m.link) && !linkRoomEntered) {
+        linkRoomEntered = true;
+        pendingScene = null;
+        if (here.id !== m.link) goTo(m.link);
+        flashHint(`Estás en la sala privada «${rooms.get(m.link).name}»`);
+    }
+});
+net.on('room', (m) => {
+    rooms.set(m.room.id, m.room);
+    refreshMyRooms();
+    if (creatingRoom && m.created) {
+        creatingRoom = false;
+        roomForm.reset();
+        showRoomLink(m.room);
+    }
+});
+net.on('room_removed', (m) => removeRoom(m.id));
+net.on('room_error', (m) => {
+    creatingRoom = false;
+    if (!roomBox.hidden) roomMessage(m.message);
+    else flashHint(m.message);
+    // El enlace no sirve: que recargar no lo vuelva a intentar.
+    if (!rooms.has(here.id)) syncRoomUrl();
+});
 
 
 // ---------- Letreros ----------
@@ -2207,7 +2362,7 @@ function signMessage(text) {
     signError.textContent = text || '';
 }
 function sceneLabel(scene) {
-    return scene === MAIN ? 'Universo principal' : (portals.get(scene)?.data.name || 'Otro universo');
+    return scene === MAIN ? 'Universo principal' : (portals.get(scene)?.data.name || rooms.get(scene)?.name || 'Otro universo');
 }
 function refreshMySigns() {
     const mine = [...signs.values()].filter((e) => net.myId && e.data.owner_id === net.myId);

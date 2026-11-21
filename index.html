@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=72">
+    <link rel="stylesheet" href="style.css?v=73">
     <script type="importmap">
     {
         "imports": {
@@ -51,8 +51,8 @@
                             </button>
                             <button class="settings__tile" type="button" data-menu-go="crear" style="--k:1; --hue:270">
                                 <span class="settings__glyph" aria-hidden="true">✨</span>
-                                <span class="settings__label">Crear en el mundo<small>Publicar, ítems, puentes y gráficos</small></span>
-                                <span class="settings__count">4</span>
+                                <span class="settings__label">Crear en el mundo<small>Publicar, ítems, puentes, salas y gráficos</small></span>
+                                <span class="settings__count">5</span>
                             </button>
                             <button class="settings__tile" type="button" data-menu-go="cuenta" style="--k:2; --hue:320">
                                 <span class="settings__glyph" aria-hidden="true">🪪</span>
@@ -97,6 +97,7 @@
                             <button class="settings__item" type="button" data-sign-open data-desc="Letrero con texto, imagen o enlace">📌 Publicar</button>
                             <button class="settings__item" type="button" data-items-open data-desc="Objetos para poner en el mundo">🧸 Ítems</button>
                             <button class="settings__item" type="button" data-hole-open data-desc="Un portal hacia otro universo">🌀 Crear puente de Einstein-Rosen</button>
+                            <button class="settings__item" type="button" data-room-open data-desc="Solo se entra con su enlace">🔒 Crear sala privada</button>
                             <button class="settings__item" type="button" data-stats-open data-desc="Datos de una API en un gráfico 3D">📊 Estadísticas</button>
                             <button class="settings__item" type="button" data-edit-pick data-desc="Mueve, gira o agranda lo que pusiste">✋ Mover mis objetos</button>
                         </div>
@@ -271,6 +272,32 @@
                 <ul></ul>
             </div>
             <button class="login__back" type="button" data-hole-close>Cerrar</button>
+        </form>
+    </div>
+    <!-- Sala privada: una escena sin puente en el mundo principal. Solo se entra con el enlace
+         ?sala=<uuid>; adentro siempre está el puente de regreso al mundo principal. -->
+    <div class="login login--scroll" data-room-box role="dialog" aria-modal="true" aria-labelledby="room-title" hidden>
+        <form class="login__card" data-room-form autocomplete="off">
+            <p class="totem-panel__tag">Sala privada</p>
+            <h2 id="room-title">Crea tu sala privada</h2>
+            <p class="login__note">No aparece en el mundo principal ni tiene puente: solo entra quien tenga el enlace. Adentro hay un puente para volver al mundo principal, y la voz y lo que publiquen se queda en la sala.</p>
+            <label>Nombre (opcional)<input name="name" maxlength="40" placeholder="Reunión del equipo"></label>
+            <p class="login__error" data-room-error hidden></p>
+            <button class="chat__send" type="submit" data-room-create>Crear sala privada</button>
+            <div class="room-link" data-room-link hidden>
+                <p class="login__note" data-room-link-title></p>
+                <input data-room-url readonly aria-label="Enlace de la sala" spellcheck="false">
+                <div class="room-link__actions">
+                    <button class="chat__send" type="button" data-room-copy>Copiar enlace</button>
+                    <button class="login__back" type="button" data-room-share hidden>Compartir</button>
+                    <a class="login__back" data-room-go href="#">Abrir la sala</a>
+                </div>
+            </div>
+            <div class="holes" data-my-rooms hidden>
+                <h3>Tus salas privadas</h3>
+                <ul></ul>
+            </div>
+            <button class="login__back" type="button" data-room-close>Cerrar</button>
         </form>
     </div>
     <div class="login login--scroll" data-stats-box role="dialog" aria-modal="true" aria-labelledby="stats-title" hidden>
@@ -693,9 +720,10 @@
         <p class="totem-panel__tag" data-scene-owner>Puente de Einstein-Rosen</p>
         <h2 data-scene-name></h2>
         <p data-scene-desc></p>
+        <button class="scene-banner__copy" type="button" data-scene-copy hidden>🔗 Copiar enlace de la sala</button>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=74"></script>
+    <script type="module" src="world.js?v=75"></script>
     <script type="module" src="portafolio/firebase.js"></script>
 </body>
 </html>
