@@ -957,3 +957,14 @@ body.editing .hud__hint { visibility: hidden; }
     border: 1px solid rgba(0, 229, 255, .35); border-radius: 999px; padding: .25rem .7rem;
 }
 .scene-banner__copy[hidden], .scene-banner.is-compact .scene-banner__copy { display: none; }
+
+/* Configuración del mundo (luz y suelo del lugar donde estás). */
+.env__carpet { display: grid; gap: .7rem; padding: .8rem; border-radius: .8rem; background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 255, 255, .12); }
+.env__carpet[hidden] { display: none; }
+.login__card .env__color { display: flex; align-items: center; justify-content: space-between; gap: .8rem; }
+.login__card .env__color input { width: 3.2rem; height: 2.2rem; padding: .15rem; cursor: pointer; }
+.env__swatches { display: flex; flex-wrap: wrap; gap: .45rem; }
+.env__swatches button { width: 1.9rem; height: 1.9rem; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .25); background: var(--c); cursor: pointer; padding: 0; }
+.env__swatches button[aria-pressed="true"] { border-color: #fff; box-shadow: 0 0 0 2px rgba(0, 229, 255, .6); }
+.login__card fieldset:disabled { opacity: .55; }
+.login__card fieldset:disabled span { cursor: not-allowed; }

@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=74">
+    <link rel="stylesheet" href="style.css?v=75">
     <script type="importmap">
     {
         "imports": {
@@ -59,7 +59,12 @@
                                 <span class="settings__label">Cuenta<small>Tu perfil y sesión</small></span>
                                 <span class="settings__count">2</span>
                             </button>
-                            <button class="settings__tile" type="button" data-menu-go="sitio" style="--k:3; --hue:150">
+                            <button class="settings__tile" type="button" data-menu-go="mundo" style="--k:3; --hue:40">
+                                <span class="settings__glyph" aria-hidden="true">🌍</span>
+                                <span class="settings__label">Mundo<small>Luz de día o de noche y suelo</small></span>
+                                <span class="settings__count">1</span>
+                            </button>
+                            <button class="settings__tile" type="button" data-menu-go="sitio" style="--k:4; --hue:150">
                                 <span class="settings__glyph" aria-hidden="true">🧭</span>
                                 <span class="settings__label">Sitio<small>Portafolio y cotizaciones</small></span>
                                 <span class="settings__count">2</span>
@@ -115,6 +120,20 @@
                         <div class="settings__list">
                             <button class="settings__item" type="button" data-my-profile data-desc="Nombre, foto y contacto">🪪 Mi perfil</button>
                             <button class="settings__item settings__item--danger" type="button" data-logout data-desc="Salir en este dispositivo">🚪 Cerrar sesión</button>
+                        </div>
+                    </section>
+
+                    <section class="settings__win" data-menu-win="mundo" aria-labelledby="menu-mundo" hidden style="--hue:40">
+                        <header class="settings__head">
+                            <button class="settings__back" type="button" data-menu-back aria-label="Volver">‹</button>
+                            <div class="settings__titles">
+                                <p class="settings__crumb">Ajustes / Mundo</p>
+                                <h2 id="menu-mundo">Mundo</h2>
+                            </div>
+                            <button class="settings__close" type="button" data-menu-close aria-label="Cerrar ajustes">✕</button>
+                        </header>
+                        <div class="settings__list">
+                            <button class="settings__item" type="button" data-env-open data-desc="Luz, grama o alfombra de este lugar">🎛️ Configuración del mundo</button>
                         </div>
                     </section>
 
@@ -272,6 +291,40 @@
                 <ul></ul>
             </div>
             <button class="login__back" type="button" data-hole-close>Cerrar</button>
+        </form>
+    </div>
+    <!-- Configuración del lugar donde estás: luz y suelo. La cambia su dueño y la ven todos. -->
+    <div class="login login--scroll" data-env-box role="dialog" aria-modal="true" aria-labelledby="env-title" hidden>
+        <form class="login__card" data-env-form autocomplete="off">
+            <p class="totem-panel__tag">Configuración del mundo</p>
+            <h2 id="env-title" data-env-place>Mundo principal</h2>
+            <p class="login__note" data-env-note></p>
+            <fieldset class="items__colors" data-env-light>
+                <legend>Luz</legend>
+                <label><input type="radio" name="light" value="day"><span style="--c:#ffd84a">☀️ Día</span></label>
+                <label><input type="radio" name="light" value="night" checked><span style="--c:#7d8cff">🌙 Noche</span></label>
+            </fieldset>
+            <fieldset class="items__colors" data-env-floor>
+                <legend>Suelo</legend>
+                <label><input type="radio" name="floor" value="grass"><span style="--c:#4caf3a">🌱 Grama</span></label>
+                <label><input type="radio" name="floor" value="carpet"><span style="--c:#ff3da6">🧶 Alfombra</span></label>
+                <label><input type="radio" name="floor" value="none" checked><span style="--c:#00e5ff">Sin nada</span></label>
+            </fieldset>
+            <div class="env__carpet" data-env-carpet hidden>
+                <label class="env__color">Color de la alfombra<input name="color" type="color" value="#7a1f3d"></label>
+                <div class="env__swatches" data-env-swatches></div>
+                <label>Foto como alfombra (opcional)<input name="photo" type="file" accept="image/*"></label>
+                <img class="memory__preview" data-env-preview alt="Foto de la alfombra" hidden>
+                <fieldset class="items__colors" data-env-mode hidden>
+                    <legend>Cómo se pone la foto</legend>
+                    <label><input type="radio" name="photo_mode" value="cover" checked><span style="--c:#ffd84a">Una sola en todo el piso</span></label>
+                    <label><input type="radio" name="photo_mode" value="tile"><span style="--c:#00e5ff">En mosaico</span></label>
+                </fieldset>
+                <button class="login__back" type="button" data-env-photo-clear hidden>Quitar la foto</button>
+            </div>
+            <p class="login__error" data-env-error hidden></p>
+            <button class="chat__send" type="submit" data-env-save>Guardar para todos</button>
+            <button class="login__back" type="button" data-env-close>Cerrar</button>
         </form>
     </div>
     <!-- Sala privada: una escena sin puente en el mundo principal. Solo se entra con el enlace
@@ -727,7 +780,7 @@
         <button class="scene-banner__copy" type="button" data-scene-copy hidden>🔗 Copiar enlace de la sala</button>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=77"></script>
+    <script type="module" src="world.js?v=78"></script>
     <script type="module" src="portafolio/firebase.js"></script>
 </body>
 </html>
