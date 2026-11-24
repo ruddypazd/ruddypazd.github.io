@@ -5,7 +5,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { createWormholes, buildUniverse, hueFor, HOLE_R } from './wormholes.js?v=67';
+import { createWormholes, buildUniverse, hueFor, HOLE_R } from './wormholes.js?v=68';
 import { createGame, tierColor } from './game.js?v=1';
 import { createVoice } from './voice.js?v=1';
 
@@ -45,7 +45,9 @@ controls.autoRotateSpeed = 0.8;
 controls.addEventListener('start', () => { controls.autoRotate = false; });
 
 // ---------- Luces (tema neón del portafolio) ----------
-scene.add(new THREE.HemisphereLight(0xbcd4ff, 0x0a0d16, 1.1));
+const HEMI_SKY = 0xbcd4ff, HEMI_GROUND = 0x0a0d16;
+const hemi = new THREE.HemisphereLight(HEMI_SKY, HEMI_GROUND, 1.1);
+scene.add(hemi);
 
 // Lo que viaja con Ruddy entre escenas (mundo principal y agujeros de gusano): la luz que lo
 // sigue, su anillo, él mismo y las demás personas. Cada escena tiene su propio escenario.
@@ -1719,7 +1721,7 @@ function goTo(id, { from = null, pos = null } = {}) {
     here.id = id;
     here.scene = target;
         here.obstacles = toMain ? obstacles : dest.obstacles;
-    if (!toMain) dest.setHue(hueFor(id));
+    if (!toMain) showUniverse(id);
 
     const offset = camera.position.clone().sub(controls.target);
     player.position.set(x, 0, z);
@@ -1747,6 +1749,7 @@ function goTo(id, { from = null, pos = null } = {}) {
     showSignsHere();
     showChartsHere();
     showItemsHere();
+    applyActorLight();
     lastSent.at = 0;   // los demás se enteran enseguida
 }
 
@@ -1804,7 +1807,7 @@ function updateHoleLabels() {
 // Lo que se ve dentro del agujero más cercano: el destino, o el mundo principal desde adentro.
 function otherSide(hole) {
     if (hole === returnHole) return scene;
-    dest.setHue(hueFor(hole.id));
+    showUniverse(hole.id);
     return dest.scene;
 }
 
@@ -2066,6 +2069,343 @@ net.on('room_error', (m) => {
     if (!rooms.has(here.id)) syncRoomUrl();
 });
 
+
+// ---------- Configuración del mundo: luz y suelo de cada lugar ----------
+// Cada escena (el mundo principal, cada puente y cada sala) puede tener luz de día o de noche y
+// un suelo: grama, alfombra de un color, una foto como alfombra o nada (el piso oscuro con la
+// grilla). La guarda el servidor y la cambia el dueño del lugar. Sin configurar = noche y nada.
+// El cielo de día y el suelo se agregan aparte en cada escena (no se copian ni se tiñen con el
+// universo), así que el mismo `dest` muestra la configuración del puente o sala que toque.
+const ENV_DEFAULT = { light: 'night', floor: 'none', color: '#7a1f3d', photo: null, photo_mode: 'cover' };
+const envs = new Map();        // escena -> configuración guardada
+let envPreview = null;         // { scene, env } mientras el dueño prueba cambios sin guardar
+let envMainOwner = false;      // el servidor dice si eres el dueño del mundo principal
+const DAY_HORIZON = new THREE.Color(0xbcdcff);
+const SUN_DIR = KEY_OFFSET.clone().normalize();
+const skyGeo = new THREE.SphereGeometry(70, 32, 16);   // sigue a la cámara (la lejanía es 80 m)
+const skyMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, fog: false,
+    uniforms: { top: { value: new THREE.Color(0x1f63d6) }, horizon: { value: DAY_HORIZON }, sun: { value: SUN_DIR } },
+    vertexShader: 'varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform vec3 top, horizon, sun; varying vec3 vDir;
+        void main(){
+            vec3 d = normalize(vDir);
+            vec3 col = mix(horizon, top, pow(max(d.y, 0.0), 0.45));
+            float s = max(dot(d, sun), 0.0);
+            col += vec3(1.0, 0.92, 0.75) * (pow(s, 900.0) * 8.0 + pow(s, 16.0) * 0.3);
+            gl_FragColor = vec4(col, 1.0);
+            #include <tonemapping_fragment>
+            #include <colorspace_fragment>
+        }`,
+});
+const coverGeo = new THREE.CircleGeometry(WORLD_RADIUS + 4, 96);
+
+function makeEnvLayer(target, { hemiLight, gridMesh, stars = null }) {
+    const cover = new THREE.Mesh(coverGeo, new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0 }));
+    cover.rotation.x = -Math.PI / 2;
+    cover.position.y = 0.004;
+    cover.receiveShadow = true;
+    cover.visible = false;
+    const sky = new THREE.Mesh(skyGeo, skyMat);
+    sky.frustumCulled = false;
+    sky.renderOrder = -10;
+    sky.visible = false;
+    target.add(cover, sky);
+    return { scene: target, cover, sky, hemi: hemiLight, grid: gridMesh, stars, key: '' };
+}
+const mainEnv = makeEnvLayer(scene, { hemiLight: hemi, gridMesh: grid });
+const destEnv = makeEnvLayer(dest.scene, { hemiLight: dest.copies.get(hemi), gridMesh: dest.copies.get(grid), stars: dest.stars });
+
+// Texturas del suelo, hechas una sola vez con un canvas.
+function canvasTexture(size, draw, repeat) {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = size;
+    draw(cv.getContext('2d'), size);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(repeat, repeat);
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return tex;
+}
+let grassTex = null, carpetTex = null;
+function getGrassTex() {
+    return grassTex ||= canvasTexture(512, (c, n) => {
+        c.fillStyle = '#3d7a28';
+        c.fillRect(0, 0, n, n);
+        for (let i = 0; i < 260; i++) {   // manchas más claras y más oscuras
+            c.fillStyle = `hsla(${90 + Math.random() * 25}, 50%, ${22 + Math.random() * 18}%, .35)`;
+            c.beginPath();
+            c.arc(Math.random() * n, Math.random() * n, 10 + Math.random() * 40, 0, Math.PI * 2);
+            c.fill();
+        }
+        c.lineCap = 'round';
+        for (let i = 0; i < 9000; i++) {   // hojitas
+            const x = Math.random() * n, y = Math.random() * n, len = 3 + Math.random() * 7, a = -Math.PI / 2 + (Math.random() - 0.5) * 1.2;
+            c.strokeStyle = `hsl(${85 + Math.random() * 35}, ${45 + Math.random() * 25}%, ${20 + Math.random() * 28}%)`;
+            c.lineWidth = 1 + Math.random() * 1.2;
+            for (const dx of [0, n, -n]) for (const dy of [0, n, -n]) {   // que se repita sin costura
+                if (dx === 0 && dy === 0 || (x + dx > -10 && x + dx < n + 10 && y + dy > -10 && y + dy < n + 10)) {
+                    c.beginPath();
+                    c.moveTo(x + dx, y + dy);
+                    c.lineTo(x + dx + Math.cos(a) * len, y + dy + Math.sin(a) * len);
+                    c.stroke();
+                }
+            }
+        }
+    }, 30);
+}
+function getCarpetTex() {
+    // Gris claro con trama de tejido: el color de la alfombra lo pone el material.
+    return carpetTex ||= canvasTexture(256, (c, n) => {
+        const img = c.createImageData(n, n);
+        for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+            const weave = ((x >> 1) + (y >> 1)) % 2 ? 10 : 0;
+            const v = 205 + weave + Math.random() * 40;
+            const i = (y * n + x) * 4;
+            img.data[i] = img.data[i + 1] = img.data[i + 2] = Math.min(255, v);
+            img.data[i + 3] = 255;
+        }
+        c.putImageData(img, 0, 0);
+    }, 70);
+}
+// Foto como alfombra: «cover» la estira sobre todo el piso (recortada para no deformarla),
+// «tile» la repite en baldosas de 6 m. Una textura por foto y modo.
+const floorPhotos = new Map();
+function floorPhotoTex(url, mode, done) {
+    const k = `${mode}|${url}`;
+    const cached = floorPhotos.get(k);
+    if (cached?.tex) return done(cached.tex);
+    if (cached) return cached.waiting.push(done);
+    const entry = { tex: null, waiting: [done] };
+    floorPhotos.set(k, entry);
+    photoLoader.load(url.startsWith('/') ? API_BASE + url : url, (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        const a = tex.image.width / tex.image.height || 1;
+        if (mode === 'tile') {
+            const tile = 6, size = (WORLD_RADIUS + 4) * 2;
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(size / (tile * Math.max(1, a)), size / (tile / Math.min(1, a)));
+        } else if (a > 1) {
+            tex.repeat.set(1 / a, 1); tex.offset.set((1 - 1 / a) / 2, 0);
+        } else {
+            tex.repeat.set(1, a); tex.offset.set(0, (1 - a) / 2);
+        }
+        entry.tex = tex;
+        entry.waiting.splice(0).forEach((fn) => fn(tex));
+    }, undefined, () => { floorPhotos.delete(k); entry.waiting.splice(0).forEach((fn) => fn(null)); });
+}
+
+function envFor(id) {
+    if (envPreview?.scene === id) return envPreview.env;
+    return { ...ENV_DEFAULT, ...(envs.get(id) || {}) };
+}
+
+function applyEnv(layer, id) {
+    const env = envFor(id);
+    const k = `${id}|${env.light}|${env.floor}|${env.color}|${env.photo}|${env.photo_mode}`;
+    if (layer.key === k) return;
+    layer.key = k;
+    const day = env.light === 'day';
+    const hue = id === MAIN ? 0 : hueFor(id);
+    const { scene: sc, hemi: h, cover } = layer;
+    layer.sky.visible = day;
+    if (layer.stars) layer.stars.visible = !day;
+    if (day) {
+        sc.fog.color.copy(DAY_HORIZON); sc.fog.near = 22; sc.fog.far = 78;
+        h.color.setHex(0xeaf3ff); h.groundColor.setHex(0x5b5444); h.intensity = 1.6;
+    } else {
+        // Como siempre: el color del cielo (que el universo ya tiñó) y la luz teñida igual que en buildUniverse.
+        sc.fog.color.copy(sc.background); sc.fog.near = 14; sc.fog.far = 70;
+        h.color.setHex(HEMI_SKY).offsetHSL(hue, 0, 0); h.groundColor.setHex(HEMI_GROUND).offsetHSL(hue, 0, 0); h.intensity = 1.1;
+    }
+    layer.grid.visible = env.floor === 'none';
+    cover.visible = env.floor !== 'none';
+    const m = cover.material;
+    const setMap = (map, color) => {
+        m.map = map; m.color.set(color); m.needsUpdate = true;
+    };
+    if (env.floor === 'grass') setMap(getGrassTex(), 0xffffff);
+    else if (env.floor === 'carpet' && env.photo) {
+        setMap(getCarpetTex(), env.color);   // hasta que llegue la foto
+        floorPhotoTex(env.photo, env.photo_mode, (tex) => { if (tex && layer.key === k) setMap(tex, 0xffffff); });
+    } else if (env.floor === 'carpet') setMap(getCarpetTex(), env.color);
+}
+
+// La escena de los puentes y salas es una sola: al mostrar una, toma su tono y su configuración.
+function showUniverse(id) {
+    dest.setHue(hueFor(id));
+    applyEnv(destEnv, id);
+}
+
+// La luz que sigue a Ruddy (y los neones) va con la escena donde estás.
+function applyActorLight() {
+    const day = envFor(here.id).light === 'day';
+    key.intensity = day ? 3.2 : 2.2;
+    key.color.setHex(day ? 0xfff1dc : 0xffffff);
+    rimCyan.intensity = day ? 6 : 18;
+    rimPink.intensity = day ? 5 : 14;
+}
+
+function refreshEnv() {
+    mainEnv.key = destEnv.key = '';
+    applyEnv(mainEnv, MAIN);
+    if (here.id !== MAIN) applyEnv(destEnv, here.id);
+    applyActorLight();
+}
+
+net.on('envs', (m) => {
+    envMainOwner = !!m.main_owner;
+    envs.clear();
+    for (const [id, env] of Object.entries(m.envs || {})) envs.set(id, env);
+    refreshEnv();
+    if (!envBox.hidden) fillEnvForm();
+});
+net.on('env', (m) => {
+    envs.set(m.scene, m.env);
+    if (envSaving && m.scene === envPreview?.scene) {
+        envSaving = false;
+        envPreview = null;
+        envBox.hidden = true;
+        flashHint('Configuración guardada: todos la ven así');
+    }
+    refreshEnv();
+});
+net.on('env_error', (m) => {
+    envSaving = false;
+    envSaveBtn.disabled = false;
+    if (!envBox.hidden) envMessage(m.message);
+    else flashHint(m.message);
+});
+
+// Ajustes → Mundo → Configuración del mundo: cambia el lugar donde estás, con vista previa en vivo.
+const envBox = document.querySelector('[data-env-box]');
+const envForm = envBox.querySelector('[data-env-form]');
+const envError = envBox.querySelector('[data-env-error]');
+const envSaveBtn = envBox.querySelector('[data-env-save]');
+const envCarpet = envBox.querySelector('[data-env-carpet]');
+const envPreviewImg = envBox.querySelector('[data-env-preview]');
+const envModeBox = envBox.querySelector('[data-env-mode]');
+const envPhotoClear = envBox.querySelector('[data-env-photo-clear]');
+const envSwatches = envBox.querySelector('[data-env-swatches]');
+const ENV_SWATCHES = ['#7a1f3d', '#b3262e', '#d9822b', '#c8b48a', '#1f6b45', '#1f3f8a', '#5b2a86', '#4a4f5a', '#15161c'];
+let envSaving = false;
+let envPhoto = null;     // null = sin foto; { url } = la guardada; { dataUrl } = una nueva sin subir
+function envMessage(text) {
+    envError.hidden = !text;
+    envError.textContent = text || '';
+}
+for (const c of ENV_SWATCHES) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.style.setProperty('--c', c);
+    b.dataset.color = c;
+    b.setAttribute('aria-label', `Color ${c}`);
+    envSwatches.append(b);
+}
+function envOwner(id) {
+    if (id === MAIN) return envMainOwner;
+    const d = portals.get(id)?.data || rooms.get(id);
+    return !!net.myId && d?.owner_id === net.myId;
+}
+function envPlace(id) {
+    if (id === MAIN) return { name: 'Mundo principal', owner: 'Roy Ruddy Paz' };
+    const d = portals.get(id)?.data || rooms.get(id);
+    return { name: d?.name || (rooms.has(id) ? 'Sala privada' : 'Puente de Einstein-Rosen'), owner: d?.owner_name || 'su dueño' };
+}
+// Lo que dice el formulario, como configuración.
+function envFromForm() {
+    return {
+        light: envForm.light.value, floor: envForm.floor.value, color: envForm.color.value.toLowerCase(),
+        photo: envPhoto ? envPhoto.dataUrl || envPhoto.url : null, photo_mode: envForm.photo_mode.value,
+    };
+}
+function syncEnvForm() {
+    const carpet = envForm.floor.value === 'carpet';
+    envCarpet.hidden = !carpet;
+    envPreviewImg.hidden = !envPhoto;
+    if (envPhoto) envPreviewImg.src = envPhoto.dataUrl || (envPhoto.url.startsWith('/') ? API_BASE + envPhoto.url : envPhoto.url);
+    envModeBox.hidden = !envPhoto;
+    envPhotoClear.hidden = !envPhoto || envForm.photo.disabled;
+    for (const b of envSwatches.children) b.setAttribute('aria-pressed', String(b.dataset.color === envForm.color.value.toLowerCase()));
+    if (envOwner(here.id)) {
+        envPreview = { scene: here.id, env: envFromForm() };
+        refreshEnv();
+    }
+}
+function fillEnvForm() {
+    const env = { ...ENV_DEFAULT, ...(envs.get(here.id) || {}) };
+    const place = envPlace(here.id);
+    const mine = envOwner(here.id);
+    envBox.querySelector('[data-env-place]').textContent = place.name;
+    envBox.querySelector('[data-env-note]').textContent = mine
+        ? 'Cambia la luz y el suelo de este lugar. Lo ves al instante; al guardar, lo ven todos los que entran.'
+        : `Así está configurado este lugar. Solo ${place.owner} puede cambiarlo.`;
+    envForm.light.value = env.light;
+    envForm.floor.value = env.floor;
+    envForm.color.value = env.color;
+    envForm.photo_mode.value = env.photo_mode;
+    envForm.photo.value = '';
+    envPhoto = env.photo ? { url: env.photo } : null;
+    for (const el of envForm.querySelectorAll('input, [data-env-swatches] button')) el.disabled = !mine;
+    envSaveBtn.hidden = !mine;
+    envSaveBtn.disabled = false;
+    envBox.querySelector('[data-env-close]').textContent = mine ? 'Cancelar' : 'Cerrar';
+    syncEnvForm();
+}
+function closeEnv() {
+    envBox.hidden = true;
+    envSaving = false;
+    if (envPreview) { envPreview = null; refreshEnv(); }   // lo que no se guardó vuelve a como estaba
+}
+document.querySelector('[data-env-open]').addEventListener('click', () => {
+    if (!getProfile()) return showLogin();
+    envMessage('');
+    fillEnvForm();
+    envBox.hidden = false;
+});
+envBox.querySelector('[data-env-close]').addEventListener('click', closeEnv);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !envBox.hidden) closeEnv(); });
+envForm.addEventListener('change', (e) => { if (e.target.name !== 'photo') syncEnvForm(); });
+envForm.color.addEventListener('input', syncEnvForm);
+envSwatches.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    envForm.color.value = b.dataset.color;
+    syncEnvForm();
+});
+envForm.photo.addEventListener('change', async () => {
+    const file = envForm.photo.files[0];
+    if (!file) return;
+    envMessage('');
+    try {
+        const p = await compressPhoto(file, { maxPx: 2048, target: 600_000 });
+        envPhoto = { dataUrl: p.dataUrl };
+        envForm.floor.value = 'carpet';
+        syncEnvForm();
+    } catch {
+        envMessage('No se pudo leer esa imagen. Prueba con otra.');
+    }
+});
+envPhotoClear.addEventListener('click', () => {
+    envPhoto = null;
+    envForm.photo.value = '';
+    syncEnvForm();
+});
+envForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!envOwner(here.id)) return;
+    if (!net.loggedIn) return envMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
+    const env = envFromForm();
+    envSaving = true;
+    envSaveBtn.disabled = true;
+    envMessage('');
+    envPreview = { scene: here.id, env };
+    // La foto: nueva (base64), la misma de antes ("keep") o ninguna.
+    const photo = envPhoto?.dataUrl || (envPhoto ? 'keep' : null);
+    net.send({ type: 'env_set', scene: here.id, light: env.light, floor: env.floor, color: env.color, photo_mode: env.photo_mode, photo });
+});
 
 // ---------- Letreros ----------
 // Todo lo que alguien publica en el mundo es un letrero: un mismo objeto con título, texto,
@@ -2350,13 +2690,13 @@ net.on('signs', (m) => {
 net.on('sign_removed', (m) => removeSign(m.id));
 
 // Achica la foto a PHOTO_MAX_PX y baja la calidad JPEG hasta que pese ~300 KB.
-async function compressPhoto(file) {
+async function compressPhoto(file, { maxPx = PHOTO_MAX_PX, target = PHOTO_TARGET_BYTES } = {}) {
     const url = URL.createObjectURL(file);
     try {
         const img = new Image();
         img.src = url;
         await img.decode();
-        let max = PHOTO_MAX_PX, quality = 0.82, blob = null, w = 0, h = 0;
+        let max = maxPx, quality = 0.82, blob = null, w = 0, h = 0;
         for (let i = 0; i < 8; i++) {
             const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
             w = Math.max(1, Math.round(img.naturalWidth * k));
@@ -2365,7 +2705,7 @@ async function compressPhoto(file) {
             c.width = w; c.height = h;
             c.getContext('2d').drawImage(img, 0, 0, w, h);
             blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', quality));
-            if (blob && blob.size <= PHOTO_TARGET_BYTES) break;
+            if (blob && blob.size <= target) break;
             if (quality > 0.6) quality -= 0.1; else max = Math.round(max * 0.8);
         }
         if (!blob) throw new Error('sin blob');
@@ -6797,6 +7137,8 @@ renderer.setAnimationLoop(() => {
     key.position.copy(player.position).add(KEY_OFFSET);
     key.target.position.copy(player.position);
     controls.update();
+    mainEnv.sky.position.copy(camera.position);
+    destEnv.sky.position.copy(camera.position);
     // Con la pizarra en pantalla completa el mundo sigue vivo pero no se dibuja (ahorra batería).
     if (!boardOpen) wormholes.render(here.scene, camera, dt, t, otherSide);
     updateBubble();

@@ -257,7 +257,7 @@ export function buildUniverse(parts, obstacles) {
     const tmp = new THREE.Color();
     let current = null;
     return {
-        scene, copies,
+        scene, copies, stars,
         obstacles: obstacles.map((o) => ({ ...o })),
         // hue: vueltas de color (0..1) respecto del mundo principal.
         setHue(hue) {
