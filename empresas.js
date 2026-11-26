@@ -127,7 +127,9 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         ring.position.y = 0.02;
         scene.add(ring);
     }
+    const fixed = new Set(scene.children);   // suelo, grilla, calles y luces: nunca se desvanecen
     const returnHole = wormholes.makeHole({ scene, x: 0, z: 0 });
+    fixed.add(returnHole.group);
     returnHole.id = MAIN;
 
     const content = new THREE.Group();
@@ -158,6 +160,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
             for (const m of mats) { m.map?.dispose(); m.emissiveMap?.dispose(); m.dispose(); }
         });
         content.clear();
+        for (const r of fading.keys()) setFade(r, 1);   // lo que puso la gente sigue en la escena: que vuelva a verse
         fading.clear();
         obstacles.length = 0;
         doors = [];
@@ -907,10 +910,12 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     const ray = new THREE.Raycaster();
     const from = new THREE.Vector3(), dir = new THREE.Vector3();
     const fading = new Map();   // objeto de primer nivel en content -> cuánto se ve (0..1)
+    // Lo de cada lugar (content) y lo que pone la gente (letreros, ítems, gráficos: hijos directos de la escena).
     function rootOf(o) {
-        while (o.parent && o.parent !== content) o = o.parent;
-        return o.parent === content ? o : null;
+        while (o.parent && o.parent !== content && o.parent !== scene) o = o.parent;
+        return o.parent === content || o.parent === scene ? o : null;
     }
+    const fadeable = (o) => o !== content && !fixed.has(o) && !o.isLight && o !== player.parent;
     function setFade(root, f) {
         root.traverse((o) => {
             const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
@@ -934,7 +939,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
             if (dist < 0.3) continue;
             ray.set(from, dir.normalize());
             ray.far = dist;
-            for (const hit of ray.intersectObjects(content.children, true)) {
+            for (const hit of ray.intersectObjects([...content.children, ...scene.children.filter(fadeable)], true)) {
                 const r = rootOf(hit.object);
                 if (r) blocking.add(r);
             }
@@ -1091,6 +1096,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         if (owns(hereId())) { onLeave(); flashHint('Tu sesión de S-ERP venció: vuelve a entrar desde Ajustes → Mundo'); }
     });
     let kickAt = 0;
+    net.on('serp_denied', (m) => flashHint(m.message));
     net.on('serp_kick', (m) => {
         const id = hereId();
         if (m.scene !== id) return;   // un aviso atrasado de un lugar del que ya saliste

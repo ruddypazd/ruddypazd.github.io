@@ -8,7 +8,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { createWormholes, buildUniverse, hueFor, HOLE_R } from './wormholes.js?v=68';
 import { createGame, tierColor } from './game.js?v=1';
 import { createVoice } from './voice.js?v=1';
-import { createEmpresas, TOKEN_KEY as SERP_TOKEN_KEY } from './empresas.js?v=4';
+import { createEmpresas, TOKEN_KEY as SERP_TOKEN_KEY } from './empresas.js?v=5';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
@@ -1772,6 +1772,12 @@ function goTo(id, { from = null, pos = null } = {}) {
     lastSent.at = 0;   // los demás se enteran enseguida
 }
 
+// La escena de three.js donde va lo de un lugar: el mundo principal, el Mundo Empresas (su propia escena)
+// o la de los puentes y salas (dest.scene, compartida: cada cosa se muestra solo en su lugar).
+function sceneOf(id) {
+    return id === MAIN ? scene : corp.owns(id) ? corp.scene : dest.scene;
+}
+
 // Destello al cruzar: la escena cambia cuando la pantalla está cubierta.
 const warpEl = document.querySelector('[data-warp]');
 function enterHole(id) {
@@ -2633,7 +2639,7 @@ function addSign(s) {
         built.piece.position.set(s.x, s.y || 0, s.z);
         built.piece.rotation.y = s.ry || 0;
         built.piece.scale.setScalar(s.s || 1);
-        (s.scene === MAIN ? scene : dest.scene).add(built.piece);
+        sceneOf(s.scene).add(built.piece);
     }
     const { piece, hits } = built;
     // Un cuadro con enlace lo abre directo (como siempre en la galería); lo demás abre el letrero.
@@ -4619,7 +4625,7 @@ function addItem(it) {
     piece.position.set(it.x, 0, it.z);
     piece.rotation.y = built.noRotate ? 0 : (it.ry || 0);
     applyPlacement(piece, it, built.obstacles);
-    (it.scene === MAIN ? scene : dest.scene).add(piece);
+    sceneOf(it.scene).add(piece);
     const own = built.ownActions || [];
     const hint = it.kind === 'wall' ? `Pared de museo de ${ownerOf(it)}: cuelga una foto` : `${itemKind(it.kind).name} de ${ownerOf(it)}`;
     for (const hit of built.hits) {
@@ -5153,7 +5159,7 @@ function addChart(c) {
     group.add(hit);
     clickable.push(hit);
 
-    (c.scene === MAIN ? scene : dest.scene).add(group);
+    sceneOf(c.scene).add(group);
     group.visible = c.scene === here.id;
     // Si solo cambiaron los números, no vuelve a crecer desde cero.
     const grow = chartGrowth.get(c.id) ?? 0;
