@@ -8,7 +8,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { createWormholes, buildUniverse, hueFor, HOLE_R } from './wormholes.js?v=68';
 import { createGame, tierColor } from './game.js?v=1';
 import { createVoice } from './voice.js?v=1';
-import { createEmpresas, TOKEN_KEY as SERP_TOKEN_KEY } from './empresas.js?v=5';
+import { createEmpresas, TOKEN_KEY as SERP_TOKEN_KEY } from './empresas.js?v=6';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
@@ -596,7 +596,7 @@ function setFirstPerson(on) {
         camera.position.copy(eye);
     } else {
         controls.minDistance = 1.5;
-        controls.maxDistance = 14;
+        controls.maxDistance = orbitMax();
         controls.minPolarAngle = 0;
         controls.maxPolarAngle = Math.PI * 0.495;
         controls.target.copy(player.position).setY(1);
@@ -1710,7 +1710,6 @@ banner.querySelector('[data-scene-copy]').addEventListener('click', (e) => {
 function goTo(id, { from = null, pos = null } = {}) {
     const toMain = id === MAIN;
     const toCorp = corp.owns(id);
-    const spawned = toCorp && !pos;   // entra por una puerta (no al recargar en su lugar guardado)
     if (toCorp) {
         corp.show(id);   // arma el lugar (sus puertas dicen dónde aparecer)
         pos ||= corp.spawnFor(id, corp.comeFrom);
@@ -1750,7 +1749,7 @@ function goTo(id, { from = null, pos = null } = {}) {
         // Al cruzar, la cámara mira a Ruddy de frente con el agujero detrás (se ve que acaba de
         // salir); al recargar dentro de un agujero, queda detrás de él. Misma distancia y altura.
         const flat = Math.hypot(offset.x, offset.z) || 4.2;
-        const side = pos && !spawned ? -1 : 1;   // en el Mundo Empresas también se ve que acabas de salir por la puerta
+        const side = pos ? -1 : 1;   // por una puerta del Mundo Empresas (pos = delante de la puerta): desde atrás, como siempre
         controls.target.copy(player.position).setY(1);
         camera.position.set(x + side * Math.sin(ry) * flat, controls.target.y + offset.y, z + side * Math.cos(ry) * flat);
         controls.update();
@@ -1764,6 +1763,7 @@ function goTo(id, { from = null, pos = null } = {}) {
         clearTimeout(bannerTimer);
         bannerTimer = setTimeout(() => banner.classList.add('is-compact'), 7000);
     }
+    if (!firstPerson) controls.maxDistance = orbitMax();
     for (const r of remotes.values()) showRemote(r);
     showSignsHere();
     showChartsHere();
@@ -1774,6 +1774,11 @@ function goTo(id, { from = null, pos = null } = {}) {
 
 // La escena de three.js donde va lo de un lugar: el mundo principal, el Mundo Empresas (su propia escena)
 // o la de los puentes y salas (dest.scene, compartida: cada cosa se muestra solo en su lugar).
+// Cuánto se puede alejar la cámara: el Mundo Empresas es mucho más amplio.
+function orbitMax() {
+    return corp.owns(here.id) ? 34 : 14;
+}
+
 function sceneOf(id) {
     return id === MAIN ? scene : corp.owns(id) ? corp.scene : dest.scene;
 }
@@ -3286,7 +3291,7 @@ function updateCity() {
     const wanted = [...items.values()].some((e) => e.data.kind === 'city' && e.data.scene === here.id);
     // Sin ciudad, nada pasa de la niebla (70 m): con un plano lejano corto three.js ni siquiera
     // manda a dibujar lo que queda más allá.
-    const far = wanted && city ? 300 : 80;
+    const far = wanted && city ? 300 : corp.owns(here.id) ? 140 : 80;
     if (camera.far !== far) { camera.far = far; camera.updateProjectionMatrix(); }
     if (!wanted) { city?.group.parent?.remove(city.group); return; }
     if (!city) {
