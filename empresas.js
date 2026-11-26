@@ -235,9 +235,9 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         });
     }
 
-    function title(lines, z = -radius + 8, width = 12) {
+    function title(lines, z = -radius + 8, width = 12, y = 7.5) {
         const s = textSprite(lines, width, { w: 1024, h: 256, border: '#7c4dff' });
-        s.position.set(0, 7.5, z);
+        s.position.set(0, y, z);
         content.add(s);
     }
 
@@ -282,10 +282,10 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         const empresaKey = parentOf.get(key);
         const name = s?.nombre || empresas.get(empresaKey)?.sucursales.find((x) => x.key === key)?.nombre || 'Sucursal';
         title([{ text: name, size: 90, bold: true },
-            { text: s ? `${s.empresa} · ventas de hoy: ${money(s.total_hoy)} · actualizado ${s.actualizado}` : 'Cargando…', size: 38, color: '#b9c3ff' }]);
+            { text: s ? `${s.empresa} · ventas de hoy: ${money(s.total_hoy)} · actualizado ${s.actualizado}` : 'Cargando…', size: 38, color: '#b9c3ff' }], -23, 12, 10.2);
         door(0, 9, Math.PI, `e-${empresaKey}`, 0x3d8bff);
-        const back = textSprite([{ text: '← Volver a la empresa', size: 52, bold: true }], 3.2);
-        back.position.set(0, 3.2, 9);
+        const back = textSprite([{ text: '← Volver a la empresa', size: 52, bold: true }], 2.2, { h: 128 });
+        back.position.set(0, 2.95, 9);
         content.add(back);
         if (!s) return loading('Cargando la sucursal…');
 
@@ -324,16 +324,16 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         });
         if (!pvs.length) loading('Sin puntos de venta');
 
-        // Gráfico de barras: ventas de hoy por punto de venta.
+        // Gráfico de barras: ventas de hoy por punto de venta (entre los kioscos y la pantalla del mes).
         const max = Math.max(...pvs.map((p) => p.ventas_hoy), 0);
-        const cz = -radius + 22, gap = 1.6, x0 = -((pvs.length - 1) * gap) / 2;
+        const cz = -14, gap = 1.6, x0 = -((pvs.length - 1) * gap) / 2;
         const base = new THREE.Mesh(new THREE.BoxGeometry(Math.max(4, pvs.length * gap + 1), 0.2, 2.2),
             new THREE.MeshStandardMaterial({ color: 0x1b2244, metalness: 0.4, roughness: 0.4 }));
         base.position.set(0, 0.1, cz);
         content.add(base);
         obstacles.push(...Array.from({ length: Math.max(1, Math.ceil(pvs.length * gap / 2)) }, (_, k) => ({ x: x0 + k * 2, z: cz, r: 1.3 })));
         pvs.forEach((pv, i) => {
-            const hgt = 0.15 + (max > 0 ? 5 * pv.ventas_hoy / max : 0);
+            const hgt = 0.15 + (max > 0 ? 4 * pv.ventas_hoy / max : 0);
             const color = new THREE.Color().setHSL(((i * 47) % 360) / 360, 0.8, 0.58);
             const bar = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.35 }));
             bar.scale.set(1.1, 0.001, 1.1);
@@ -351,35 +351,370 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
             v.position.set(x0 + i * gap, 0.6 + hgt + 0.55, cz);
             content.add(v);
         });
-        const chartTitle = textSprite([{ text: 'Ventas de hoy', size: 60, bold: true }, { text: `Total ${money(s.total_hoy)}`, size: 44, color: '#2bff88' }], 4);
-        chartTitle.position.set(0, 7.4 + 0.2, cz - 0.5);
-        if (max > 0) content.add(chartTitle);
-        else { chartTitle.position.y = 2.2; content.add(chartTitle); }
+        const chartTitle = textSprite([{ text: 'Ventas de hoy', size: 60, bold: true }, { text: `Total ${money(s.total_hoy)}`, size: 44, color: '#2bff88' }], 3.4);
+        chartTitle.position.set(0, max > 0 ? 5.6 : 2.2, cz - 0.5);
+        content.add(chartTitle);
 
-        // Usuarios de la empresa: letreros en arco detrás de la entrada.
-        const users = s.usuarios || [];
-        const ur = 16;
-        users.forEach((u, i) => {
-            const a = (i - (users.length - 1) / 2) * Math.min(0.17, 2.4 / Math.max(1, users.length));
-            const x = Math.sin(a) * ur, z = Math.cos(a) * ur;
-            const g = new THREE.Group();
-            g.position.set(x, 0, z);
-            g.rotation.y = a + Math.PI;
-            const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.3), new THREE.MeshStandardMaterial({ color: 0x555b75 }));
-            post.position.y = 0.65;
-            g.add(post);
-            const card = textPlane([{ text: u.nombre, size: 50, bold: true }, { text: when(u.ultima_actividad), size: 34, color: '#b9c3ff' }], 1.9,
-                { border: `hsl(${hueOf(u.nombre)} 70% 60%)` });
-            card.position.y = 1.75;
-            card.material.side = THREE.DoubleSide;
-            g.add(card);
-            content.add(g);
-        });
-        if (users.length) {
-            const t = textSprite([{ text: `Equipo de ${s.empresa}`, size: 54, bold: true }], 4.2);
-            t.position.set(0, 3.6, ur + 1);
-            content.add(t);
+        monthScreen(s);
+        teamScreen(s);
+    }
+
+    // ---------- Pantallas de vidrio curvas ----------
+    // Un pedazo de cilindro de radio R alrededor del centro, mirando al centro. c: ángulo de su centro
+    // (Math.PI = al fondo, 0 = detrás de la entrada); span: cuánto abarca (radianes).
+    function arcPlane(R, c, span, y0, h, seg = 48) {
+        const g = new THREE.PlaneGeometry(R * span, h, seg, 1);
+        const pos = g.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+            const a = c - pos.getX(i) / R;
+            pos.setXYZ(i, R * Math.sin(a), y0 + h / 2 + pos.getY(i), R * Math.cos(a));
         }
+        g.computeBoundingSphere();
+        return g;
+    }
+
+    // El vidrio con su marco que brilla (como la puerta) y dos patas.
+    function glass(R, c, span, y0, h, color = 0x4aa8ff) {
+        const glassMat = new THREE.MeshBasicMaterial({ color: 0x0a1836, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide });
+        // Orden de dibujo fijo: vidrio (0) → brillo (1) → contenido (3) → bordes y línea de luz (4).
+        // Todos están en el centro del mundo, así que three.js no los puede ordenar por distancia.
+        const back = new THREE.Mesh(arcPlane(R + 0.04, c, span, y0, h), glassMat);
+        back.renderOrder = 0;
+        content.add(back);
+        const sheen = new THREE.Mesh(arcPlane(R + 0.02, c, span, y0, h), new THREE.MeshBasicMaterial({
+            color, transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending, depthWrite: false,
+        }));
+        sheen.renderOrder = 1;
+        content.add(sheen);
+        const edgeMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+        for (const y of [y0 - 0.04, y0 + h - 0.02]) {
+            const line = new THREE.Mesh(arcPlane(R, c, span + 0.004, y, 0.07), edgeMat);
+            line.renderOrder = 4;
+            content.add(line);
+        }
+        const postMat = new THREE.MeshStandardMaterial({ color: 0x20243a, metalness: 0.6, roughness: 0.35 });
+        for (const a of [c - span / 2, c + span / 2]) {
+            const edge = new THREE.Mesh(new THREE.BoxGeometry(0.08, h, 0.08), edgeMat);
+            edge.position.set(R * Math.sin(a), y0 + h / 2, R * Math.cos(a));
+            content.add(edge);
+            if (y0 > 0.3) {
+                const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18, y0, 0.18), postMat);
+                leg.position.set(R * Math.sin(a), y0 / 2, R * Math.cos(a));
+                content.add(leg);
+            }
+            obstacles.push({ x: R * Math.sin(a), z: R * Math.cos(a), r: 0.5 });
+        }
+        // Una línea de luz que recorre el vidrio de arriba abajo.
+        const scan = new THREE.Mesh(arcPlane(R + 0.01, c, span, 0, 0.05), new THREE.MeshBasicMaterial({
+            color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false,
+        }));
+        scan.renderOrder = 4;
+        content.add(scan);
+        animated.push((t) => { scan.position.y = y0 + ((t * 0.35) % 1) * h; });
+    }
+
+    // Lo que se dibuja sobre el vidrio (un canvas transparente, un poco más cerca del centro).
+    function screenLayer(R, c, span, y0, h, canvas) {
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 4;
+        const mesh = new THREE.Mesh(arcPlane(R - 0.02, c, span, y0, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+        mesh.renderOrder = 3;
+        content.add(mesh);
+        return { mesh, tex };
+    }
+
+    function canvasFor(R, span, h, pxPerM) {
+        const c = document.createElement('canvas');
+        c.width = Math.min(2048, Math.round(R * span * pxPerM));
+        c.height = Math.min(2048, Math.round(h * pxPerM));
+        return c;
+    }
+
+    // ---------- Pantalla grande: movimientos del mes ----------
+    const TIPO_COLOR = { venta: '#2bff88', compra: '#ffb02b', gasto: '#ff5c7a', ingreso: '#4ad6ff', egreso: '#ff8a4a', apertura: '#9f8bff', cierre: '#c9d2ff', traspaso: '#7ab8ff' };
+    function monthScreen(s) {
+        const m = s.mes || { nombre: '', totales: [], por_dia: [], ultimos: [], cantidad: 0 };
+        const R = 24, c = Math.PI, y0 = 1, h = 7;
+        glass(R, c, 1.24, y0 - 0.1, h + 0.2, 0x7c4dff);
+
+        // Izquierda: título, totales por tipo y ventas por día.
+        const sSpan = 0.72, sC = c + 0.25;
+        const cv = canvasFor(R, sSpan, h, 118);
+        const g = cv.getContext('2d');
+        const W = cv.width, H = cv.height;
+        g.textBaseline = 'top';
+        g.fillStyle = '#ffffff';
+        g.font = '700 64px "Space Grotesk", system-ui, sans-serif';
+        g.fillText(`Movimientos de ${m.nombre}`, 48, 36);
+        g.fillStyle = '#b9c3ff';
+        g.font = '500 32px "Space Grotesk", system-ui, sans-serif';
+        g.fillText(`${s.nombre} · ${m.cantidad} movimiento${m.cantidad === 1 ? '' : 's'} · actualizado ${s.actualizado}`, 50, 112);
+        const tiles = m.totales.slice(0, 5);
+        const tw = tiles.length ? Math.min(360, (W - 96 - (tiles.length - 1) * 20) / tiles.length) : 0;
+        tiles.forEach((t, i) => {
+            const x = 48 + i * (tw + 20), y = 176;
+            const col = TIPO_COLOR[t.tipo] || '#ffffff';
+            g.fillStyle = 'rgba(20,40,90,0.55)';
+            g.beginPath(); g.roundRect(x, y, tw, 150, 20); g.fill();
+            g.strokeStyle = col; g.lineWidth = 3; g.stroke();
+            g.fillStyle = col;
+            g.font = '600 30px "Space Grotesk", system-ui, sans-serif';
+            g.fillText(t.label, x + 22, y + 18);
+            g.fillStyle = '#ffffff';
+            g.font = '700 46px "Space Grotesk", system-ui, sans-serif';
+            g.fillText(money(t.monto), x + 22, y + 56);
+            g.fillStyle = '#b9c3ff';
+            g.font = '500 26px "Space Grotesk", system-ui, sans-serif';
+            g.fillText(`${t.cantidad} mov.`, x + 22, y + 110);
+        });
+        if (!tiles.length) {
+            g.fillStyle = '#b9c3ff';
+            g.font = '600 44px "Space Grotesk", system-ui, sans-serif';
+            g.fillText('Sin movimientos este mes', 48, 200);
+        }
+        // Ventas por día.
+        const days = m.por_dia;
+        const top = 370, bottom = H - 70, left = 60, right = W - 40;
+        g.fillStyle = '#dfe4ff';
+        g.font = '600 32px "Space Grotesk", system-ui, sans-serif';
+        g.fillText('Ventas por día', left, top);
+        const vmax = Math.max(...days, 0);
+        if (days.length && vmax > 0) {
+            const chartTop = top + 60, bw = (right - left) / days.length;
+            g.strokeStyle = 'rgba(185,195,255,0.25)'; g.lineWidth = 2;
+            for (let k = 0; k <= 4; k++) {
+                const y = chartTop + (bottom - chartTop) * k / 4;
+                g.beginPath(); g.moveTo(left, y); g.lineTo(right, y); g.stroke();
+            }
+            days.forEach((v, i) => {
+                const bh = (bottom - chartTop) * v / vmax;
+                const grad = g.createLinearGradient(0, bottom - bh, 0, bottom);
+                grad.addColorStop(0, '#2bff88'); grad.addColorStop(1, 'rgba(43,255,136,0.25)');
+                g.fillStyle = grad;
+                g.fillRect(left + i * bw + bw * 0.15, bottom - bh, bw * 0.7, bh);
+                g.fillStyle = '#b9c3ff';
+                g.font = '500 22px "Space Grotesk", system-ui, sans-serif';
+                g.textAlign = 'center';
+                g.fillText(String(i + 1), left + i * bw + bw / 2, bottom + 12);
+                g.textAlign = 'left';
+            });
+            g.fillStyle = '#2bff88';
+            g.font = '600 26px "Space Grotesk", system-ui, sans-serif';
+            g.textAlign = 'right';
+            g.fillText(`máx. ${money(vmax)}`, right, top + 4);
+            g.textAlign = 'left';
+        } else {
+            g.fillStyle = '#b9c3ff';
+            g.font = '500 30px "Space Grotesk", system-ui, sans-serif';
+            g.fillText('Todavía no hay ventas este mes', left, top + 70);
+        }
+        screenLayer(R, sC, sSpan, y0, h, cv);
+
+        // Derecha: los últimos movimientos, pasando hacia arriba.
+        const lSpan = 0.46, lC = c - 0.37, headH = 1;
+        const hc = canvasFor(R, lSpan, headH, 118);
+        const hg = hc.getContext('2d');
+        hg.fillStyle = '#ffffff';
+        hg.font = '700 52px "Space Grotesk", system-ui, sans-serif';
+        hg.textBaseline = 'middle';
+        hg.fillText('Últimos movimientos', 32, hc.height / 2);
+        screenLayer(R, lC, lSpan, y0 + h - headH, headH, hc);
+        const rows = m.ultimos;
+        const listH = h - headH - 0.15;
+        const rowPx = 46, lw = canvasFor(R, lSpan, 1, 118).width;
+        const visible = Math.round(listH * 118);
+        const lc = document.createElement('canvas');
+        lc.width = lw;
+        lc.height = Math.min(4096, Math.max(visible, rows.length * rowPx));
+        const lg = lc.getContext('2d');
+        lg.textBaseline = 'middle';
+        rows.forEach((r, i) => {
+            const y = i * rowPx + rowPx / 2;
+            if (i % 2) { lg.fillStyle = 'rgba(120,150,255,0.08)'; lg.fillRect(0, i * rowPx, lw, rowPx); }
+            const col = TIPO_COLOR[r.tipo] || '#ffffff';
+            lg.fillStyle = col;
+            lg.beginPath(); lg.arc(22, y, 7, 0, Math.PI * 2); lg.fill();
+            lg.fillStyle = '#b9c3ff';
+            lg.font = '500 24px "JetBrains Mono", monospace';
+            lg.fillText(`${r.fecha.slice(8, 10)}/${r.fecha.slice(5, 7)} ${r.fecha.slice(11, 16)}`, 40, y);
+            lg.fillStyle = '#ffffff';
+            lg.font = '500 25px "Space Grotesk", system-ui, sans-serif';
+            let d = `${(TIPO_COLOR[r.tipo] ? r.tipo[0].toUpperCase() + r.tipo.slice(1) : r.tipo)} · ${r.descripcion || r.pv}`;
+            while (d.length > 4 && lg.measureText(d).width > lw - 430) d = d.slice(0, -2);
+            lg.fillText(d, 232, y);
+            lg.fillStyle = r.monto < 0 ? '#ff7088' : col;
+            lg.font = '700 26px "JetBrains Mono", monospace';
+            lg.textAlign = 'right';
+            lg.fillText(money(r.monto), lw - 24, y);
+            lg.textAlign = 'left';
+        });
+        if (!rows.length) {
+            lg.fillStyle = '#b9c3ff';
+            lg.font = '500 30px "Space Grotesk", system-ui, sans-serif';
+            lg.fillText('Sin movimientos este mes', 32, 60);
+        }
+        const list = screenLayer(R, lC, lSpan, y0 + 0.1, listH, lc);
+        const frac = visible / lc.height;
+        if (frac < 1) {
+            list.tex.wrapT = THREE.RepeatWrapping;
+            list.tex.repeat.y = frac;
+            let off = 0;
+            animated.push((t, dt) => {
+                off = (off + dt * 0.6 * rowPx / lc.height) % 1;   // ~0,6 filas por segundo
+                list.tex.offset.y = 1 - frac - off;
+            });
+        }
+    }
+
+    // ---------- Pantalla del equipo: la sucursal y los usuarios pasando con sus fotos ----------
+    const photos = new Map();   // url -> canvas chico (o null si no hay foto)
+    const photoQueue = [];
+    let photoBusy = false;
+    function loadPhoto(url, done) {
+        if (photos.has(url)) return done(photos.get(url));
+        photoQueue.push({ url, done });
+        if (!photoBusy) nextPhoto();
+    }
+    function nextPhoto() {
+        const job = photoQueue.shift();
+        if (!job) { photoBusy = false; return; }
+        photoBusy = true;
+        if (photos.has(job.url)) { job.done(photos.get(job.url)); return nextPhoto(); }
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.decoding = 'async';
+        img.onload = () => {
+            // Se achica a 192 px: las originales pueden pesar más de 1 MB.
+            const c = document.createElement('canvas');
+            c.width = c.height = 192;
+            const side = Math.min(img.width, img.height);
+            c.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 192, 192);
+            photos.set(job.url, c);
+            job.done(c);
+            nextPhoto();
+        };
+        img.onerror = () => { photos.set(job.url, null); job.done(null); nextPhoto(); };
+        img.src = job.url;
+    }
+
+    function initials(name) {
+        return name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || '?';
+    }
+
+    function drawUserCard(g, W, H, u, photo) {
+        const hue = hueOf(u.nombre);
+        g.clearRect(0, 0, W, H);
+        g.fillStyle = 'rgba(16,32,80,0.6)';
+        g.beginPath(); g.roundRect(6, 6, W - 12, H - 12, 28); g.fill();
+        g.strokeStyle = `hsl(${hue} 85% 65%)`; g.lineWidth = 4; g.stroke();
+        const r = 92, cx = W / 2, cy = 40 + r;
+        g.save();
+        g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.closePath();
+        if (photo) { g.clip(); g.drawImage(photo, cx - r, cy - r, r * 2, r * 2); }
+        else {
+            g.fillStyle = `hsl(${hue} 55% 35%)`; g.fill();
+            g.fillStyle = '#ffffff';
+            g.font = '700 72px "Space Grotesk", system-ui, sans-serif';
+            g.textAlign = 'center'; g.textBaseline = 'middle';
+            g.fillText(initials(u.nombre), cx, cy + 4);
+        }
+        g.restore();
+        g.beginPath(); g.arc(cx, cy, r + 4, 0, Math.PI * 2);
+        g.strokeStyle = `hsl(${hue} 85% 65%)`; g.lineWidth = 5; g.stroke();
+        g.textAlign = 'center'; g.textBaseline = 'top';
+        g.fillStyle = '#ffffff';
+        g.font = '700 38px "Space Grotesk", system-ui, sans-serif';
+        const words = u.nombre.split(/\s+/);
+        let l1 = '', l2 = '';
+        for (const w of words) {
+            if (!l2 && g.measureText((l1 + ' ' + w).trim()).width <= W - 40) l1 = (l1 + ' ' + w).trim();
+            else l2 = (l2 + ' ' + w).trim();
+        }
+        while (l2.length > 3 && g.measureText(l2).width > W - 40) l2 = l2.slice(0, -2) + '…';
+        g.fillText(l1, cx, cy + r + 26);
+        if (l2) g.fillText(l2, cx, cy + r + 70);
+        g.fillStyle = '#b9c3ff';
+        g.font = '500 28px "Space Grotesk", system-ui, sans-serif';
+        g.fillText(when(u.ultima_actividad), cx, cy + r + (l2 ? 120 : 82));
+    }
+
+    function drawInfoCard(g, W, H, s) {
+        g.clearRect(0, 0, W, H);
+        g.fillStyle = 'rgba(60,30,120,0.6)';
+        g.beginPath(); g.roundRect(6, 6, W - 12, H - 12, 28); g.fill();
+        g.strokeStyle = '#7c4dff'; g.lineWidth = 4; g.stroke();
+        g.textAlign = 'center'; g.textBaseline = 'top';
+        const cx = W / 2;
+        const open = s.puntos_venta.filter((p) => p.caja === 'abierta').length;
+        const venta = s.mes?.totales.find((t) => t.tipo === 'venta');
+        const lines = [
+            ['📍 Sucursal', '500 28px', '#b9c3ff'],
+            [s.nombre, '700 44px', '#ffffff'],
+            [s.direccion || s.empresa, '500 24px', '#b9c3ff'],
+            ['', '0 12px', ''],
+            [`Cajas abiertas: ${open} de ${s.puntos_venta.length}`, '600 30px', open ? '#2bff88' : '#ff7088'],
+            [`Ventas de hoy: ${money(s.total_hoy)}`, '600 30px', '#ffffff'],
+            [`Ventas del mes: ${money(venta?.monto || 0)}`, '600 30px', '#ffffff'],
+            [`Equipo: ${s.usuarios.length} personas`, '500 26px', '#b9c3ff'],
+        ];
+        let y = 40;
+        for (const [text, font, color] of lines) {
+            const size = parseInt(font.split(' ')[1], 10);
+            g.font = `${font} "Space Grotesk", system-ui, sans-serif`;
+            g.fillStyle = color;
+            let t = String(text);
+            while (t.length > 3 && g.measureText(t).width > W - 40) t = t.slice(0, -2) + '…';
+            if (t) g.fillText(t, cx, y);
+            y += size * 1.35;
+        }
+    }
+
+    let teamShift = 0;   // se mantiene al actualizar los datos (la pantalla no salta)
+    function teamScreen(s) {
+        const R = 15.5, c = 0, span = 1.5, y0 = 1.1, h = 3.4;
+        glass(R, c, span, y0 - 0.1, h + 0.2, 0x4ad6ff);
+        const cards = [{ info: true }, ...s.usuarios];
+        const cw = 2.6, step = (cw + 0.35) / R;              // ancho de una tarjeta, en radianes
+        const loop = Math.max(cards.length * step, span + step);
+        const tiles = cards.map((card, i) => {
+            const cv = document.createElement('canvas');
+            cv.width = 384; cv.height = 500;
+            const g = cv.getContext('2d');
+            const tex = new THREE.CanvasTexture(cv);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            tex.anisotropy = 4;
+            if (card.info) drawInfoCard(g, cv.width, cv.height, s);
+            else {
+                drawUserCard(g, cv.width, cv.height, card, card.foto ? photos.get(card.foto) : null);
+                if (card.foto && !photos.has(card.foto)) loadPhoto(card.foto, (p) => { if (p) { drawUserCard(g, cv.width, cv.height, card, p); tex.needsUpdate = true; } });
+            }
+            const mesh = new THREE.Mesh(arcPlane(R - 0.03, 0, cw / R, y0 + 0.2, h - 0.4, 12),
+                new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+            mesh.renderOrder = 3;
+            const holder = new THREE.Group();
+            holder.add(mesh);
+            content.add(holder);
+            return { holder, mesh, i };
+        });
+        // Pasan de derecha a izquierda (vistas desde el centro) y se desvanecen en los bordes.
+        const place = () => {
+            for (const t of tiles) {
+                const p = ((t.i * step - teamShift) % loop + loop) % loop;   // 0 = borde izquierdo
+                const a = c + span / 2 - step / 2 - p;
+                const inside = p <= span - step;
+                t.holder.visible = inside;
+                if (!inside) continue;
+                t.holder.rotation.y = a;
+                const edge = Math.min(p, span - step - p) / (step * 0.6);
+                t.mesh.material.opacity = Math.max(0, Math.min(1, edge));
+            }
+        };
+        place();
+        animated.push((t, dt) => { teamShift = (teamShift + dt * 0.07) % loop; place(); });
+        const label = textSprite([{ text: `Equipo de ${s.empresa}`, size: 64, bold: true }], 7, { w: 1024, h: 160, border: '#4ad6ff' });
+        label.position.set(0, y0 + h + 0.8, R);
+        content.add(label);
     }
 
     // Arma el lugar (o lo rearma cuando llegan datos nuevos).
