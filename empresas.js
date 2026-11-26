@@ -398,11 +398,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         if (!e) loading('Cargando la empresa…');
     }
 
-    // ---------- La sucursal: una avenida por partes ----------
-    // Igual que la calle de la empresa, pero por zonas de ZONE metros: parte 1, las cajas (izquierda) y los
-    // movimientos del mes (derecha); parte 2, los almacenes (izquierda) y quienes entrenaron hoy (derecha).
-    const ZONE = 44;
-    let sucStreet = null;   // { key, L, z0, hole }
+    let sucStreet = null;   // el predio de la sucursal que se está mostrando: { key, H, hole }
 
     // Lo que fn agregue queda en un grupo parado en (x, z) mirando hacia face (±1 en x), con el origen a R
     // detrás del vidrio (las funciones de pantallas dibujan alrededor de su origen). Obstáculos al mundo.
@@ -426,8 +422,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     }
 
     // Un cartel alto en la vereda que nombra la parte de la avenida.
-    function zoneSign(side, z, text, sub, color) {
-        const x = side * (STREET.half + STREET.walk - 0.7);
+    function zoneSign(x, z, text, sub, color) {
         const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 6.2), new THREE.MeshStandardMaterial({ color: 0x2a3150, metalness: 0.6 }));
         post.position.set(x, 3.1, z);
         target.add(post);
@@ -469,8 +464,8 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     }
 
     // Un almacén: su pantalla (lo que hay en stock) y, detrás, un estante con cajitas.
-    function almacenPanel(a, z) {
-        inPanel(-(STREET.half + 3), z, 1, SPOT.R, () => {
+    function almacenPanel(a, xPanel, z) {
+        inPanel(xPanel, z, 1, SPOT.R, () => {
             glass(SPOT.R, SPOT.c, SPOT.span, SPOT.y0 - 0.1, SPOT.h + 0.2, 0xffb02b);
             plazaLabel(a.nombre, SPOT.c, '#ffb02b');
             const cv = canvasFor(SPOT.R, SPOT.span, SPOT.h, SPOT.px);
@@ -512,7 +507,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         });
         // El estante: tres repisas con cajitas de colores (más cajitas, más productos).
         const rack = new THREE.Group();
-        rack.position.set(-(STREET.half + STREET.walk + 4.5), 0, z);
+        rack.position.set(xPanel - 6.5, 0, z);
         const metal = new THREE.MeshStandardMaterial({ color: 0x3a405c, metalness: 0.7, roughness: 0.4 });
         for (const dz of [-4, 4]) for (const dx of [-0.6, 0.6]) {
             const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 3, 0.08), metal);
@@ -537,8 +532,8 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
 
     // Quienes entrenaron hoy: un piso de gimnasio con un NPC por persona (su nombre y la hora a la que marcó).
     const NPC_F = ['sofia', 'candie', 'androide18'], NPC_M = ['ruddy', 'leo', 'marco'];
-    function gym(list, zc) {
-        const x0 = STREET.half + 3, w = 13, len = ZONE - 8;
+    function gym(list, x0, zc, len) {
+        const w = 13;
         const mat = new THREE.Mesh(new THREE.PlaneGeometry(w, len), new THREE.MeshStandardMaterial({ color: 0x12352b, roughness: 0.95 }));
         mat.rotation.x = -Math.PI / 2;
         mat.position.set(x0 + w / 2, 0.18, zc);
@@ -585,45 +580,148 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         });
     }
 
+    // ---------- La sucursal: un predio cercado ----------
+    // Un terreno cuadrado de 2·YARD metros rodeado de rejas, con el portón (y la puerta de vuelta a la empresa)
+    // adelante. Dos caminos en cruz lo parten en cuatro zonas: cajas y movimientos del mes adelante, almacenes y
+    // el gimnasio (quienes entrenaron hoy) atrás. El puente al Mundo 3D queda al fondo del camino central.
+    const YARD = 46, PATH = 3.5;
+
+    // Las rejas: postes (uno solo, instanciado), tres barandas por lado y una baranda de neón arriba.
+    // Se deja el hueco del portón adelante. Los obstáculos (círculos cada 2 m) no dejan salir del predio.
+    function fence(H, gate) {
+        const posts = [];
+        const sides = [   // [desde, hasta] a lo largo de cada lado
+            { a: [-H, H], b: [-gate, H] }, { a: [gate, H], b: [H, H] },   // adelante, a los dos lados del portón
+            { a: [-H, -H], b: [H, -H] }, { a: [-H, -H], b: [-H, H] }, { a: [H, -H], b: [H, H] },
+        ];
+        const metal = new THREE.MeshStandardMaterial({ color: 0x3a4266, metalness: 0.7, roughness: 0.35 });
+        const neon = new THREE.MeshBasicMaterial({ color: 0x4ad6ff, transparent: true, opacity: 0.85 });
+        for (const { a, b } of sides) {
+            const dx = b[0] - a[0], dz = b[1] - a[1], len = Math.hypot(dx, dz);
+            const n = Math.max(1, Math.round(len / 2.5));
+            for (let i = 0; i <= n; i++) posts.push([a[0] + (dx * i) / n, a[1] + (dz * i) / n]);
+            const ang = Math.atan2(dx, dz);
+            for (const [y, mat, th] of [[0.6, metal, 0.07], [1.5, metal, 0.07], [2.45, neon, 0.09]]) {
+                const rail = new THREE.Mesh(new THREE.BoxGeometry(th, th, len), mat);
+                rail.position.set(a[0] + dx / 2, y, a[1] + dz / 2);
+                rail.rotation.y = ang;
+                target.add(rail);
+            }
+            for (let d = 0; d <= len; d += 2) obs.push({ x: a[0] + (dx * d) / len, z: a[1] + (dz * d) / len, r: 1.05 });
+        }
+        const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(0.14, 2.6, 0.14), metal, posts.length);
+        const m = new THREE.Matrix4();
+        posts.forEach(([x, z], i) => inst.setMatrixAt(i, m.makeTranslation(x, 1.3, z)));
+        target.add(inst);
+    }
+
+    // El portón: dos columnas, una viga con el nombre y la puerta de vuelta a la empresa.
+    function gateArch(H, gate, title, subtitle, backTo, backLabel) {
+        const archMat = new THREE.MeshStandardMaterial({ color: 0x20243a, metalness: 0.6, roughness: 0.35, emissive: 0x1d1450 });
+        for (const side of [-1, 1]) {
+            const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.9, 8, 0.9), archMat);
+            pillar.position.set(side * (gate + 0.4), 4, H);
+            target.add(pillar);
+            obs.push({ x: side * (gate + 0.4), z: H, r: 0.8 });
+        }
+        const beam = new THREE.Mesh(new THREE.BoxGeometry(gate * 2 + 1.8, 0.6, 0.9), archMat);
+        beam.position.set(0, 8, H);
+        target.add(beam);
+        const sign = textPlane([{ text: title, size: 80, bold: true }, { text: subtitle, size: 40, color: '#b9c3ff' }], 14, { w: 1024, h: 256, border: '#7c4dff' });
+        sign.position.set(0, 10.2, H);
+        sign.material.side = THREE.DoubleSide;
+        target.add(sign);
+        door(0, H - 1, Math.PI, backTo, 0x3d8bff);
+        const back = textSprite([{ text: backLabel, size: 52, bold: true }], 2.2, { h: 128 });
+        back.position.set(0, 2.95, H - 1);
+        target.add(back);
+    }
+
+    // El piso del predio: caminos en cruz, el piso de cada zona con su borde de color y faroles en los caminos.
+    function yardGround(H, zones) {
+        const pave = new THREE.Mesh(new THREE.PlaneGeometry(H * 2, H * 2), new THREE.MeshStandardMaterial({ color: 0x141a30, roughness: 0.9 }));
+        pave.rotation.x = -Math.PI / 2;
+        pave.position.y = 0.02;
+        target.add(pave);
+        const pathMat = new THREE.MeshStandardMaterial({ color: 0x262d4d, roughness: 0.8 });
+        for (const [w, d] of [[PATH * 2, H * 2], [H * 2, PATH * 2]]) {
+            const p = new THREE.Mesh(new THREE.PlaneGeometry(w, d), pathMat);
+            p.rotation.x = -Math.PI / 2;
+            p.position.y = 0.035;
+            target.add(p);
+        }
+        const inner = H - PATH - 2;
+        for (const { sx, sz, color } of zones) {
+            const cx = sx * (PATH + 1 + inner / 2), cz = sz * (PATH + 1 + inner / 2);
+            // Color fijo (sin luz): un plano tan grande con luz se ve con manchas.
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(inner, inner), new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(0.045) }));
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.set(cx, 0.07, cz);
+            target.add(floor);
+            const edge = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(inner, inner)), new THREE.LineBasicMaterial({ color }));
+            edge.rotation.x = -Math.PI / 2;
+            edge.position.set(cx, 0.09, cz);
+            target.add(edge);
+        }
+        for (let t = -H + 8; t <= H - 8; t += 14) {
+            for (const [x, z] of [[PATH + 0.6, t], [-(PATH + 0.6), t], [t, PATH + 0.6], [t, -(PATH + 0.6)]]) {
+                if (Math.abs(x) < PATH + 1 && Math.abs(z) < PATH + 1) continue;   // el cruce queda libre
+                const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 4.2), new THREE.MeshStandardMaterial({ color: 0x2a3150, metalness: 0.6 }));
+                pole.position.set(x, 2.1, z);
+                target.add(pole);
+                const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 12), new THREE.MeshStandardMaterial({ color: 0xffe6b0, emissive: 0xffd27a, emissiveIntensity: 2.2 }));
+                bulb.position.set(x, 4.3, z);
+                target.add(bulb);
+            }
+        }
+    }
+
     function buildSucursal(key) {
         const s = sucursales.get(key);
         const empresaKey = parentOf.get(key);
         const name = s?.nombre || empresas.get(empresaKey)?.sucursales.find((x) => x.key === key)?.nombre || 'Sucursal';
-        const L = STREET.first + 2 * ZONE + STREET.end, z0 = L / 2;
-        sucStreet = { key, L, z0, hole: { x: 0, z: -z0 + 5 } };
-        setSize(Math.max(radius, L / 2 + 16), false);
+        const H = YARD, gate = 5;
+        sucStreet = { key, H, hole: { x: 0, z: -H + 7 } };
+        setSize(Math.ceil(H * Math.SQRT2) + 6, false);
         returnHole.group.position.set(sucStreet.hole.x, returnHole.group.position.y, sucStreet.hole.z);
-        avenue(L, z0, name, s ? `${s.empresa} · actualizado ${s.actualizado}` : 'Cargando…', `e-${empresaKey}`, '← Volver a la empresa');
+        const zones = [
+            { sx: -1, sz: 1, color: '#2bff88' }, { sx: 1, sz: 1, color: '#7c4dff' },
+            { sx: -1, sz: -1, color: '#ffb02b' }, { sx: 1, sz: -1, color: '#4ad6ff' },
+        ];
+        yardGround(H, zones);
+        fence(H, gate);
+        gateArch(H, gate, name, s ? `${s.empresa} · actualizado ${s.actualizado}` : 'Cargando…', `e-${empresaKey}`, '← Volver a la empresa');
         if (!s) return loading('Cargando la sucursal…');
-        const zA = z0 - STREET.first - ZONE / 2, zB = zA - ZONE;
+        const mid = PATH + 1 + (H - PATH - 2) / 2;   // centro de cada zona (en x y en z)
+        const edgeIn = PATH + 2.5;                   // junto al camino
 
-        // Parte 1 · izquierda: las cajas.
-        zoneSign(-1, zA + ZONE / 2 - 2, 'Cajas', `Ventas de hoy: ${money(s.total_hoy)}`, '#2bff88');
+        // Adelante a la izquierda: las cajas, en fila mirando al camino central.
+        zoneSign(-edgeIn, PATH + 0.7, 'Cajas', `Ventas de hoy: ${money(s.total_hoy)}`, '#2bff88');
         const pvs = s.puntos_venta;
-        const gapK = Math.min(5.5, (ZONE - 10) / Math.max(1, pvs.length - 1));
-        pvs.forEach((pv, i) => kiosk(pv, -(STREET.half + 2.5), zA + ((pvs.length - 1) / 2 - i) * gapK, Math.PI / 2, i));
+        const gapK = Math.min(5.5, (H - 14) / Math.max(1, pvs.length - 1));
+        pvs.forEach((pv, i) => kiosk(pv, -(edgeIn + 3), mid + ((pvs.length - 1) / 2 - i) * gapK, Math.PI / 2, i));
         if (!pvs.length) {
             const n = textSprite([{ text: 'Sin puntos de venta', size: 52, bold: true }], 4);
-            n.position.set(-(STREET.half + 2.5), 2.2, zA);
+            n.position.set(-mid, 2.2, mid);
             target.add(n);
         }
-        // Parte 1 · derecha: los movimientos del mes.
-        zoneSign(1, zA + ZONE / 2 - 2, 'Movimientos del mes', s.mes?.nombre || '', '#7c4dff');
-        inPanel(STREET.half + 3, zA, -1, 32, () => monthScreen(s));
+        // Adelante a la derecha: los movimientos del mes, en la pantalla grande mirando al camino.
+        zoneSign(edgeIn, PATH + 0.7, 'Movimientos del mes', s.mes?.nombre || '', '#7c4dff');
+        inPanel(edgeIn + 2, mid + 0.8, -1, 32, () => monthScreen(s));   // 40 m de largo: de la esquina del cruce hasta la reja
 
-        // Parte 2 · izquierda: los almacenes.
+        // Atrás a la izquierda: los almacenes.
         const alms = s.almacenes || [];
-        zoneSign(-1, zB + ZONE / 2 - 2, 'Almacenes', `${alms.length} almacén${alms.length === 1 ? '' : 'es'}`, '#ffb02b');
-        alms.slice(0, 3).forEach((a, i, arr) => almacenPanel(a, zB + ((arr.length - 1) / 2 - i) * 13.5));
+        zoneSign(-edgeIn, -PATH - 0.7, 'Almacenes', `${alms.length} almacén${alms.length === 1 ? '' : 'es'}`, '#ffb02b');
+        alms.slice(0, 3).forEach((a, i, arr) => almacenPanel(a, -(edgeIn + 1.5), -mid + ((arr.length - 1) / 2 - i) * 13.5));
         if (!alms.length) {
             const n = textSprite([{ text: 'Sin almacenes', size: 52, bold: true }], 4);
-            n.position.set(-(STREET.half + 3), 2.2, zB);
+            n.position.set(-mid, 2.2, -mid);
             target.add(n);
         }
-        // Parte 2 · derecha: quienes entrenaron hoy.
+        // Atrás a la derecha: quienes entrenaron hoy, en el gimnasio.
         const people = s.entrenaron || [];
-        zoneSign(1, zB + ZONE / 2 - 2, 'Entrenaron hoy', `${people.length} persona${people.length === 1 ? '' : 's'}`, '#2bff88');
-        gym(people, zB);
+        zoneSign(edgeIn, -PATH - 0.7, 'Entrenaron hoy', `${people.length} persona${people.length === 1 ? '' : 's'}`, '#4ad6ff');
+        gym(people, edgeIn + 2, -mid, H - PATH - 8);
     }
 
     // ---------- Pantallas de vidrio curvas ----------
@@ -1375,7 +1473,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
             return { x: d.x + Math.sin(ry) * 3.2, z: d.z + Math.cos(ry) * 3.2, ry };
         }
         if (id === LOBBY) return { x: 0, z: 3.2, ry: Math.PI };
-        if (id.startsWith('s-') && sucStreet) return { x: 0, z: sucStreet.z0 - 2.5, ry: Math.PI };   // al inicio de la avenida
+        if (id.startsWith('s-') && sucStreet) return { x: 0, z: sucStreet.H - 5, ry: Math.PI };   // entrando por el portón
         if (id.startsWith('e-') && street) {   // al inicio de la calle
             justEntered = true;
             return { x: 0, z: street.z0 - 2.5, ry: Math.PI };
