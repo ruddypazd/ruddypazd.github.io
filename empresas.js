@@ -166,6 +166,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     let refreshTimer = 0;
     let shownFor = null;
     let comeFrom = null;           // lugar del que vienes (para aparecer delante de su puerta)
+    let justEntered = false;       // apareciste en la entrada de la calle de una empresa (no al recargar)
 
     const owns = (id) => typeof id === 'string' && SCENE_RE.test(id);
 
@@ -1185,6 +1186,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     // Al entrar a un lugar (lo llama goTo de world.js).
     function show(id) {
         clearInterval(refreshTimer);
+        justEntered = false;   // lo marca spawnFor si apareces en la entrada
         const h = holeFor(id);
         returnHole.group.position.x = h.x;
         returnHole.group.position.z = h.z;
@@ -1211,10 +1213,14 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         const d = from && doors.find((x) => x.to === from);
         if (d) {
             const ry = d.facing ?? Math.atan2(-d.x, -d.z);   // saliendo por la puerta, de espaldas a ella
+            justEntered = id.startsWith('e-') && d.to === LOBBY;   // la puerta de la entrada de la calle
             return { x: d.x + Math.sin(ry) * 3.2, z: d.z + Math.cos(ry) * 3.2, ry };
         }
         if (id === LOBBY) return { x: 0, z: 3.2, ry: Math.PI };
-        if (id.startsWith('e-') && street) return { x: 0, z: street.z0 - 2.5, ry: Math.PI };   // al inicio de la calle
+        if (id.startsWith('e-') && street) {   // al inicio de la calle
+            justEntered = true;
+            return { x: 0, z: street.z0 - 2.5, ry: Math.PI };
+        }
         return { x: 0, z: 8.8, ry: Math.PI };
     }
 
@@ -1403,11 +1409,13 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         for (const s of m.sucursales) parentOf.set(s.key, m.key);
         if (shownFor === `e-${m.key}`) {
             // Antes de que lleguen las sucursales la calle es corta: al alargarse, la entrada se corre.
-            // Si recién entraste (cerca de la entrada vieja), te corres con ella.
+            // Solo si estás donde se aparece al entrar (recién llegaste por la puerta), te corres con ella. Al
+            // recargar apareces en tu posición guardada, que ya es de la calle larga: ahí no se toca nada.
             const oldZ0 = street?.key === m.key ? street.z0 : null;
             build(shownFor);
             onInfo(shownFor);
-            if (oldZ0 !== null && street.z0 !== oldZ0 && player.position.z > oldZ0 - 15) onShift(street.z0 - oldZ0);
+            if (justEntered && oldZ0 !== null && street.z0 !== oldZ0) onShift(street.z0 - oldZ0);
+            justEntered = false;
         }
         // Al recargar dentro de una sucursal, su nombre sale de la lista de la empresa.
         for (const s of m.sucursales) if (shownFor === `s-${s.key}`) onInfo(shownFor);
