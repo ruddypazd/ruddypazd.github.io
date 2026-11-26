@@ -5,14 +5,16 @@
 //   «e-<empresa>»   un edificio por sucursal
 //   «s-<sucursal>»  sus puntos de venta (luz verde = caja abierta), las ventas de hoy y los usuarios
 // Se entra por la puerta iluminada de cada edificio; la puerta suelta del lugar vuelve un nivel atrás
-// y el puente del centro vuelve al Mundo 3D. Como las salas privadas, solo te ven quienes están en el
-// mismo lugar (tus compañeros de esa empresa).
+// y el puente (a un costado) vuelve al Mundo 3D. Como las salas privadas, solo te ven quienes están en
+// el mismo lugar (tus compañeros de esa empresa).
 //
-// La contraseña no se guarda en el navegador: queda en memoria mientras la pestaña está abierta, para
-// volver a entrar solo si se corta la conexión.
+// La contraseña no se guarda: el servidor da un token de sesión (TOKEN_KEY en localStorage) con el que,
+// al recargar o reconectar, se vuelve a entrar solo y se aparece donde estabas. «Salir de S-ERP» lo anula.
+// Lo que se interpone entre la cámara y tu personaje se vuelve transparente mientras estorba.
 import * as THREE from 'three';
 
 export const LOBBY = 'empresas';
+export const TOKEN_KEY = 'rp_serp_token';
 const KEY = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const SCENE_RE = new RegExp(`^(?:${LOBBY}|[es]-${KEY})$`);
 const DOOR_R = 1.2;        // a esta distancia de la puerta se entra
@@ -94,7 +96,14 @@ function windowsTexture(hue) {
     return tex;
 }
 
-export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN, radius, onLeave }) {
+// Dónde está el puente de regreso al Mundo 3D en cada lugar (a un costado, lejos de puertas y pantallas).
+function holeFor(id) {
+    if (id.startsWith('s-')) return { x: -10.5, z: 3 };
+    if (id.startsWith('e-')) return { x: -6, z: 4 };
+    return { x: -7, z: 4 };
+}
+
+export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN, radius, onLeave, onInfo, camera, player }) {
     // ---------- La escena (una sola para todos los lugares: se rearma al cambiar) ----------
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x070b1a);
@@ -131,9 +140,8 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     loader.setCrossOrigin('anonymous');
 
     // ---------- Estado ----------
-    let creds = null;          // { usuario, password } solo en memoria
     let session = null;        // { nombre, empresas: [...] }
-    let relogging = false;
+    const saveToken = (t) => { try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch { /* modo privado */ } };
     const empresas = new Map();    // key -> datos de serp_empresa
     const sucursales = new Map();  // key -> datos de serp_sucursal
     const parentOf = new Map();    // key_sucursal -> key_empresa
@@ -150,6 +158,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
             for (const m of mats) { m.map?.dispose(); m.emissiveMap?.dispose(); m.dispose(); }
         });
         content.clear();
+        fading.clear();
         obstacles.length = 0;
         doors = [];
         animated.length = 0;
@@ -729,6 +738,9 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     // Al entrar a un lugar (lo llama goTo de world.js).
     function show(id) {
         clearInterval(refreshTimer);
+        const h = holeFor(id);
+        returnHole.group.position.x = h.x;
+        returnHole.group.position.z = h.z;
         build(id);
         armed = false;
         if (id.startsWith('e-')) net.send({ type: 'serp_empresa', key: id.slice(2) });
@@ -768,8 +780,57 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         return false;
     }
 
+    // ---------- Que nada tape a tu personaje ----------
+    // Rayos desde su cabeza y su cintura hasta la cámara: lo que cruzan (edificios, pantallas, carteles)
+    // se vuelve casi transparente y vuelve a la normalidad cuando deja de estorbar.
+    const ray = new THREE.Raycaster();
+    const from = new THREE.Vector3(), dir = new THREE.Vector3();
+    const fading = new Map();   // objeto de primer nivel en content -> cuánto se ve (0..1)
+    function rootOf(o) {
+        while (o.parent && o.parent !== content) o = o.parent;
+        return o.parent === content ? o : null;
+    }
+    function setFade(root, f) {
+        root.traverse((o) => {
+            const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+            for (const m of mats) {
+                const u = m.userData;
+                if (u.baseOpacity === undefined) { u.baseOpacity = m.opacity; u.baseTransparent = m.transparent; u.baseDepthWrite = m.depthWrite; }
+                const faded = f < 0.999;
+                if (m.transparent !== (faded || u.baseTransparent)) { m.transparent = faded || u.baseTransparent; m.needsUpdate = true; }
+                m.depthWrite = faded ? false : u.baseDepthWrite;
+                m.opacity = u.baseOpacity * f;
+            }
+        });
+    }
+    function updateOcclusion(dt) {
+        const blocking = new Set();
+        ray.camera = camera;
+        for (const y of [1.5, 0.9]) {
+            from.set(player.position.x, y, player.position.z);
+            dir.subVectors(camera.position, from);
+            const dist = dir.length();
+            if (dist < 0.3) continue;
+            ray.set(from, dir.normalize());
+            ray.far = dist;
+            for (const hit of ray.intersectObjects(content.children, true)) {
+                const r = rootOf(hit.object);
+                if (r) blocking.add(r);
+            }
+        }
+        for (const r of blocking) if (!fading.has(r)) fading.set(r, 1);
+        for (const [r, f] of fading) {
+            const target = blocking.has(r) ? 0.15 : 1;
+            const next = f + (target - f) * Math.min(1, dt * 8);
+            if (Math.abs(next - f) > 0.001 || target !== 1) setFade(r, next);
+            if (target === 1 && next > 0.995) { setFade(r, 1); fading.delete(r); }
+            else fading.set(r, next);
+        }
+    }
+
     function update(dt, t) {
         for (const fn of animated) fn(t, dt);
+        updateOcclusion(dt);
     }
 
     function banner(id) {
@@ -825,17 +886,18 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         sending = true;
         submit.disabled = true;
         message('');
-        creds = { usuario, password };
         net.send({ type: 'serp_login', usuario, password });
     });
     box.querySelector('[data-serp-close]').addEventListener('click', () => { box.hidden = true; });
     logoutBtn.addEventListener('click', () => {
-        net.send({ type: 'serp_logout' });
+        let token = null;
+        try { token = localStorage.getItem(TOKEN_KEY); } catch { /* modo privado */ }
+        net.send({ type: 'serp_logout', token });
         logout();
     });
 
     function logout() {
-        creds = null;
+        saveToken(null);
         session = null;
         empresas.clear(); sucursales.clear(); parentOf.clear();
         form.reset();
@@ -846,16 +908,17 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     net.on('serp_ok', (m) => {
         const first = !session;
         session = { nombre: m.nombre, empresas: m.empresas || [] };
+        if (m.token) saveToken(m.token);
         sending = false;
         submit.disabled = false;
         form.password.value = '';
         fillBox();
-        if (relogging) {
-            // Se cortó la conexión estando adentro: vuelve a pedir el lugar (y su empresa, para la sucursal).
-            relogging = false;
-            const id = hereId();
+        const id = hereId();
+        if (owns(id) && box.hidden) {
+            // Se cortó la conexión estando adentro y el token volvió a entrar: se vuelve a pedir el lugar
+            // (y su empresa, para que el servidor conozca la sucursal).
             if (id.startsWith('s-') && parentOf.has(id.slice(2))) net.send({ type: 'serp_empresa', key: parentOf.get(id.slice(2)) });
-            if (owns(id)) show(id);
+            show(id);
             return;
         }
         if (first && !box.hidden) {
@@ -866,31 +929,42 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     net.on('serp_empresa', (m) => {
         empresas.set(m.key, m);
         for (const s of m.sucursales) parentOf.set(s.key, m.key);
-        if (shownFor === `e-${m.key}`) build(shownFor);
+        if (shownFor === `e-${m.key}`) { build(shownFor); onInfo(shownFor); }
+        // Al recargar dentro de una sucursal, su nombre sale de la lista de la empresa.
+        for (const s of m.sucursales) if (shownFor === `s-${s.key}`) onInfo(shownFor);
     });
     net.on('serp_sucursal', (m) => {
         sucursales.set(m.key, m);
         parentOf.set(m.key, m.key_empresa);
-        if (shownFor === `s-${m.key}`) build(shownFor);
+        if (shownFor === `s-${m.key}`) { build(shownFor); onInfo(shownFor); }
     });
     net.on('serp_error', (m) => {
         if (m.for === 'serp_login') {
             sending = false;
             submit.disabled = false;
-            creds = null;
-            if (relogging) { relogging = false; logout(); return flashHint(m.message); }
             return message(m.message);
+        }
+        if (m.for === 'serp_resume') {
+            // serp no respondió: el token sigue valiendo, se reintenta en la próxima conexión.
+            if (owns(hereId())) onLeave();
+            return flashHint(`Mundo Empresas: ${m.message}`);
         }
         flashHint(m.message);
         if (owns(hereId()) && hereId() !== LOBBY) go(LOBBY);
     });
     net.on('serp_login_required', () => {
-        if (creds && !relogging) { relogging = true; net.send({ type: 'serp_login', ...creds }); }
-        else if (!creds && owns(hereId())) logout();
+        session = null;
+        fillBox();
+        if (owns(hereId())) { onLeave(); flashHint('Vuelve a entrar al Mundo Empresas desde Ajustes → Mundo'); }
+    });
+    net.on('serp_token_invalid', () => {
+        saveToken(null);
+        session = null;
+        fillBox();
+        if (owns(hereId())) { onLeave(); flashHint('Tu sesión de S-ERP venció: vuelve a entrar desde Ajustes → Mundo'); }
     });
     let kickAt = 0;
     net.on('serp_kick', (m) => {
-        if (relogging) return;   // la sesión vuelve enseguida
         const id = hereId();
         if (m.scene !== id) return;   // un aviso atrasado de un lugar del que ya saliste
         if (session && performance.now() - kickAt > 5000) {
@@ -906,16 +980,20 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         session = null;
         if (owns(id)) { onLeave(); flashHint('Tu sesión de S-ERP terminó: vuelve a entrar desde Ajustes → Mundo'); }
     });
-    // Reconexión: la sesión de S-ERP era de la conexión anterior.
+    // Reconexión: la sesión de S-ERP era de la conexión anterior. Si hay token, el servidor manda serp_ok
+    // enseguida (después de login_ok); si no, se sale del Mundo Empresas.
     net.tap('login_ok', () => {
         session = null;
-        if (creds && owns(hereId())) { relogging = true; net.send({ type: 'serp_login', ...creds }); }
-        else if (owns(hereId())) onLeave();
         fillBox();
+        let token = null;
+        try { token = localStorage.getItem(TOKEN_KEY); } catch { /* modo privado */ }
+        if (!token && owns(hereId())) onLeave();
     });
 
     return {
         scene, obstacles, returnHole, owns, show, spawnFor, checkDoors, update, banner, openLogin,
+        hole: (id) => holeFor(id),
+        ready: () => !!session,
         get comeFrom() { return comeFrom; },
     };
 }
