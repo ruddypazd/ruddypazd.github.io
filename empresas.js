@@ -2,8 +2,9 @@
 //
 // Ajustes → Mundo → 🏢 Mundo Empresas pide el usuario y la contraseña de S-ERP. Con eso se entra a:
 //   «empresas»      un barrio con un edificio por cada empresa de la que eres miembro
-//   «e-<empresa>»   un edificio por sucursal
-//   «s-<sucursal>»  sus puntos de venta (luz verde = caja abierta), las ventas de hoy y los usuarios
+//   «e-<empresa>»   un edificio por sucursal, la torre con el estado de la empresa y cuatro plazas:
+//                   integrantes (en la entrada), tus notas, las publicaciones y tus tareas por fecha
+//   «s-<sucursal>»  sus puntos de venta (luz verde = caja abierta), las ventas de hoy y los movimientos del mes
 // Se entra por la puerta iluminada de cada edificio; la puerta suelta del lugar vuelve un nivel atrás
 // y el puente (a un costado) vuelve al Mundo 3D. Como las salas privadas, solo te ven quienes están en
 // el mismo lugar (tus compañeros de esa empresa).
@@ -98,16 +99,16 @@ function windowsTexture(hue) {
 
 // Dónde está el puente de regreso al Mundo 3D en cada lugar (a un costado, lejos de puertas y pantallas).
 function holeFor(id) {
-    if (id.startsWith('s-')) return { x: -10.5, z: 3 };
-    if (id.startsWith('e-')) return { x: -6, z: 4 };
-    return { x: -7, z: 4 };
+    if (id.startsWith('s-')) return { x: -15, z: 6 };
+    if (id.startsWith('e-')) return { x: -9.5, z: -9.5 };   // entre las plazas de tareas y publicaciones
+    return { x: -9, z: 6 };
 }
 
 export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN, radius, onLeave, onInfo, camera, player }) {
     // ---------- La escena (una sola para todos los lugares: se rearma al cambiar) ----------
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x070b1a);
-    scene.fog = new THREE.Fog(0x070b1a, 18, 75);
+    scene.fog = new THREE.Fog(0x070b1a, 30, 125);
     scene.add(new THREE.HemisphereLight(0x8fb4ff, 0x1a1030, 1.4));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(12, 20, 8);
@@ -138,6 +139,10 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     let doors = [];            // { x, z, to, from? }
     let armed = false;
     const animated = [];       // cosas que se mueven (puertas que brillan, luces)
+    // Dónde agregan las funciones de abajo (target.add, anims.push, obs.push): el lugar entero, o el grupo
+    // de las plazas de una empresa, que se rehace solo cuando llegan sus datos (ver buildPlazas).
+    let target = content, anims = animated, obs = obstacles;
+    let plazas = null;         // { group, anims, obs }
     const loader = new THREE.TextureLoader();
     loader.setCrossOrigin('anonymous');
 
@@ -160,6 +165,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
             for (const m of mats) { m.map?.dispose(); m.emissiveMap?.dispose(); m.dispose(); }
         });
         content.clear();
+        plazas = null;
         for (const r of fading.keys()) setFade(r, 1);   // lo que puso la gente sigue en la escena: que vuelva a verse
         fading.clear();
         obstacles.length = 0;
@@ -186,8 +192,8 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         }));
         glow.position.y = 1.21;
         g.add(glow);
-        animated.push((t) => { glow.material.opacity = 0.4 + 0.2 * Math.sin(t * 2.4 + x); });
-        content.add(g);
+        anims.push((t) => { glow.material.opacity = 0.4 + 0.2 * Math.sin(t * 2.4 + x); });
+        target.add(g);
         doors.push({ x: x + Math.sin(facing) * 0.6, z: z + Math.cos(facing) * 0.6, to });
         return g;
     }
@@ -230,9 +236,9 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
                 holder.visible = true;
             }, undefined, () => { /* sin logo */ });
         }
-        content.add(g);
+        target.add(g);
         const r = Math.max(w, d) / 2 + 0.4;
-        obstacles.push({ x, z, r });
+        obs.push({ x, z, r });
         // La puerta, delante del frente (afuera del obstáculo para poder llegar).
         const dist = Math.hypot(x, z) - (r + 0.15);
         door(Math.sin(a) * dist, Math.cos(a) * dist, facing, to, new THREE.Color().setHSL(hue / 360, 0.9, 0.6).getHex());
@@ -250,20 +256,20 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     function title(lines, z = -radius + 8, width = 12, y = 7.5) {
         const s = textSprite(lines, width, { w: 1024, h: 256, border: '#7c4dff' });
         s.position.set(0, y, z);
-        content.add(s);
+        target.add(s);
     }
 
     function loading(text) {
         const s = textSprite([{ text, size: 60, bold: true }], 6);
         s.position.set(0, 2.4, -6);
-        content.add(s);
+        target.add(s);
     }
 
     // ---------- Los tres tipos de lugar ----------
     function buildLobby() {
         const list = session?.empresas || [];
         title([{ text: 'Mundo Empresas', size: 90, bold: true }, { text: `Hola, ${session?.nombre || ''} · entra a tu empresa por su puerta`, size: 40, color: '#b9c3ff' }]);
-        ring(list.length, 15, 8).forEach((p, i) => {
+        ring(list.length, 22, 9).forEach((p, i) => {
             const e = list[i];
             const hue = hueOf(e.key);
             building({ ...p, w: 5.4, d: 4.4, h: 6 + (hue % 5), hue, title: e.nombre, to: `e-${e.key}`, logo: e.logo });
@@ -276,13 +282,14 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         const base = session?.empresas.find((x) => x.key === key);
         title([{ text: e?.nombre || base?.nombre || 'Empresa', size: 90, bold: true },
             { text: e ? `${e.sucursales.length} sucursal${e.sucursales.length === 1 ? '' : 'es'} · entra por la puerta de cada una` : 'Cargando…', size: 40, color: '#b9c3ff' }]);
-        door(0, 8, Math.PI, LOBBY, 0x3d8bff);
+        door(0, 12, Math.PI, LOBBY, 0x3d8bff);
         const back = textSprite([{ text: '← Barrio de empresas', size: 52, bold: true }], 2.2, { h: 128 });
-        back.position.set(0, 2.95, 8);
-        content.add(back);
+        back.position.set(0, 2.95, 12);
+        target.add(back);
         estadoTower(key);
+        buildPlazas(key);
         if (!e) return loading('Cargando sucursales…');
-        ring(e.sucursales.length, 14, 7.5).forEach((p, i) => {
+        ring(e.sucursales.length, 31, 8).forEach((p, i) => {
             const s = e.sucursales[i];
             const hue = (hueOf(key) + i * 37) % 360;
             building({ ...p, w: 4.6, d: 4, h: 4.5 + (hueOf(s.key) % 3), hue, title: s.nombre, subtitle: s.direccion, to: `s-${s.key}` });
@@ -295,16 +302,16 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         const empresaKey = parentOf.get(key);
         const name = s?.nombre || empresas.get(empresaKey)?.sucursales.find((x) => x.key === key)?.nombre || 'Sucursal';
         title([{ text: name, size: 90, bold: true },
-            { text: s ? `${s.empresa} · ventas de hoy: ${money(s.total_hoy)} · actualizado ${s.actualizado}` : 'Cargando…', size: 38, color: '#b9c3ff' }], -23, 12, 10.2);
-        door(0, 9, Math.PI, `e-${empresaKey}`, 0x3d8bff);
+            { text: s ? `${s.empresa} · ventas de hoy: ${money(s.total_hoy)} · actualizado ${s.actualizado}` : 'Cargando…', size: 38, color: '#b9c3ff' }], -31, 14, 12.6);
+        door(0, 12, Math.PI, `e-${empresaKey}`, 0x3d8bff);
         const back = textSprite([{ text: '← Volver a la empresa', size: 52, bold: true }], 2.2, { h: 128 });
-        back.position.set(0, 2.95, 9);
-        content.add(back);
+        back.position.set(0, 2.95, 12);
+        target.add(back);
         if (!s) return loading('Cargando la sucursal…');
 
         // Puntos de venta: un kiosco con su luz (verde = caja abierta).
         const pvs = s.puntos_venta;
-        ring(pvs.length, 6.5, 4).forEach((p, i) => {
+        ring(pvs.length, 9, 4.5).forEach((p, i) => {
             const pv = pvs[i];
             const open = pv.caja === 'abierta';
             const g = new THREE.Group();
@@ -324,36 +331,36 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
             const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.17, 20, 14), new THREE.MeshStandardMaterial({ color: lampColor, emissive: lampColor, emissiveIntensity: 2 }));
             lamp.position.set(0.8, 2.55, -0.2);
             g.add(lamp);
-            if (open) animated.push((t) => { lamp.material.emissiveIntensity = 1.6 + 0.6 * Math.sin(t * 3 + i); });
-            content.add(g);
+            if (open) anims.push((t) => { lamp.material.emissiveIntensity = 1.6 + 0.6 * Math.sin(t * 3 + i); });
+            target.add(g);
             const label = textSprite([
                 { text: pv.nombre, size: 46, bold: true },
                 { text: open ? '● Caja abierta' : '● Caja cerrada', size: 34, color: open ? '#2bff88' : '#ff7088' },
                 { text: `Hoy: ${money(pv.ventas_hoy)} · ${pv.ventas_cantidad} venta${pv.ventas_cantidad === 1 ? '' : 's'}`, size: 34, color: '#dfe4ff' },
             ], 2.6, { border: open ? '#2bff88' : '#ff3b5c' });
             label.position.set(p.x, 3.3, p.z);
-            content.add(label);
-            obstacles.push({ x: p.x, z: p.z, r: 1.15 });
+            target.add(label);
+            obs.push({ x: p.x, z: p.z, r: 1.15 });
         });
         if (!pvs.length) loading('Sin puntos de venta');
 
         // Gráfico de barras: ventas de hoy por punto de venta (entre los kioscos y la pantalla del mes).
         const max = Math.max(...pvs.map((p) => p.ventas_hoy), 0);
-        const cz = -14, gap = 1.6, x0 = -((pvs.length - 1) * gap) / 2;
+        const cz = -19, gap = 1.6, x0 = -((pvs.length - 1) * gap) / 2;
         const base = new THREE.Mesh(new THREE.BoxGeometry(Math.max(4, pvs.length * gap + 1), 0.2, 2.2),
             new THREE.MeshStandardMaterial({ color: 0x1b2244, metalness: 0.4, roughness: 0.4 }));
         base.position.set(0, 0.1, cz);
-        content.add(base);
-        obstacles.push(...Array.from({ length: Math.max(1, Math.ceil(pvs.length * gap / 2)) }, (_, k) => ({ x: x0 + k * 2, z: cz, r: 1.3 })));
+        target.add(base);
+        obs.push(...Array.from({ length: Math.max(1, Math.ceil(pvs.length * gap / 2)) }, (_, k) => ({ x: x0 + k * 2, z: cz, r: 1.3 })));
         pvs.forEach((pv, i) => {
             const hgt = 0.15 + (max > 0 ? 4 * pv.ventas_hoy / max : 0);
             const color = new THREE.Color().setHSL(((i * 47) % 360) / 360, 0.8, 0.58);
             const bar = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.35 }));
             bar.scale.set(1.1, 0.001, 1.1);
             bar.position.set(x0 + i * gap, 0.2, cz);
-            content.add(bar);
+            target.add(bar);
             let grown = 0;
-            animated.push((t, dt) => {
+            anims.push((t, dt) => {
                 if (grown >= 1) return;
                 grown = Math.min(1, grown + dt * 1.4);
                 const e = 1 - (1 - grown) ** 3;
@@ -362,14 +369,13 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
             });
             const v = textSprite([{ text: money(pv.ventas_hoy), size: 56, bold: true }, { text: pv.nombre, size: 36, color: '#b9c3ff' }], 1.9, { bg: 'rgba(10,14,30,0.7)', border: null });
             v.position.set(x0 + i * gap, 0.6 + hgt + 0.55, cz);
-            content.add(v);
+            target.add(v);
         });
         const chartTitle = textSprite([{ text: 'Ventas de hoy', size: 60, bold: true }, { text: `Total ${money(s.total_hoy)}`, size: 44, color: '#2bff88' }], 3.4);
         chartTitle.position.set(0, max > 0 ? 5.6 : 2.2, cz - 0.5);
-        content.add(chartTitle);
+        target.add(chartTitle);
 
         monthScreen(s);
-        teamScreen(s);
     }
 
     // ---------- Pantallas de vidrio curvas ----------
@@ -395,37 +401,37 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         // Todos están en el centro del mundo, así que three.js no los puede ordenar por distancia.
         const back = new THREE.Mesh(arcPlane(R + 0.04 * d, c, span, y0, h, 48, out), glassMat);
         back.renderOrder = 0;
-        content.add(back);
+        target.add(back);
         const sheen = new THREE.Mesh(arcPlane(R + 0.02 * d, c, span, y0, h, 48, out), new THREE.MeshBasicMaterial({
             color, transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending, depthWrite: false,
         }));
         sheen.renderOrder = 1;
-        content.add(sheen);
+        target.add(sheen);
         const edgeMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
         for (const y of [y0 - 0.04, y0 + h - 0.02]) {
             const line = new THREE.Mesh(arcPlane(R, c, span + 0.004, y, 0.07, 48, out), edgeMat);
             line.renderOrder = 4;
-            content.add(line);
+            target.add(line);
         }
         const postMat = new THREE.MeshStandardMaterial({ color: 0x20243a, metalness: 0.6, roughness: 0.35 });
         for (const a of [c - span / 2, c + span / 2]) {
             const edge = new THREE.Mesh(new THREE.BoxGeometry(0.08, h, 0.08), edgeMat);
             edge.position.set(R * Math.sin(a), y0 + h / 2, R * Math.cos(a));
-            content.add(edge);
+            target.add(edge);
             if (y0 > 0.3) {
                 const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18, y0, 0.18), postMat);
                 leg.position.set(R * Math.sin(a), y0 / 2, R * Math.cos(a));
-                content.add(leg);
+                target.add(leg);
             }
-            obstacles.push({ x: R * Math.sin(a), z: R * Math.cos(a), r: 0.5 });
+            obs.push({ x: R * Math.sin(a), z: R * Math.cos(a), r: 0.5 });
         }
         // Una línea de luz que recorre el vidrio de arriba abajo.
         const scan = new THREE.Mesh(arcPlane(R + 0.01 * d, c, span, 0, 0.05, 48, out), new THREE.MeshBasicMaterial({
             color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false,
         }));
         scan.renderOrder = 4;
-        content.add(scan);
-        animated.push((t) => { scan.position.y = y0 + ((t * 0.35) % 1) * h; });
+        target.add(scan);
+        anims.push((t) => { scan.position.y = y0 + ((t * 0.35) % 1) * h; });
     }
 
     // Lo que se dibuja sobre el vidrio (un canvas transparente, un poco más cerca del centro).
@@ -435,7 +441,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         tex.anisotropy = 4;
         const mesh = new THREE.Mesh(arcPlane(R - 0.02 * (out ? -1 : 1), c, span, y0, h, 48, out), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
         mesh.renderOrder = 3;
-        content.add(mesh);
+        target.add(mesh);
         return { mesh, tex };
     }
 
@@ -450,7 +456,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     const TIPO_COLOR = { venta: '#2bff88', compra: '#ffb02b', gasto: '#ff5c7a', ingreso: '#4ad6ff', egreso: '#ff8a4a', apertura: '#9f8bff', cierre: '#c9d2ff', traspaso: '#7ab8ff' };
     function monthScreen(s) {
         const m = s.mes || { nombre: '', totales: [], por_dia: [], ultimos: [], cantidad: 0 };
-        const R = 24, c = Math.PI, y0 = 1, h = 7;
+        const R = 32, c = Math.PI, y0 = 1.2, h = 8.5;
         glass(R, c, 1.24, y0 - 0.1, h + 0.2, 0x7c4dff);
 
         // Izquierda: título, totales por tipo y ventas por día.
@@ -576,7 +582,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
             list.tex.wrapT = THREE.RepeatWrapping;
             list.tex.repeat.y = frac;
             let off = 0;
-            animated.push((t, dt) => {
+            anims.push((t, dt) => {
                 off = (off + dt * 0.6 * rowPx / lc.height) % 1;   // ~0,6 filas por segundo
                 list.tex.offset.y = 1 - frac - off;
             });
@@ -588,7 +594,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     // por día. Se redibuja cuando llega serp_empresa_estado (cada 2 minutos) sin rearmar el lugar.
     const estados = new Map();   // key_empresa -> datos de serp_empresa_estado
     let tower = null;            // { key, draw() }
-    const TOWER = { R: 3.6, y0: 0.7, h: 3, span: (2 * Math.PI) / 3 - 0.16, px: 170 };
+    const TOWER = { R: 4.4, y0: 0.8, h: 3.6, span: (2 * Math.PI) / 3 - 0.16, px: 150 };
     function estadoTower(key) {
         const { R, y0, h, span, px } = TOWER;
         const panels = [0, (2 * Math.PI) / 3, (-2 * Math.PI) / 3].map((c, i) => {
@@ -600,8 +606,8 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         const base = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.3, R + 0.5, 0.3, 64),
             new THREE.MeshStandardMaterial({ color: 0x141a36, metalness: 0.6, roughness: 0.35, emissive: 0x1d1450 }));
         base.position.y = 0.15;
-        content.add(base);
-        obstacles.push({ x: 0, z: 0, r: R + 0.6 });
+        target.add(base);
+        obs.push({ x: 0, z: 0, r: R + 0.6 });
         tower = { key, draw: () => drawTower(key, panels) };
         tower.draw();
     }
@@ -768,25 +774,54 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         g.fillText(when(u.ultima_actividad), cx, cy + r + (l2 ? 120 : 82));
     }
 
-    function drawInfoCard(g, W, H, s) {
+    const FONT = (w, size) => `${w} ${size}px "Space Grotesk", system-ui, sans-serif`;
+    // Parte un texto en líneas que entren en maxW (como mucho maxLines; la última con «…»).
+    function wrap(g, text, maxW, maxLines) {
+        const out = [];
+        for (const para of String(text || '').replace(/\r/g, '').split('\n')) {
+            let line = '';
+            for (let w of para.split(/\s+/).filter(Boolean)) {
+                // Una palabra que no entra sola (una URL, un token) se corta donde haga falta.
+                while (g.measureText(w).width > maxW && out.length < maxLines) {
+                    let k = w.length - 1;
+                    while (k > 1 && g.measureText(w.slice(0, k)).width > maxW) k--;
+                    if (line) { out.push(line); line = ''; }
+                    if (out.length < maxLines) out.push(w.slice(0, k));
+                    w = w.slice(k);
+                }
+                const next = line ? `${line} ${w}` : w;
+                if (g.measureText(next).width <= maxW) line = next;
+                else { if (line) out.push(line); line = w; }
+                if (out.length >= maxLines) break;
+            }
+            if (line && out.length < maxLines) out.push(line);
+            if (out.length >= maxLines) break;
+        }
+        if (out.length === maxLines) {
+            let last = out[maxLines - 1];
+            while (last.length > 2 && g.measureText(last + '…').width > maxW) last = last.slice(0, -1);
+            out[maxLines - 1] = last + '…';
+        }
+        return out;
+    }
+    const plain = (t) => String(t || '').replace(/^[\s#>*\-]+/gm, '').replace(/[*_`]/g, '');
+    function dayLabel(iso, hoy) {
+        if (!iso) return 'Sin fecha';
+        const d = iso.slice(0, 10);
+        const diff = Math.round((new Date(d + 'T12:00') - new Date(hoy + 'T12:00')) / 86400000);
+        if (diff === 0) return 'Hoy';
+        if (diff === 1) return 'Mañana';
+        if (diff === -1) return 'Ayer';
+        return new Date(d + 'T12:00').toLocaleDateString('es-BO', { weekday: 'short', day: 'numeric', month: 'short', year: d.slice(0, 4) === hoy.slice(0, 4) ? undefined : 'numeric' });
+    }
+
+    // Tarjetas con lo que se quiera (lines: [texto, 'peso tamaño', color]).
+    function drawInfoCard(g, W, H, lines, accent = '#7c4dff') {
         g.clearRect(0, 0, W, H);
         g.fillStyle = 'rgba(60,30,120,0.6)';
         g.beginPath(); g.roundRect(6, 6, W - 12, H - 12, 28); g.fill();
-        g.strokeStyle = '#7c4dff'; g.lineWidth = 4; g.stroke();
+        g.strokeStyle = accent; g.lineWidth = 4; g.stroke();
         g.textAlign = 'center'; g.textBaseline = 'top';
-        const cx = W / 2;
-        const open = s.puntos_venta.filter((p) => p.caja === 'abierta').length;
-        const venta = s.mes?.totales.find((t) => t.tipo === 'venta');
-        const lines = [
-            ['📍 Sucursal', '500 28px', '#b9c3ff'],
-            [s.nombre, '700 44px', '#ffffff'],
-            [s.direccion || s.empresa, '500 24px', '#b9c3ff'],
-            ['', '0 12px', ''],
-            [`Cajas abiertas: ${open} de ${s.puntos_venta.length}`, '600 30px', open ? '#2bff88' : '#ff7088'],
-            [`Ventas de hoy: ${money(s.total_hoy)}`, '600 30px', '#ffffff'],
-            [`Ventas del mes: ${money(venta?.monto || 0)}`, '600 30px', '#ffffff'],
-            [`Equipo: ${s.usuarios.length} personas`, '500 26px', '#b9c3ff'],
-        ];
         let y = 40;
         for (const [text, font, color] of lines) {
             const size = parseInt(font.split(' ')[1], 10);
@@ -794,56 +829,255 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
             g.fillStyle = color;
             let t = String(text);
             while (t.length > 3 && g.measureText(t).width > W - 40) t = t.slice(0, -2) + '…';
-            if (t) g.fillText(t, cx, y);
+            if (t) g.fillText(t, W / 2, y);
             y += size * 1.35;
         }
     }
 
-    let teamShift = 0;   // se mantiene al actualizar los datos (la pantalla no salta)
-    function teamScreen(s) {
-        const R = 15.5, c = 0, span = 1.5, y0 = 1.1, h = 3.4;
-        glass(R, c, span, y0 - 0.1, h + 0.2, 0x4ad6ff);
-        const cards = [{ info: true }, ...s.usuarios];
-        const cw = 2.6, step = (cw + 0.35) / R;              // ancho de una tarjeta, en radianes
+    // ---------- Carrusel en una pantalla curva: las tarjetas pasan de derecha a izquierda ----------
+    const shifts = new Map();   // dónde iba cada carrusel (no salta al actualizar los datos)
+    function carousel({ id, R, c, span, y0, h, cards, cw, cvW, cvH, draw, speed = 0.07 }) {
+        const step = (cw + 0.35) / R;              // ancho de una tarjeta, en radianes
         const loop = Math.max(cards.length * step, span + step);
         const tiles = cards.map((card, i) => {
             const cv = document.createElement('canvas');
-            cv.width = 384; cv.height = 500;
-            const g = cv.getContext('2d');
+            cv.width = cvW; cv.height = cvH;
             const tex = new THREE.CanvasTexture(cv);
             tex.colorSpace = THREE.SRGBColorSpace;
             tex.anisotropy = 4;
-            if (card.info) drawInfoCard(g, cv.width, cv.height, s);
-            else {
-                drawUserCard(g, cv.width, cv.height, card, card.foto ? photos.get(card.foto) : null);
-                if (card.foto && !photos.has(card.foto)) loadPhoto(card.foto, (p) => { if (p) { drawUserCard(g, cv.width, cv.height, card, p); tex.needsUpdate = true; } });
-            }
+            draw(cv.getContext('2d'), cv.width, cv.height, card, () => { tex.needsUpdate = true; });
             const mesh = new THREE.Mesh(arcPlane(R - 0.03, 0, cw / R, y0 + 0.2, h - 0.4, 12),
                 new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
             mesh.renderOrder = 3;
             const holder = new THREE.Group();
             holder.add(mesh);
-            content.add(holder);
+            target.add(holder);
             return { holder, mesh, i };
         });
-        // Pasan de derecha a izquierda (vistas desde el centro) y se desvanecen en los bordes.
         const place = () => {
+            const shift = shifts.get(id) || 0;
             for (const t of tiles) {
-                const p = ((t.i * step - teamShift) % loop + loop) % loop;   // 0 = borde izquierdo
-                const a = c + span / 2 - step / 2 - p;
+                const p = ((t.i * step - shift) % loop + loop) % loop;   // 0 = borde izquierdo
                 const inside = p <= span - step;
                 t.holder.visible = inside;
                 if (!inside) continue;
-                t.holder.rotation.y = a;
+                t.holder.rotation.y = c + span / 2 - step / 2 - p;
                 const edge = Math.min(p, span - step - p) / (step * 0.6);
                 t.mesh.material.opacity = Math.max(0, Math.min(1, edge));
             }
         };
         place();
-        animated.push((t, dt) => { teamShift = (teamShift + dt * 0.07) % loop; place(); });
-        const label = textSprite([{ text: `Equipo de ${s.empresa}`, size: 64, bold: true }], 7, { w: 1024, h: 160, border: '#4ad6ff' });
-        label.position.set(0, y0 + h + 0.8, R);
-        content.add(label);
+        anims.push((t, dt) => { shifts.set(id, ((shifts.get(id) || 0) + dt * speed) % loop); place(); });
+    }
+
+    function userCard(g, W, H, u, redraw) {
+        drawUserCard(g, W, H, u, u.foto ? photos.get(u.foto) : null);
+        if (u.foto && !photos.has(u.foto)) loadPhoto(u.foto, (p) => { if (p) { drawUserCard(g, W, H, u, p); redraw(); } });
+    }
+
+    // ---------- Las plazas del lugar de una empresa ----------
+    // Alrededor de la torre: los integrantes (en la entrada), tus notas, las publicaciones y tus tareas por
+    // fecha. Notas y tareas son de cada uno (las manda serp para quien mira); publicaciones, de todos.
+    const mundos = new Map();   // key_empresa -> datos de serp_empresa_mundo
+    const PLAZA = { R: 18, span: 0.78, y0: 0.9, h: 4.6, floor: 13.5, px: 105 };
+    const PLAZAS = { equipo: 0, notas: Math.PI / 2, publicaciones: Math.PI, tareas: -Math.PI / 2 };
+
+    function buildPlazas(key) {
+        if (plazas) {
+            plazas.group.traverse((o) => {
+                o.geometry?.dispose();
+                const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+                for (const m of mats) { m.map?.dispose(); m.dispose(); }
+            });
+            content.remove(plazas.group);
+            for (const o of plazas.obs) { const i = obstacles.indexOf(o); if (i >= 0) obstacles.splice(i, 1); }
+            for (const r of [...fading.keys()]) if (!r.parent) fading.delete(r);
+        }
+        const group = new THREE.Group();
+        group.userData.box = true;
+        content.add(group);
+        plazas = { group, anims: [], obs: [] };
+        const prev = [target, anims, obs];
+        [target, anims, obs] = [group, plazas.anims, plazas.obs];
+        try {
+            const e = empresas.get(key), m = mundos.get(key);
+            for (const [name, c] of Object.entries(PLAZAS)) {
+                // El piso de la plaza: un círculo que brilla.
+                const color = { equipo: 0x4ad6ff, notas: 0xffd166, publicaciones: 0xff5ca8, tareas: 0x2bff88 }[name];
+                const floor = new THREE.Mesh(new THREE.RingGeometry(2.6, 2.75, 64),
+                    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, depthWrite: false }));
+                floor.rotation.x = -Math.PI / 2;
+                floor.position.set(PLAZA.floor * Math.sin(c), 0.03, PLAZA.floor * Math.cos(c));
+                target.add(floor);
+                glass(PLAZA.R, c, PLAZA.span, PLAZA.y0 - 0.1, PLAZA.h + 0.2, color);
+            }
+            plazaEquipo(key, e);
+            plazaNotas(m);
+            plazaPublicaciones(m);
+            plazaTareas(m);
+        } finally {
+            [target, anims, obs] = prev;
+            obstacles.push(...plazas.obs);
+        }
+    }
+
+    function plazaLabel(text, c, color) {
+        const s = textSprite([{ text, size: 64, bold: true }], 6.5, { w: 1024, h: 160, border: color });
+        s.position.set(PLAZA.R * Math.sin(c), PLAZA.y0 + PLAZA.h + 0.8, PLAZA.R * Math.cos(c));
+        target.add(s);
+    }
+
+    function plazaEquipo(key, e) {
+        const c = PLAZAS.equipo;
+        const nombre = e?.nombre || session?.empresas.find((x) => x.key === key)?.nombre || 'Empresa';
+        plazaLabel(`Integrantes de ${nombre}`, c, '#4ad6ff');
+        if (!e) return;
+        const est = estados.get(key);
+        const info = [
+            ['🏢 Empresa', '500 28px', '#b9c3ff'],
+            [nombre, '700 44px', '#ffffff'],
+            ['', '0 10px', ''],
+            [`${e.sucursales.length} sucursal${e.sucursales.length === 1 ? '' : 'es'}`, '600 30px', '#ffffff'],
+            [`Equipo: ${e.usuarios.length} personas`, '600 30px', '#ffffff'],
+            ...(est ? [[`Ventas del mes: ${money(est.ventas_mes)}`, '600 30px', '#2bff88'], [`Cajas abiertas: ${est.cajas_abiertas}`, '500 28px', '#b9c3ff']] : []),
+        ];
+        carousel({
+            id: `equipo:${key}`, R: PLAZA.R - 0.05, c, span: PLAZA.span, y0: PLAZA.y0, h: PLAZA.h, cw: 2.9, cvW: 384, cvH: 500,
+            cards: [{ info }, ...e.usuarios],
+            draw: (g, W, H, card, redraw) => (card.info ? drawInfoCard(g, W, H, card.info) : userCard(g, W, H, card, redraw)),
+        });
+    }
+
+    function plazaNotas(m) {
+        const c = PLAZAS.notas;
+        plazaLabel(m ? `Tus notas · ${m.notas.length}` : 'Tus notas', c, '#ffd166');
+        const cv = canvasFor(PLAZA.R, PLAZA.span, PLAZA.h, PLAZA.px);
+        const g = cv.getContext('2d');
+        const W = cv.width, H = cv.height;
+        if (!m || !m.notas.length) {
+            g.fillStyle = '#ffe9a8'; g.font = FONT(600, 40); g.textAlign = 'center'; g.textBaseline = 'middle';
+            g.fillText(m ? 'No tienes notas en esta empresa' : 'Cargando tus notas…', W / 2, H / 2);
+        } else {
+            const cols = 6, rows = 2, gap = 18, cw = (W - 40 - gap * (cols - 1)) / cols, ch = (H - 40 - gap) / rows;
+            m.notas.slice(0, cols * rows).forEach((n, i) => {
+                const x = 20 + (i % cols) * (cw + gap), y = 20 + Math.floor(i / cols) * (ch + gap);
+                g.save();
+                g.translate(x + cw / 2, y + ch / 2);
+                g.rotate(((i * 37) % 7 - 3) * 0.008);   // un poco torcidas, como papelitos
+                g.fillStyle = n.color || '#fff1a8';
+                g.shadowColor = 'rgba(0,0,0,0.45)'; g.shadowBlur = 14; g.shadowOffsetY = 6;
+                g.fillRect(-cw / 2, -ch / 2, cw, ch);
+                g.restore();
+                g.fillStyle = '#1c1630'; g.textAlign = 'left'; g.textBaseline = 'top';
+                g.font = FONT(700, 24);
+                wrap(g, n.titulo, cw - 28, 2).forEach((l, k) => g.fillText(l, x + 14, y + 14 + k * 28));
+                g.font = FONT(500, 18);
+                const body = plain(n.texto).split('\n').slice(1).join('\n');
+                const fit = Math.max(1, Math.floor((ch - 76 - 36) / 22));   // que no pise la fecha de abajo
+                wrap(g, body, cw - 28, fit).forEach((l, k) => g.fillText(l, x + 14, y + 76 + k * 22));
+                g.fillStyle = 'rgba(28,22,48,0.6)'; g.font = FONT(500, 16);
+                g.fillText(`${n.fecha}${n.participantes > 1 ? ` · 👥 ${n.participantes}` : ''}`, x + 14, y + ch - 26);
+            });
+            if (m.notas.length > cols * rows) {
+                g.fillStyle = '#ffe9a8'; g.font = FONT(600, 22); g.textAlign = 'right'; g.textBaseline = 'bottom';
+                g.fillText(`y ${m.notas.length - cols * rows} más en S-ERP`, W - 20, H - 2);
+            }
+        }
+        screenLayer(PLAZA.R, c, PLAZA.span, PLAZA.y0, PLAZA.h, cv);
+    }
+
+    function plazaTareas(m) {
+        const c = PLAZAS.tareas;
+        const abiertas = m ? m.tareas.filter((t) => !t.cerrada) : [];
+        plazaLabel(m ? `Tus tareas · ${abiertas.length} pendiente${abiertas.length === 1 ? '' : 's'}` : 'Tus tareas', c, '#2bff88');
+        const cv = canvasFor(PLAZA.R, PLAZA.span, PLAZA.h, PLAZA.px);
+        const g = cv.getContext('2d');
+        const W = cv.width, H = cv.height;
+        if (!m || !m.tareas.length) {
+            g.fillStyle = '#b9ffd6'; g.font = FONT(600, 40); g.textAlign = 'center'; g.textBaseline = 'middle';
+            g.fillText(m ? 'No tienes tareas en esta empresa' : 'Cargando tus tareas…', W / 2, H / 2);
+        } else {
+            // Dos columnas: pendientes (por fecha, las vencidas en rojo) y las últimas cerradas.
+            const cerradas = m.tareas.filter((t) => t.cerrada).sort((a, b) => (b.inicio || '').localeCompare(a.inicio || ''));
+            const col = (x, w, title, list, done) => {
+                g.textAlign = 'left'; g.textBaseline = 'top';
+                g.fillStyle = done ? '#9f8bff' : '#2bff88'; g.font = FONT(700, 34);
+                g.fillText(title, x, 18);
+                let y = 70, lastDay = null;
+                for (const t of list) {
+                    const day = dayLabel(t.inicio, m.hoy);
+                    if (day !== lastDay) {
+                        if (y > H - 80) break;
+                        lastDay = day;
+                        g.fillStyle = '#b9c3ff'; g.font = FONT(600, 22);
+                        g.fillText(day.toUpperCase(), x, y);
+                        y += 30;
+                    }
+                    if (y > H - 46) break;
+                    const vencida = !done && (t.fin || t.inicio) && (t.fin || t.inicio).slice(0, 10) < m.hoy;
+                    g.fillStyle = t.color || (done ? '#9f8bff' : vencida ? '#ff5c7a' : '#2bff88');
+                    g.beginPath(); g.roundRect(x, y + 4, 8, 30, 4); g.fill();
+                    g.fillStyle = done ? 'rgba(223,228,255,0.55)' : '#ffffff'; g.font = FONT(600, 26);
+                    const hora = t.inicio && t.inicio.slice(11, 16) !== '00:00' ? `${t.inicio.slice(11, 16)}  ` : '';
+                    let text = `${done ? '✓ ' : vencida ? '⚠ ' : ''}${hora}${t.descripcion}`;
+                    while (text.length > 3 && g.measureText(text).width > w - 30) text = text.slice(0, -2) + '…';
+                    g.fillText(text, x + 20, y + 6);
+                    y += 44;
+                }
+                if (!list.length) { g.fillStyle = 'rgba(223,228,255,0.55)'; g.font = FONT(500, 26); g.fillText(done ? 'Ninguna' : '¡Nada pendiente!', x, 76); }
+            };
+            col(56, W * 0.56, 'Pendientes', abiertas, false);
+            col(W * 0.62, W * 0.36, 'Cerradas', cerradas, true);
+        }
+        screenLayer(PLAZA.R, c, PLAZA.span, PLAZA.y0, PLAZA.h, cv);
+    }
+
+    function pubCard(g, W, H, p, redraw) {
+        const paint = (photo) => {
+            g.clearRect(0, 0, W, H);
+            g.fillStyle = 'rgba(40,16,60,0.62)';
+            g.beginPath(); g.roundRect(6, 6, W - 12, H - 12, 26); g.fill();
+            g.strokeStyle = '#ff5ca8'; g.lineWidth = 4; g.stroke();
+            const r = 34, cx = 30 + r, cy = 30 + r;
+            g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.closePath();
+            if (photo) { g.clip(); g.drawImage(photo, cx - r, cy - r, r * 2, r * 2); }
+            else {
+                g.fillStyle = `hsl(${hueOf(p.autor)} 55% 35%)`; g.fill();
+                g.fillStyle = '#fff'; g.font = FONT(700, 28); g.textAlign = 'center'; g.textBaseline = 'middle';
+                g.fillText(initials(p.autor), cx, cy + 2);
+            }
+            g.restore();
+            g.textAlign = 'left'; g.textBaseline = 'top';
+            g.fillStyle = '#ffffff'; g.font = FONT(700, 28);
+            let a = p.autor;
+            while (a.length > 3 && g.measureText(a).width > W - 130) a = a.slice(0, -2) + '…';
+            g.fillText(a, cx + r + 16, 36);
+            g.fillStyle = '#d9b8ff'; g.font = FONT(500, 22);
+            g.fillText(when(p.fecha).replace(/^activo /, ''), cx + r + 16, 72);
+            g.fillStyle = '#f3eaff'; g.font = FONT(500, 26);
+            wrap(g, plain(p.texto), W - 60, 12).forEach((l, k) => g.fillText(l, 30, 124 + k * 34));
+            g.fillStyle = '#ff8cc2'; g.font = FONT(700, 28);
+            g.fillText(`❤ ${p.likes}    💬 ${p.comentarios}`, 30, H - 58);
+        };
+        paint(p.foto ? photos.get(p.foto) : null);
+        if (p.foto && !photos.has(p.foto)) loadPhoto(p.foto, (ph) => { if (ph) { paint(ph); redraw(); } });
+    }
+
+    function plazaPublicaciones(m) {
+        const c = PLAZAS.publicaciones;
+        plazaLabel(m ? `Publicaciones · ${m.publicaciones.length}` : 'Publicaciones', c, '#ff5ca8');
+        if (!m || !m.publicaciones.length) {
+            const cv = canvasFor(PLAZA.R, PLAZA.span, PLAZA.h, PLAZA.px);
+            const g = cv.getContext('2d');
+            g.fillStyle = '#ffc2e0'; g.font = FONT(600, 40); g.textAlign = 'center'; g.textBaseline = 'middle';
+            g.fillText(m ? 'Todavía no hay publicaciones en esta empresa' : 'Cargando publicaciones…', cv.width / 2, cv.height / 2);
+            screenLayer(PLAZA.R, c, PLAZA.span, PLAZA.y0, PLAZA.h, cv);
+            return;
+        }
+        carousel({
+            id: `pubs:${m.key}`, R: PLAZA.R - 0.05, c, span: PLAZA.span, y0: PLAZA.y0, h: PLAZA.h, cw: 3.4, cvW: 460, cvH: 560,
+            cards: m.publicaciones, draw: pubCard, speed: 0.05,
+        });
     }
 
     // Arma el lugar (o lo rearma cuando llegan datos nuevos).
@@ -866,7 +1100,12 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         if (id.startsWith('e-')) {
             net.send({ type: 'serp_empresa', key: id.slice(2) });
             net.send({ type: 'serp_empresa_estado', key: id.slice(2) });
-            refreshTimer = setInterval(() => { if (hereId() === id) net.send({ type: 'serp_empresa_estado', key: id.slice(2) }); }, REFRESH_MS * 2);
+            net.send({ type: 'serp_empresa_mundo', key: id.slice(2) });
+            refreshTimer = setInterval(() => {
+                if (hereId() !== id) return;
+                net.send({ type: 'serp_empresa_estado', key: id.slice(2) });
+                net.send({ type: 'serp_empresa_mundo', key: id.slice(2) });
+            }, REFRESH_MS * 2);
         }
         if (id.startsWith('s-')) {
             net.send({ type: 'serp_sucursal', key: id.slice(2) });
@@ -879,10 +1118,10 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         const d = from && doors.find((x) => x.to === from);
         if (d) {
             const ry = Math.atan2(-d.x, -d.z);   // mirando al centro
-            return { x: d.x + Math.sin(ry) * 2.2, z: d.z + Math.cos(ry) * 2.2, ry };
+            return { x: d.x + Math.sin(ry) * 3.2, z: d.z + Math.cos(ry) * 3.2, ry };
         }
         if (id === LOBBY) return { x: 0, z: 3.2, ry: Math.PI };
-        return { x: 0, z: id.startsWith('s-') ? 7.4 : 6.4, ry: Math.PI };
+        return { x: 0, z: 8.8, ry: Math.PI };
     }
 
     function go(to) {
@@ -911,11 +1150,13 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     const from = new THREE.Vector3(), dir = new THREE.Vector3();
     const fading = new Map();   // objeto de primer nivel en content -> cuánto se ve (0..1)
     // Lo de cada lugar (content) y lo que pone la gente (letreros, ítems, gráficos: hijos directos de la escena).
+    const isBox = (p) => p === content || p === scene || p?.userData.box;
     function rootOf(o) {
-        while (o.parent && o.parent !== content && o.parent !== scene) o = o.parent;
-        return o.parent === content || o.parent === scene ? o : null;
+        while (o.parent && !isBox(o.parent)) o = o.parent;
+        return isBox(o.parent) ? o : null;
     }
     const fadeable = (o) => o !== content && !fixed.has(o) && !o.isLight && o !== player.parent;
+    // (el grupo de las plazas no se desvanece entero: rootOf se detiene en cada cosa de adentro)
     function setFade(root, f) {
         root.traverse((o) => {
             const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
@@ -958,13 +1199,14 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
 
     function update(dt, t) {
         for (const fn of animated) fn(t, dt);
+        if (plazas) for (const fn of plazas.anims) fn(t, dt);
         updateOcclusion(dt);
     }
 
     function banner(id) {
         if (!owns(id)) return null;
         const byline = '🏢 S-ERP · solo te ven tus compañeros de la empresa';
-        if (id === LOBBY) return { name: 'Mundo Empresas', description: 'Entra a una empresa por la puerta de su edificio. El puente del centro vuelve al Mundo 3D.', byline };
+        if (id === LOBBY) return { name: 'Mundo Empresas', description: 'Entra a una empresa por la puerta de su edificio. El puente (a un costado) vuelve al Mundo 3D.', byline };
         if (id.startsWith('e-')) {
             const k = id.slice(2);
             return { name: empresas.get(k)?.nombre || session?.empresas.find((x) => x.key === k)?.nombre || 'Empresa', description: 'Cada edificio es una sucursal.', byline };
@@ -1053,6 +1295,10 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
             box.hidden = true;
             go(LOBBY);
         } else if (hereId() === LOBBY) build(LOBBY);
+    });
+    net.on('serp_empresa_mundo', (m) => {
+        mundos.set(m.key, m);
+        if (shownFor === `e-${m.key}`) buildPlazas(m.key);   // solo las plazas: el resto del lugar no se rearma
     });
     net.on('serp_empresa_estado', (m) => {
         estados.set(m.key, m);
