@@ -292,7 +292,8 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     // A cada lado, por turnos, una pantalla de vidrio y un edificio de sucursal; el largo crece con las
     // sucursales. Las pantallas (estado, integrantes, notas, tareas, publicaciones) se rehacen solas cuando
     // llegan sus datos (buildScreens) sin rearmar los edificios.
-    const STREET = { half: 5, walk: 3, lot: 12, first: 10, end: 12, bx: 11.4, sx: 8.6, panel: 9.5 };
+    // Una avenida ancha (24 m de asfalto): desde una vereda se mira la otra sin que lo de este lado tape la cámara.
+    const STREET = { half: 12, walk: 4, lot: 13, first: 11, end: 14, bx: 19.6, sx: 15, panel: 10.5 };
     const SCREENS = ['resumen', 'equipo', 'ranking', 'notas', 'dias', 'tareas', 'publicaciones'];
     let street = null;   // { key, L, z0, lots: [{ side, z, kind, sucursal? | screen? }], hole }
 
@@ -347,11 +348,14 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
             }
         }
         const dashMat = new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.7 });
+        const laneMat = new THREE.MeshBasicMaterial({ color: 0xdfe4ff, transparent: true, opacity: 0.35 });
         for (let z = z0 - 3; z > -z0 + 2; z -= 5) {
-            const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 2.2), dashMat);
-            dash.rotation.x = -Math.PI / 2;
-            dash.position.set(0, 0.04, z);
-            target.add(dash);
+            for (const [x, mat] of [[0, dashMat], [-STREET.half / 2, laneMat], [STREET.half / 2, laneMat]]) {
+                const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 2.2), mat);
+                dash.rotation.x = -Math.PI / 2;
+                dash.position.set(x, 0.04, z);
+                target.add(dash);
+            }
         }
 
         // La entrada: un arco con el nombre y la puerta de vuelta al barrio.
@@ -367,8 +371,8 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         target.add(beam);
         const sign = textPlane([{ text: nombre, size: 80, bold: true },
             { text: e ? `${e.sucursales.length} sucursal${e.sucursales.length === 1 ? '' : 'es'} · ${e.usuarios.length} personas` : 'Cargando…', size: 40, color: '#b9c3ff' }],
-        STREET.half * 2, { w: 1024, h: 256, border: '#7c4dff' });
-        sign.position.set(0, 9.6, z0 - 4);
+        16, { w: 1024, h: 256, border: '#7c4dff' });
+        sign.position.set(0, 10.4, z0 - 4);
         sign.material.side = THREE.DoubleSide;
         target.add(sign);
         door(0, z0 + 1, Math.PI, LOBBY, 0x3d8bff);
@@ -954,7 +958,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     // Cada pantalla es un vidrio apenas curvo (un pedazo de cilindro de radio SPOT.R) dentro de su propio
     // grupo, parado en la vereda y mirando a la calle; las funciones de abajo dibujan en el SPOT actual.
     const mundos = new Map();   // key_empresa -> datos de serp_empresa_mundo
-    const SPOT = { R: 40, c: Math.PI, span: STREET.panel / 40, y0: 0.9, h: 4.8, px: 130 };
+    const SPOT = { R: 40, c: Math.PI, span: STREET.panel / 40, y0: 1, h: 5.2, px: 125 };
     const SCREEN_COLOR = { resumen: 0x7c4dff, ranking: 0x2bff88, dias: 0x4ad6ff, equipo: 0x4ad6ff, notas: 0xffd166, tareas: 0x2bff88, publicaciones: 0xff5ca8 };
 
     function buildScreens(key) {
