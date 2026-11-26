@@ -8,7 +8,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { createWormholes, buildUniverse, hueFor, HOLE_R } from './wormholes.js?v=68';
 import { createGame, tierColor } from './game.js?v=1';
 import { createVoice } from './voice.js?v=1';
-import { createEmpresas, TOKEN_KEY as SERP_TOKEN_KEY } from './empresas.js?v=9';
+import { createEmpresas, TOKEN_KEY as SERP_TOKEN_KEY } from './empresas.js?v=10';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
@@ -1626,6 +1626,19 @@ const corp = createEmpresas({
     onLeave: () => enterHole(MAIN),
     onInfo: (id) => { if (here.id === id) fillBanner(corp.banner(id)); },   // llegaron los datos: el cartel con su nombre
     onRadius: (r) => { if (corp.owns(here.id)) here.radius = r; },   // la calle de una empresa puede ser más larga
+    // NPCs (quienes entrenaron hoy en una sucursal): el mismo personaje que usa la gente, quieto y respirando.
+    makeNpc: (id) => loadAvatar(id, undefined, true).catch(() => loadAvatar(id)).then((tpl) => {
+        const object = cloneSkinned(tpl.model);
+        const clip = tpl.animations.find((a) => /idle/i.test(a.name)) || tpl.animations[0];
+        let mixer = null;
+        if (clip) {
+            mixer = new THREE.AnimationMixer(object);
+            const act = mixer.clipAction(clip);
+            act.play();
+            act.time = Math.random() * clip.duration;   // que no respiren todos a la vez
+        }
+        return { object, mixer };
+    }),
     onShift: (dz) => {   // la calle se alargó: Ruddy y la cámara se corren con la entrada
         player.position.z += dz;
         camera.position.z += dz;
