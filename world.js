@@ -8,7 +8,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { createWormholes, buildUniverse, hueFor, HOLE_R } from './wormholes.js?v=68';
 import { createGame, tierColor } from './game.js?v=1';
 import { createVoice } from './voice.js?v=1';
-import { createEmpresas } from './empresas.js?v=2';
+import { createEmpresas, TOKEN_KEY as SERP_TOKEN_KEY } from './empresas.js?v=3';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
@@ -1065,7 +1065,10 @@ const net = (() => {
         const p = getProfile();
         // ?sala=<uuid>: el servidor manda esa sala privada para entrar directo.
         const room = new URLSearchParams(location.search).get('sala') || undefined;
-        if (p && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'login', world: true, batch: true, ...p, room }));
+        // Token del Mundo Empresas: el servidor vuelve a entrar a S-ERP y te deja donde estabas.
+        let serp_token;
+        try { serp_token = localStorage.getItem(SERP_TOKEN_KEY) || undefined; } catch { /* modo privado */ }
+        if (p && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'login', world: true, batch: true, ...p, room, serp_token }));
     }
 
     function connect() {
@@ -1618,8 +1621,10 @@ let holeArmed = true;
 const corp = createEmpresas({
     wormholes, net, flashHint, MAIN, radius: WORLD_RADIUS,
     hereId: () => here.id,
+    camera, player,
     travel: (id) => enterHole(id),
     onLeave: () => enterHole(MAIN),
+    onInfo: (id) => { if (here.id === id) fillBanner(corp.banner(id)); },   // llegaron los datos: el cartel con su nombre
 });
 let warping = false;
 
@@ -1705,6 +1710,7 @@ banner.querySelector('[data-scene-copy]').addEventListener('click', (e) => {
 function goTo(id, { from = null, pos = null } = {}) {
     const toMain = id === MAIN;
     const toCorp = corp.owns(id);
+    const spawned = toCorp && !pos;   // entra por una puerta (no al recargar en su lugar guardado)
     if (toCorp) {
         corp.show(id);   // arma el lugar (sus puertas dicen dónde aparecer)
         pos ||= corp.spawnFor(id, corp.comeFrom);
@@ -1744,7 +1750,7 @@ function goTo(id, { from = null, pos = null } = {}) {
         // Al cruzar, la cámara mira a Ruddy de frente con el agujero detrás (se ve que acaba de
         // salir); al recargar dentro de un agujero, queda detrás de él. Misma distancia y altura.
         const flat = Math.hypot(offset.x, offset.z) || 4.2;
-        const side = pos && !toCorp ? -1 : 1;   // en el Mundo Empresas también se ve que acabas de salir por la puerta
+        const side = pos && !spawned ? -1 : 1;   // en el Mundo Empresas también se ve que acabas de salir por la puerta
         controls.target.copy(player.position).setY(1);
         camera.position.set(x + side * Math.sin(ry) * flat, controls.target.y + offset.y, z + side * Math.cos(ry) * flat);
         controls.update();
@@ -1787,6 +1793,7 @@ function checkHoles() {
         if (d < ENTER_DIST) hit = id;
     };
     if (here.id === MAIN) for (const [id, e] of portals) test(id, e.data.x, e.data.z);
+    else if (corp.owns(here.id)) { const h = corp.hole(here.id); test(MAIN, h.x, h.z); }
     else test(MAIN, 0, 0);
     if (!holeArmed) { holeArmed = nearest > ARM_DIST; return; }
     if (hit) enterHole(hit);
@@ -1815,6 +1822,7 @@ function updateHoleLabels() {
         else e.label.hidden = true;
     }
     if (here.id === MAIN) returnLabel.hidden = true;
+    else if (corp.owns(here.id)) { const h = corp.hole(here.id); placeLabel(returnLabel, h.x, h.z); }
     else placeLabel(returnLabel, 0, 0);
 }
 
@@ -1832,7 +1840,8 @@ net.on('portals', (m) => {
     if (pendingScene) {
         const ps = pendingScene;
         pendingScene = null;
-        if (portals.has(ps.scene) || rooms.has(ps.scene)) goTo(ps.scene, { pos: ps });
+        // Al Mundo Empresas solo si el token ya volvió a entrar a S-ERP (serp_ok llega antes que los puentes).
+        if (portals.has(ps.scene) || rooms.has(ps.scene) || (corp.owns(ps.scene) && corp.ready())) goTo(ps.scene, { pos: ps });
     }
 });
 net.on('portal_removed', (m) => removePortal(m.id));
