@@ -8,7 +8,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { createWormholes, buildUniverse, hueFor, HOLE_R } from './wormholes.js?v=68';
 import { createGame, tierColor } from './game.js?v=1';
 import { createVoice } from './voice.js?v=1';
-import { createEmpresas, TOKEN_KEY as SERP_TOKEN_KEY } from './empresas.js?v=6';
+import { createEmpresas, TOKEN_KEY as SERP_TOKEN_KEY } from './empresas.js?v=7';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
@@ -1625,6 +1625,13 @@ const corp = createEmpresas({
     travel: (id) => enterHole(id),
     onLeave: () => enterHole(MAIN),
     onInfo: (id) => { if (here.id === id) fillBanner(corp.banner(id)); },   // llegaron los datos: el cartel con su nombre
+    onRadius: (r) => { if (corp.owns(here.id)) here.radius = r; },   // la calle de una empresa puede ser más larga
+    onShift: (dz) => {   // la calle se alargó: Ruddy y la cámara se corren con la entrada
+        player.position.z += dz;
+        camera.position.z += dz;
+        controls.target.z += dz;
+        lastSent.at = 0;
+    },
 });
 let warping = false;
 
@@ -1739,6 +1746,7 @@ function goTo(id, { from = null, pos = null } = {}) {
     here.id = id;
     here.scene = target;
     here.obstacles = toMain ? obstacles : toCorp ? corp.obstacles : dest.obstacles;
+    here.radius = toCorp ? corp.radius() : WORLD_RADIUS;
     if (!toMain && !toCorp) showUniverse(id);
 
     const offset = camera.position.clone().sub(controls.target);
