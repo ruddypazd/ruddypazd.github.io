@@ -8,7 +8,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { createWormholes, buildUniverse, hueFor, HOLE_R } from './wormholes.js?v=68';
 import { createGame, tierColor } from './game.js?v=1';
 import { createVoice } from './voice.js?v=1';
-import { createEmpresas, TOKEN_KEY as SERP_TOKEN_KEY } from './empresas.js?v=8';
+import { createEmpresas, TOKEN_KEY as SERP_TOKEN_KEY } from './empresas.js?v=9';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
