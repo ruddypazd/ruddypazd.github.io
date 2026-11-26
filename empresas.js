@@ -274,9 +274,10 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         title([{ text: e?.nombre || base?.nombre || 'Empresa', size: 90, bold: true },
             { text: e ? `${e.sucursales.length} sucursal${e.sucursales.length === 1 ? '' : 'es'} · entra por la puerta de cada una` : 'Cargando…', size: 40, color: '#b9c3ff' }]);
         door(0, 8, Math.PI, LOBBY, 0x3d8bff);
-        const back = textSprite([{ text: '← Barrio de empresas', size: 52, bold: true }], 3.2);
-        back.position.set(0, 3.2, 8);
+        const back = textSprite([{ text: '← Barrio de empresas', size: 52, bold: true }], 2.2, { h: 128 });
+        back.position.set(0, 2.95, 8);
         content.add(back);
+        estadoTower(key);
         if (!e) return loading('Cargando sucursales…');
         ring(e.sucursales.length, 14, 7.5).forEach((p, i) => {
             const s = e.sucursales[i];
@@ -371,11 +372,12 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     // ---------- Pantallas de vidrio curvas ----------
     // Un pedazo de cilindro de radio R alrededor del centro, mirando al centro. c: ángulo de su centro
     // (Math.PI = al fondo, 0 = detrás de la entrada); span: cuánto abarca (radianes).
-    function arcPlane(R, c, span, y0, h, seg = 48) {
+    // out: mira hacia afuera (los paneles de la torre del centro de una empresa).
+    function arcPlane(R, c, span, y0, h, seg = 48, out = false) {
         const g = new THREE.PlaneGeometry(R * span, h, seg, 1);
         const pos = g.attributes.position;
         for (let i = 0; i < pos.count; i++) {
-            const a = c - pos.getX(i) / R;
+            const a = out ? c + pos.getX(i) / R : c - pos.getX(i) / R;
             pos.setXYZ(i, R * Math.sin(a), y0 + h / 2 + pos.getY(i), R * Math.cos(a));
         }
         g.computeBoundingSphere();
@@ -383,21 +385,22 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     }
 
     // El vidrio con su marco que brilla (como la puerta) y dos patas.
-    function glass(R, c, span, y0, h, color = 0x4aa8ff) {
+    function glass(R, c, span, y0, h, color = 0x4aa8ff, out = false) {
+        const d = out ? -1 : 1;   // hacia dónde queda «atrás» del vidrio
         const glassMat = new THREE.MeshBasicMaterial({ color: 0x0a1836, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide });
         // Orden de dibujo fijo: vidrio (0) → brillo (1) → contenido (3) → bordes y línea de luz (4).
         // Todos están en el centro del mundo, así que three.js no los puede ordenar por distancia.
-        const back = new THREE.Mesh(arcPlane(R + 0.04, c, span, y0, h), glassMat);
+        const back = new THREE.Mesh(arcPlane(R + 0.04 * d, c, span, y0, h, 48, out), glassMat);
         back.renderOrder = 0;
         content.add(back);
-        const sheen = new THREE.Mesh(arcPlane(R + 0.02, c, span, y0, h), new THREE.MeshBasicMaterial({
+        const sheen = new THREE.Mesh(arcPlane(R + 0.02 * d, c, span, y0, h, 48, out), new THREE.MeshBasicMaterial({
             color, transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending, depthWrite: false,
         }));
         sheen.renderOrder = 1;
         content.add(sheen);
         const edgeMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
         for (const y of [y0 - 0.04, y0 + h - 0.02]) {
-            const line = new THREE.Mesh(arcPlane(R, c, span + 0.004, y, 0.07), edgeMat);
+            const line = new THREE.Mesh(arcPlane(R, c, span + 0.004, y, 0.07, 48, out), edgeMat);
             line.renderOrder = 4;
             content.add(line);
         }
@@ -414,7 +417,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
             obstacles.push({ x: R * Math.sin(a), z: R * Math.cos(a), r: 0.5 });
         }
         // Una línea de luz que recorre el vidrio de arriba abajo.
-        const scan = new THREE.Mesh(arcPlane(R + 0.01, c, span, 0, 0.05), new THREE.MeshBasicMaterial({
+        const scan = new THREE.Mesh(arcPlane(R + 0.01 * d, c, span, 0, 0.05, 48, out), new THREE.MeshBasicMaterial({
             color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false,
         }));
         scan.renderOrder = 4;
@@ -423,11 +426,11 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     }
 
     // Lo que se dibuja sobre el vidrio (un canvas transparente, un poco más cerca del centro).
-    function screenLayer(R, c, span, y0, h, canvas) {
+    function screenLayer(R, c, span, y0, h, canvas, out = false) {
         const tex = new THREE.CanvasTexture(canvas);
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.anisotropy = 4;
-        const mesh = new THREE.Mesh(arcPlane(R - 0.02, c, span, y0, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+        const mesh = new THREE.Mesh(arcPlane(R - 0.02 * (out ? -1 : 1), c, span, y0, h, 48, out), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
         mesh.renderOrder = 3;
         content.add(mesh);
         return { mesh, tex };
@@ -549,7 +552,8 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
             lg.fillText(`${r.fecha.slice(8, 10)}/${r.fecha.slice(5, 7)} ${r.fecha.slice(11, 16)}`, 40, y);
             lg.fillStyle = '#ffffff';
             lg.font = '500 25px "Space Grotesk", system-ui, sans-serif';
-            let d = `${(TIPO_COLOR[r.tipo] ? r.tipo[0].toUpperCase() + r.tipo.slice(1) : r.tipo)} · ${r.descripcion || r.pv}`;
+            // De una venta, a quién fue (cliente); si no, la descripción del movimiento.
+            let d = `${(TIPO_COLOR[r.tipo] ? r.tipo[0].toUpperCase() + r.tipo.slice(1) : r.tipo)} · ${r.cliente || r.descripcion || r.pv}`;
             while (d.length > 4 && lg.measureText(d).width > lw - 430) d = d.slice(0, -2);
             lg.fillText(d, 232, y);
             lg.fillStyle = r.monto < 0 ? '#ff7088' : col;
@@ -574,6 +578,119 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
                 list.tex.offset.y = 1 - frac - off;
             });
         }
+    }
+
+    // ---------- Torre del centro de una empresa: su estado en tres paneles de vidrio ----------
+    // Mirando hacia afuera: hacia la entrada, el resumen; a los lados, el ranking de sucursales y las ventas
+    // por día. Se redibuja cuando llega serp_empresa_estado (cada 2 minutos) sin rearmar el lugar.
+    const estados = new Map();   // key_empresa -> datos de serp_empresa_estado
+    let tower = null;            // { key, draw() }
+    const TOWER = { R: 3.6, y0: 0.7, h: 3, span: (2 * Math.PI) / 3 - 0.16, px: 170 };
+    function estadoTower(key) {
+        const { R, y0, h, span, px } = TOWER;
+        const panels = [0, (2 * Math.PI) / 3, (-2 * Math.PI) / 3].map((c, i) => {
+            glass(R, c, span, y0 - 0.1, h + 0.2, [0x7c4dff, 0x2bff88, 0x4ad6ff][i], true);
+            const cv = canvasFor(R, span, h, px);
+            return { cv, layer: screenLayer(R, c, span, y0, h, cv, true) };
+        });
+        // Un pedestal que brilla debajo.
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.3, R + 0.5, 0.3, 64),
+            new THREE.MeshStandardMaterial({ color: 0x141a36, metalness: 0.6, roughness: 0.35, emissive: 0x1d1450 }));
+        base.position.y = 0.15;
+        content.add(base);
+        obstacles.push({ x: 0, z: 0, r: R + 0.6 });
+        tower = { key, draw: () => drawTower(key, panels) };
+        tower.draw();
+    }
+
+    function drawTower(key, panels) {
+        const e = estados.get(key);
+        const font = (w, size) => `${w} ${size}px "Space Grotesk", system-ui, sans-serif`;
+        for (const { cv } of panels) cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+        const [A, B, C] = panels.map((p) => p.cv);
+        const head = (cv, title, sub) => {
+            const g = cv.getContext('2d');
+            g.textBaseline = 'top'; g.textAlign = 'left';
+            g.fillStyle = '#ffffff'; g.font = font(700, 54);
+            let t = title;
+            while (t.length > 3 && g.measureText(t).width > cv.width - 60) t = t.slice(0, -2) + '…';
+            g.fillText(t, 30, 22);
+            g.fillStyle = '#b9c3ff'; g.font = font(500, 28);
+            g.fillText(sub, 32, 88);
+            return g;
+        };
+        const nombre = e?.nombre || session?.empresas.find((x) => x.key === key)?.nombre || 'Empresa';
+        if (!e) {
+            for (const cv of [A, B, C]) head(cv, nombre, 'Cargando el estado de la empresa…');
+            for (const p of panels) p.layer.tex.needsUpdate = true;
+            return;
+        }
+        // A: resumen.
+        let g = head(A, `Estado de ${nombre}`, `${e.mes} · actualizado ${e.actualizado}`);
+        const tiles = [
+            ['Ventas de hoy', money(e.ventas_hoy), '#2bff88', 'en cajas de hoy o abiertas'],
+            ['Ventas del mes', money(e.ventas_mes), '#2bff88', `${e.cajas_mes} cajas`],
+            ['Compras del mes', money(e.compras_mes), '#ffb02b', ''],
+            ['Egresos del mes', money(e.egresos_mes), '#ff5c7a', 'compras, gastos y otros'],
+            ['Cajas abiertas', String(e.cajas_abiertas), e.cajas_abiertas ? '#2bff88' : '#ff7088', 'ahora'],
+            ['Sucursales · equipo', `${e.sucursales} · ${e.equipo}`, '#4ad6ff', 'personas en la empresa'],
+        ];
+        const cols = 3, gap = 18, tw = (A.width - 60 - gap * (cols - 1)) / cols, th = (A.height - 150 - gap) / 2;
+        tiles.forEach(([label, value, col, note], i) => {
+            const x = 30 + (i % cols) * (tw + gap), y = 140 + Math.floor(i / cols) * (th + gap);
+            g.fillStyle = 'rgba(20,40,90,0.55)';
+            g.beginPath(); g.roundRect(x, y, tw, th, 18); g.fill();
+            g.strokeStyle = col; g.lineWidth = 3; g.stroke();
+            g.fillStyle = col; g.font = font(600, 26); g.fillText(label, x + 18, y + 16);
+            g.fillStyle = '#ffffff'; g.font = font(700, 50); g.fillText(value, x + 18, y + 52);
+            if (note) { g.fillStyle = '#b9c3ff'; g.font = font(500, 22); g.fillText(note, x + 18, y + th - 36); }
+        });
+        // B: ventas del mes por sucursal.
+        g = head(B, 'Ventas del mes por sucursal', `${e.mes} · luz verde = tiene caja abierta`);
+        const rank = e.por_sucursal.slice(0, 8);
+        const vmax = Math.max(...rank.map((r) => r.ventas_mes), 0);
+        const rowH = (B.height - 150) / Math.max(rank.length, 1), nameW = 300;
+        rank.forEach((r, i) => {
+            const y = 140 + i * rowH, mid = y + rowH / 2;
+            g.textBaseline = 'middle';
+            g.fillStyle = r.cajas_abiertas ? '#2bff88' : 'rgba(185,195,255,0.35)';
+            g.beginPath(); g.arc(42, mid, 8, 0, Math.PI * 2); g.fill();
+            g.fillStyle = '#ffffff'; g.font = font(600, 28);
+            let n = r.nombre;
+            while (n.length > 3 && g.measureText(n).width > nameW - 70) n = n.slice(0, -2) + '…';
+            g.fillText(n, 60, mid);
+            const bw = vmax > 0 ? (B.width - nameW - 200) * r.ventas_mes / vmax : 0;
+            const grad = g.createLinearGradient(nameW, 0, nameW + bw, 0);
+            grad.addColorStop(0, 'rgba(43,255,136,0.35)'); grad.addColorStop(1, '#2bff88');
+            g.fillStyle = grad;
+            g.fillRect(nameW, mid - rowH * 0.3, Math.max(2, bw), rowH * 0.6);
+            g.fillStyle = '#dfe4ff'; g.font = font(700, 26);
+            g.fillText(money(r.ventas_mes), nameW + bw + 14, mid);
+        });
+        if (!rank.length) { g.fillStyle = '#b9c3ff'; g.font = font(500, 30); g.fillText('Sin sucursales', 30, 170); }
+        // C: ventas por día.
+        g = head(C, 'Ventas por día', `${e.mes} · ingresos del mes ${money(e.ingresos_mes)}`);
+        const days = e.por_dia, dmax = Math.max(...days, 0);
+        const left = 40, right = C.width - 30, top = 150, bottom = C.height - 50;
+        if (days.length && dmax > 0) {
+            const bw = (right - left) / days.length;
+            days.forEach((v, i) => {
+                const bh = (bottom - top) * v / dmax;
+                const grad = g.createLinearGradient(0, bottom - bh, 0, bottom);
+                grad.addColorStop(0, '#4ad6ff'); grad.addColorStop(1, 'rgba(74,214,255,0.25)');
+                g.fillStyle = grad;
+                g.fillRect(left + i * bw + bw * 0.15, bottom - bh, bw * 0.7, bh);
+                if (days.length <= 16 || i % 2 === 0) {
+                    g.fillStyle = '#b9c3ff'; g.font = font(500, 20); g.textAlign = 'center'; g.textBaseline = 'top';
+                    g.fillText(String(i + 1), left + i * bw + bw / 2, bottom + 8);
+                    g.textAlign = 'left';
+                }
+            });
+            g.fillStyle = '#4ad6ff'; g.font = font(600, 24); g.textAlign = 'right'; g.textBaseline = 'top';
+            g.fillText(`máx. ${money(dmax)}`, right, 92);
+            g.textAlign = 'left';
+        } else { g.fillStyle = '#b9c3ff'; g.font = font(500, 30); g.fillText('Todavía no hay ventas este mes', left, 180); }
+        for (const p of panels) p.layer.tex.needsUpdate = true;
     }
 
     // ---------- Pantalla del equipo: la sucursal y los usuarios pasando con sus fotos ----------
@@ -743,7 +860,11 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         returnHole.group.position.z = h.z;
         build(id);
         armed = false;
-        if (id.startsWith('e-')) net.send({ type: 'serp_empresa', key: id.slice(2) });
+        if (id.startsWith('e-')) {
+            net.send({ type: 'serp_empresa', key: id.slice(2) });
+            net.send({ type: 'serp_empresa_estado', key: id.slice(2) });
+            refreshTimer = setInterval(() => { if (hereId() === id) net.send({ type: 'serp_empresa_estado', key: id.slice(2) }); }, REFRESH_MS * 2);
+        }
         if (id.startsWith('s-')) {
             net.send({ type: 'serp_sucursal', key: id.slice(2) });
             refreshTimer = setInterval(() => { if (hereId() === id) net.send({ type: 'serp_sucursal', key: id.slice(2) }); }, REFRESH_MS);
@@ -818,6 +939,8 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
                 if (r) blocking.add(r);
             }
         }
+        // Los carteles flotantes muy cerca de la cámara también tapan la vista aunque no estén en la línea.
+        for (const o of content.children) if (o.isSprite && o.position.distanceTo(camera.position) < 4) blocking.add(o);
         for (const r of blocking) if (!fading.has(r)) fading.set(r, 1);
         for (const [r, f] of fading) {
             const target = blocking.has(r) ? 0.15 : 1;
@@ -925,6 +1048,10 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
             box.hidden = true;
             go(LOBBY);
         } else if (hereId() === LOBBY) build(LOBBY);
+    });
+    net.on('serp_empresa_estado', (m) => {
+        estados.set(m.key, m);
+        if (shownFor === `e-${m.key}` && tower?.key === m.key) tower.draw();
     });
     net.on('serp_empresa', (m) => {
         empresas.set(m.key, m);
