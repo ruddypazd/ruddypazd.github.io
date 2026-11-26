@@ -104,7 +104,7 @@ function holeFor(id) {
     return { x: -9, z: 6 };
 }
 
-export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN, radius, onLeave, onInfo, onRadius, onShift, camera, player }) {
+export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN, radius, onLeave, onInfo, onRadius, onShift, makeNpc, camera, player }) {
     // ---------- La escena (una sola para todos los lugares: se rearma al cambiar) ----------
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x070b1a);
@@ -317,14 +317,9 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         return { key, L, z0, lots, hole: { x: 0, z: -z0 + 5 } };
     }
 
-    function buildEmpresa(key) {
-        const e = empresas.get(key);
-        street = layoutStreet(key, e);
-        const { L, z0 } = street;
-        setSize(Math.max(radius, L / 2 + 16), false);
-        returnHole.group.position.set(street.hole.x, returnHole.group.position.y, street.hole.z);
-        const nombre = e?.nombre || session?.empresas.find((x) => x.key === key)?.nombre || 'Empresa';
-
+    // La avenida (de la empresa o de la sucursal): asfalto, veredas, líneas, faroles, el arco de la entrada con
+    // su nombre y la puerta de vuelta (backTo).
+    function avenue(L, z0, title, subtitle, backTo, backLabel) {
         // Asfalto, veredas, línea del medio, bordes de neón y faroles.
         const asphalt = new THREE.Mesh(new THREE.PlaneGeometry(STREET.half * 2, L), new THREE.MeshStandardMaterial({ color: 0x0b0e1a, roughness: 0.9 }));
         asphalt.rotation.x = -Math.PI / 2;
@@ -358,7 +353,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
             }
         }
 
-        // La entrada: un arco con el nombre y la puerta de vuelta al barrio.
+        // La entrada: un arco con el nombre y la puerta de vuelta.
         const archMat = new THREE.MeshStandardMaterial({ color: 0x20243a, metalness: 0.6, roughness: 0.35, emissive: 0x1d1450 });
         for (const side of [-1, 1]) {
             const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.6, 8, 0.6), archMat);
@@ -369,16 +364,26 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         const beam = new THREE.Mesh(new THREE.BoxGeometry(STREET.half * 2 + 2.2, 0.5, 0.6), archMat);
         beam.position.set(0, 8, z0 - 4);
         target.add(beam);
-        const sign = textPlane([{ text: nombre, size: 80, bold: true },
-            { text: e ? `${e.sucursales.length} sucursal${e.sucursales.length === 1 ? '' : 'es'} · ${e.usuarios.length} personas` : 'Cargando…', size: 40, color: '#b9c3ff' }],
-        16, { w: 1024, h: 256, border: '#7c4dff' });
+        const sign = textPlane([{ text: title, size: 80, bold: true }, { text: subtitle, size: 40, color: '#b9c3ff' }],
+            16, { w: 1024, h: 256, border: '#7c4dff' });
         sign.position.set(0, 10.4, z0 - 4);
         sign.material.side = THREE.DoubleSide;
         target.add(sign);
-        door(0, z0 + 1, Math.PI, LOBBY, 0x3d8bff);
-        const back = textSprite([{ text: '← Barrio de empresas', size: 52, bold: true }], 2.2, { h: 128 });
+        door(0, z0 + 1, Math.PI, backTo, 0x3d8bff);
+        const back = textSprite([{ text: backLabel, size: 52, bold: true }], 2.2, { h: 128 });
         back.position.set(0, 2.95, z0 + 1);
         target.add(back);
+    }
+
+    function buildEmpresa(key) {
+        const e = empresas.get(key);
+        street = layoutStreet(key, e);
+        const { L, z0 } = street;
+        setSize(Math.max(radius, L / 2 + 16), false);
+        returnHole.group.position.set(street.hole.x, returnHole.group.position.y, street.hole.z);
+        const nombre = e?.nombre || session?.empresas.find((x) => x.key === key)?.nombre || 'Empresa';
+
+        avenue(L, z0, nombre, e ? `${e.sucursales.length} sucursal${e.sucursales.length === 1 ? '' : 'es'} · ${e.usuarios.length} personas` : 'Cargando…', LOBBY, '← Barrio de empresas');
 
         // Los edificios de las sucursales, mirando a la calle.
         street.lots.filter((l) => l.kind === 'building').forEach((l, i) => {
@@ -393,85 +398,232 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
         if (!e) loading('Cargando la empresa…');
     }
 
+    // ---------- La sucursal: una avenida por partes ----------
+    // Igual que la calle de la empresa, pero por zonas de ZONE metros: parte 1, las cajas (izquierda) y los
+    // movimientos del mes (derecha); parte 2, los almacenes (izquierda) y quienes entrenaron hoy (derecha).
+    const ZONE = 44;
+    let sucStreet = null;   // { key, L, z0, hole }
+
+    // Lo que fn agregue queda en un grupo parado en (x, z) mirando hacia face (±1 en x), con el origen a R
+    // detrás del vidrio (las funciones de pantallas dibujan alrededor de su origen). Obstáculos al mundo.
+    function inPanel(x, z, face, R, fn) {
+        const panel = new THREE.Group();
+        panel.position.set(x + face * R, 0, z);
+        panel.rotation.y = Math.atan2(face, 0);
+        target.add(panel);
+        panel.updateMatrixWorld(true);
+        const local = [];
+        const prev = [target, obs];
+        [target, obs] = [panel, local];
+        try { fn(); } finally { [target, obs] = prev; }
+        const v = new THREE.Vector3();
+        for (const o of local) {
+            v.set(o.x, 0, o.z);
+            panel.localToWorld(v);
+            obs.push({ x: v.x, z: v.z, r: o.r });
+        }
+        return panel;
+    }
+
+    // Un cartel alto en la vereda que nombra la parte de la avenida.
+    function zoneSign(side, z, text, sub, color) {
+        const x = side * (STREET.half + STREET.walk - 0.7);
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 6.2), new THREE.MeshStandardMaterial({ color: 0x2a3150, metalness: 0.6 }));
+        post.position.set(x, 3.1, z);
+        target.add(post);
+        obs.push({ x, z, r: 0.4 });
+        const s = textSprite([{ text, size: 72, bold: true }, ...(sub ? [{ text: sub, size: 38, color: '#b9c3ff' }] : [])], 6, { w: 1024, h: 220, border: color });
+        s.position.set(x, 7, z);
+        target.add(s);
+    }
+
+    // Un punto de venta: mostrador con su luz (verde = caja abierta) y lo vendido hoy.
+    function kiosk(pv, x, z, facing, i) {
+        const open = pv.caja === 'abierta';
+        const g = new THREE.Group();
+        g.position.set(x, 0, z);
+        g.rotation.y = facing;
+        const counter = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.05, 0.8), new THREE.MeshStandardMaterial({ color: 0x2a3150, roughness: 0.5, metalness: 0.3 }));
+        counter.position.y = 0.525;
+        g.add(counter);
+        const top = new THREE.Mesh(new THREE.BoxGeometry(2, 0.06, 0.9), new THREE.MeshStandardMaterial({ color: 0xc9d2ff }));
+        top.position.y = 1.08;
+        g.add(top);
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.4), new THREE.MeshStandardMaterial({ color: 0x555b75 }));
+        pole.position.set(0.8, 1.8, -0.2);
+        g.add(pole);
+        const lampColor = open ? 0x2bff88 : 0xff3b5c;
+        const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.17, 20, 14), new THREE.MeshStandardMaterial({ color: lampColor, emissive: lampColor, emissiveIntensity: 2 }));
+        lamp.position.set(0.8, 2.55, -0.2);
+        g.add(lamp);
+        if (open) anims.push((t) => { lamp.material.emissiveIntensity = 1.6 + 0.6 * Math.sin(t * 3 + i); });
+        target.add(g);
+        const label = textSprite([
+            { text: pv.nombre, size: 46, bold: true },
+            { text: open ? '● Caja abierta' : '● Caja cerrada', size: 34, color: open ? '#2bff88' : '#ff7088' },
+            { text: `Hoy: ${money(pv.ventas_hoy)} · ${pv.ventas_cantidad} venta${pv.ventas_cantidad === 1 ? '' : 's'}`, size: 34, color: '#dfe4ff' },
+        ], 2.6, { border: open ? '#2bff88' : '#ff3b5c' });
+        label.position.set(x, 3.3, z);
+        target.add(label);
+        obs.push({ x, z, r: 1.15 });
+    }
+
+    // Un almacén: su pantalla (lo que hay en stock) y, detrás, un estante con cajitas.
+    function almacenPanel(a, z) {
+        inPanel(-(STREET.half + 3), z, 1, SPOT.R, () => {
+            glass(SPOT.R, SPOT.c, SPOT.span, SPOT.y0 - 0.1, SPOT.h + 0.2, 0xffb02b);
+            plazaLabel(a.nombre, SPOT.c, '#ffb02b');
+            const cv = canvasFor(SPOT.R, SPOT.span, SPOT.h, SPOT.px);
+            const g = cv.getContext('2d');
+            const W = cv.width, H = cv.height;
+            const tiles = [['Productos', String(a.productos)], ['Unidades', money(a.unidades).replace(/,00$/, '')], ['Valor (precio de venta)', money(a.valor)]];
+            const tw = (W - 60 - 2 * 16) / 3;
+            tiles.forEach(([label, value], i) => {
+                const x = 30 + i * (tw + 16);
+                g.fillStyle = 'rgba(60,40,10,0.55)'; g.beginPath(); g.roundRect(x, 24, tw, 110, 16); g.fill();
+                g.strokeStyle = '#ffb02b'; g.lineWidth = 3; g.stroke();
+                g.fillStyle = '#ffd38a'; g.font = FONT(600, 24); g.textBaseline = 'top'; g.textAlign = 'left';
+                g.fillText(label, x + 16, 38);
+                g.fillStyle = '#ffffff'; g.font = FONT(700, 44);
+                g.fillText(value, x + 16, 72);
+            });
+            const items = a.items;
+            if (!items.length) {
+                g.fillStyle = '#ffd38a'; g.font = FONT(600, 36); g.textAlign = 'center';
+                g.fillText('Sin productos en stock', W / 2, H / 2);
+            }
+            const cols = 2, rowH = 38, top = 160, colW = (W - 60) / cols, rows = Math.floor((H - top - 16) / rowH);
+            items.slice(0, cols * rows).forEach((it, i) => {
+                const x = 30 + Math.floor(i / rows) * colW, y = top + (i % rows) * rowH;
+                g.textAlign = 'left'; g.textBaseline = 'top';
+                g.fillStyle = '#ffffff'; g.font = FONT(600, 24);
+                let n = it.nombre;
+                while (n.length > 3 && g.measureText(n).width > colW - 200) n = n.slice(0, -2) + '…';
+                g.fillText(n, x, y);
+                g.textAlign = 'right';
+                g.fillStyle = it.stock < 0 ? '#ff7088' : '#ffd166'; g.font = FONT(700, 24);
+                g.fillText(`${money(it.stock).replace(/,00$/, '')} u`, x + colW - 24, y);
+            });
+            if (items.length > cols * rows) {
+                g.fillStyle = '#ffd38a'; g.font = FONT(500, 20); g.textAlign = 'right'; g.textBaseline = 'bottom';
+                g.fillText(`y ${items.length - cols * rows} más`, W - 24, H - 4);
+            }
+            screenLayer(SPOT.R, SPOT.c, SPOT.span, SPOT.y0, SPOT.h, cv);
+        });
+        // El estante: tres repisas con cajitas de colores (más cajitas, más productos).
+        const rack = new THREE.Group();
+        rack.position.set(-(STREET.half + STREET.walk + 4.5), 0, z);
+        const metal = new THREE.MeshStandardMaterial({ color: 0x3a405c, metalness: 0.7, roughness: 0.4 });
+        for (const dz of [-4, 4]) for (const dx of [-0.6, 0.6]) {
+            const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 3, 0.08), metal);
+            leg.position.set(dx, 1.5, dz);
+            rack.add(leg);
+        }
+        const boxes = Math.min(36, Math.max(3, a.productos));
+        for (let shelf = 0; shelf < 3; shelf++) {
+            const plank = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.06, 8.2), metal);
+            plank.position.set(0, 0.4 + shelf * 1.05, 0);
+            rack.add(plank);
+            for (let k = 0; k < Math.ceil(boxes / 3) && shelf * Math.ceil(boxes / 3) + k < boxes; k++) {
+                const color = new THREE.Color().setHSL(((k * 53 + shelf * 97) % 360) / 360, 0.6, 0.55);
+                const b = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.45 + (k % 3) * 0.12, 0.55), new THREE.MeshStandardMaterial({ color, roughness: 0.7 }));
+                b.position.set(0, 0.43 + shelf * 1.05 + b.geometry.parameters.height / 2, -3.6 + k * 0.62);
+                rack.add(b);
+            }
+        }
+        target.add(rack);
+        obs.push({ x: rack.position.x, z: z - 2.5, r: 1.6 }, { x: rack.position.x, z: z + 2.5, r: 1.6 });
+    }
+
+    // Quienes entrenaron hoy: un piso de gimnasio con un NPC por persona (su nombre y la hora a la que marcó).
+    const NPC_F = ['sofia', 'candie', 'androide18'], NPC_M = ['ruddy', 'leo', 'marco'];
+    function gym(list, zc) {
+        const x0 = STREET.half + 3, w = 13, len = ZONE - 8;
+        const mat = new THREE.Mesh(new THREE.PlaneGeometry(w, len), new THREE.MeshStandardMaterial({ color: 0x12352b, roughness: 0.95 }));
+        mat.rotation.x = -Math.PI / 2;
+        mat.position.set(x0 + w / 2, 0.18, zc);
+        target.add(mat);
+        // Barras de dominadas al fondo.
+        const metal = new THREE.MeshStandardMaterial({ color: 0x9aa3c7, metalness: 0.8, roughness: 0.3 });
+        for (const dz of [-9, 0, 9]) {
+            const bx = x0 + w - 1;
+            for (const s of [-1.1, 1.1]) {
+                const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.6), metal);
+                post.position.set(bx, 1.3, zc + dz + s);
+                target.add(post);
+            }
+            const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 2.3), metal);
+            bar.rotation.x = Math.PI / 2;
+            bar.position.set(bx, 2.55, zc + dz);
+            target.add(bar);
+            obs.push({ x: bx, z: zc + dz, r: 1.2 });
+        }
+        if (!list.length) {
+            const s = textSprite([{ text: 'Nadie marcó asistencia hoy', size: 52, bold: true }, { text: 'Las asistencias de S-ERP aparecen aquí', size: 34, color: '#b9ffd6' }], 5, { border: '#2bff88' });
+            s.position.set(x0 + w / 2, 2.4, zc);
+            target.add(s);
+            return;
+        }
+        const myAnims = anims;
+        list.forEach((p, i) => {
+            const col = i % 3, row = Math.floor(i / 3);
+            const x = x0 + 2 + col * 3.4, z = zc + len / 2 - 2.5 - row * 3.2;
+            const holder = new THREE.Group();
+            holder.position.set(x, 0.18, z);
+            holder.rotation.y = -Math.PI / 2;   // mirando a la avenida
+            target.add(holder);
+            obs.push({ x, z, r: 0.5 });
+            const pool = p.sexo === 'F' ? NPC_F : NPC_M;
+            makeNpc?.(pool[hueOf(p.nombre) % pool.length]).then(({ object, mixer }) => {
+                if (!holder.parent) return;   // ya se rearmó el lugar
+                holder.add(object);
+                if (mixer) myAnims.push((t, dt) => mixer.update(dt));
+            }, () => { /* sin modelo */ });
+            const label = textSprite([{ text: p.nombre, size: 44, bold: true }, { text: `entrenó ${p.hora}`, size: 32, color: '#b9ffd6' }], 2.3, { h: 160, border: '#2bff88' });
+            label.position.set(x, 2.55, z);
+            target.add(label);
+        });
+    }
+
     function buildSucursal(key) {
         const s = sucursales.get(key);
         const empresaKey = parentOf.get(key);
         const name = s?.nombre || empresas.get(empresaKey)?.sucursales.find((x) => x.key === key)?.nombre || 'Sucursal';
-        title([{ text: name, size: 90, bold: true },
-            { text: s ? `${s.empresa} · ventas de hoy: ${money(s.total_hoy)} · actualizado ${s.actualizado}` : 'Cargando…', size: 38, color: '#b9c3ff' }], -31, 14, 12.6);
-        door(0, 12, Math.PI, `e-${empresaKey}`, 0x3d8bff);
-        const back = textSprite([{ text: '← Volver a la empresa', size: 52, bold: true }], 2.2, { h: 128 });
-        back.position.set(0, 2.95, 12);
-        target.add(back);
+        const L = STREET.first + 2 * ZONE + STREET.end, z0 = L / 2;
+        sucStreet = { key, L, z0, hole: { x: 0, z: -z0 + 5 } };
+        setSize(Math.max(radius, L / 2 + 16), false);
+        returnHole.group.position.set(sucStreet.hole.x, returnHole.group.position.y, sucStreet.hole.z);
+        avenue(L, z0, name, s ? `${s.empresa} · actualizado ${s.actualizado}` : 'Cargando…', `e-${empresaKey}`, '← Volver a la empresa');
         if (!s) return loading('Cargando la sucursal…');
+        const zA = z0 - STREET.first - ZONE / 2, zB = zA - ZONE;
 
-        // Puntos de venta: un kiosco con su luz (verde = caja abierta).
+        // Parte 1 · izquierda: las cajas.
+        zoneSign(-1, zA + ZONE / 2 - 2, 'Cajas', `Ventas de hoy: ${money(s.total_hoy)}`, '#2bff88');
         const pvs = s.puntos_venta;
-        ring(pvs.length, 9, 4.5).forEach((p, i) => {
-            const pv = pvs[i];
-            const open = pv.caja === 'abierta';
-            const g = new THREE.Group();
-            g.position.set(p.x, 0, p.z);
-            g.rotation.y = Math.atan2(p.x, p.z) + Math.PI;
-            const counter = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.05, 0.8),
-                new THREE.MeshStandardMaterial({ color: 0x2a3150, roughness: 0.5, metalness: 0.3 }));
-            counter.position.y = 0.525;
-            g.add(counter);
-            const top = new THREE.Mesh(new THREE.BoxGeometry(2, 0.06, 0.9), new THREE.MeshStandardMaterial({ color: 0xc9d2ff }));
-            top.position.y = 1.08;
-            g.add(top);
-            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.4), new THREE.MeshStandardMaterial({ color: 0x555b75 }));
-            pole.position.set(0.8, 1.8, -0.2);
-            g.add(pole);
-            const lampColor = open ? 0x2bff88 : 0xff3b5c;
-            const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.17, 20, 14), new THREE.MeshStandardMaterial({ color: lampColor, emissive: lampColor, emissiveIntensity: 2 }));
-            lamp.position.set(0.8, 2.55, -0.2);
-            g.add(lamp);
-            if (open) anims.push((t) => { lamp.material.emissiveIntensity = 1.6 + 0.6 * Math.sin(t * 3 + i); });
-            target.add(g);
-            const label = textSprite([
-                { text: pv.nombre, size: 46, bold: true },
-                { text: open ? '● Caja abierta' : '● Caja cerrada', size: 34, color: open ? '#2bff88' : '#ff7088' },
-                { text: `Hoy: ${money(pv.ventas_hoy)} · ${pv.ventas_cantidad} venta${pv.ventas_cantidad === 1 ? '' : 's'}`, size: 34, color: '#dfe4ff' },
-            ], 2.6, { border: open ? '#2bff88' : '#ff3b5c' });
-            label.position.set(p.x, 3.3, p.z);
-            target.add(label);
-            obs.push({ x: p.x, z: p.z, r: 1.15 });
-        });
-        if (!pvs.length) loading('Sin puntos de venta');
+        const gapK = Math.min(5.5, (ZONE - 10) / Math.max(1, pvs.length - 1));
+        pvs.forEach((pv, i) => kiosk(pv, -(STREET.half + 2.5), zA + ((pvs.length - 1) / 2 - i) * gapK, Math.PI / 2, i));
+        if (!pvs.length) {
+            const n = textSprite([{ text: 'Sin puntos de venta', size: 52, bold: true }], 4);
+            n.position.set(-(STREET.half + 2.5), 2.2, zA);
+            target.add(n);
+        }
+        // Parte 1 · derecha: los movimientos del mes.
+        zoneSign(1, zA + ZONE / 2 - 2, 'Movimientos del mes', s.mes?.nombre || '', '#7c4dff');
+        inPanel(STREET.half + 3, zA, -1, 32, () => monthScreen(s));
 
-        // Gráfico de barras: ventas de hoy por punto de venta (entre los kioscos y la pantalla del mes).
-        const max = Math.max(...pvs.map((p) => p.ventas_hoy), 0);
-        const cz = -19, gap = 1.6, x0 = -((pvs.length - 1) * gap) / 2;
-        const base = new THREE.Mesh(new THREE.BoxGeometry(Math.max(4, pvs.length * gap + 1), 0.2, 2.2),
-            new THREE.MeshStandardMaterial({ color: 0x1b2244, metalness: 0.4, roughness: 0.4 }));
-        base.position.set(0, 0.1, cz);
-        target.add(base);
-        obs.push(...Array.from({ length: Math.max(1, Math.ceil(pvs.length * gap / 2)) }, (_, k) => ({ x: x0 + k * 2, z: cz, r: 1.3 })));
-        pvs.forEach((pv, i) => {
-            const hgt = 0.15 + (max > 0 ? 4 * pv.ventas_hoy / max : 0);
-            const color = new THREE.Color().setHSL(((i * 47) % 360) / 360, 0.8, 0.58);
-            const bar = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.35 }));
-            bar.scale.set(1.1, 0.001, 1.1);
-            bar.position.set(x0 + i * gap, 0.2, cz);
-            target.add(bar);
-            let grown = 0;
-            anims.push((t, dt) => {
-                if (grown >= 1) return;
-                grown = Math.min(1, grown + dt * 1.4);
-                const e = 1 - (1 - grown) ** 3;
-                bar.scale.y = Math.max(0.001, hgt * e);
-                bar.position.y = 0.2 + bar.scale.y / 2;
-            });
-            const v = textSprite([{ text: money(pv.ventas_hoy), size: 56, bold: true }, { text: pv.nombre, size: 36, color: '#b9c3ff' }], 1.9, { bg: 'rgba(10,14,30,0.7)', border: null });
-            v.position.set(x0 + i * gap, 0.6 + hgt + 0.55, cz);
-            target.add(v);
-        });
-        const chartTitle = textSprite([{ text: 'Ventas de hoy', size: 60, bold: true }, { text: `Total ${money(s.total_hoy)}`, size: 44, color: '#2bff88' }], 3.4);
-        chartTitle.position.set(0, max > 0 ? 5.6 : 2.2, cz - 0.5);
-        target.add(chartTitle);
-
-        monthScreen(s);
+        // Parte 2 · izquierda: los almacenes.
+        const alms = s.almacenes || [];
+        zoneSign(-1, zB + ZONE / 2 - 2, 'Almacenes', `${alms.length} almacén${alms.length === 1 ? '' : 'es'}`, '#ffb02b');
+        alms.slice(0, 3).forEach((a, i, arr) => almacenPanel(a, zB + ((arr.length - 1) / 2 - i) * 13.5));
+        if (!alms.length) {
+            const n = textSprite([{ text: 'Sin almacenes', size: 52, bold: true }], 4);
+            n.position.set(-(STREET.half + 3), 2.2, zB);
+            target.add(n);
+        }
+        // Parte 2 · derecha: quienes entrenaron hoy.
+        const people = s.entrenaron || [];
+        zoneSign(1, zB + ZONE / 2 - 2, 'Entrenaron hoy', `${people.length} persona${people.length === 1 ? '' : 's'}`, '#2bff88');
+        gym(people, zB);
     }
 
     // ---------- Pantallas de vidrio curvas ----------
@@ -1181,7 +1333,9 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
     function build(id) {
         clear();
         shownFor = id;
-        if (!id.startsWith('e-')) { street = null; setSize(radius, true); }
+        if (!id.startsWith('e-')) street = null;
+        if (!id.startsWith('s-')) sucStreet = null;
+        if (id === LOBBY) setSize(radius, true);
         if (id === LOBBY) buildLobby();
         else if (id.startsWith('e-')) buildEmpresa(id.slice(2));
         else buildSucursal(id.slice(2));
@@ -1221,6 +1375,7 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
             return { x: d.x + Math.sin(ry) * 3.2, z: d.z + Math.cos(ry) * 3.2, ry };
         }
         if (id === LOBBY) return { x: 0, z: 3.2, ry: Math.PI };
+        if (id.startsWith('s-') && sucStreet) return { x: 0, z: sucStreet.z0 - 2.5, ry: Math.PI };   // al inicio de la avenida
         if (id.startsWith('e-') && street) {   // al inicio de la calle
             justEntered = true;
             return { x: 0, z: street.z0 - 2.5, ry: Math.PI };
@@ -1484,7 +1639,8 @@ export function createEmpresas({ wormholes, net, travel, flashHint, hereId, MAIN
 
     return {
         scene, obstacles, returnHole, owns, show, spawnFor, checkDoors, update, banner, openLogin,
-        hole: (id) => (id.startsWith('e-') && street?.key === id.slice(2) ? street.hole : holeFor(id)),
+        hole: (id) => (id.startsWith('e-') && street?.key === id.slice(2) ? street.hole
+            : id.startsWith('s-') && sucStreet?.key === id.slice(2) ? sucStreet.hole : holeFor(id)),
         radius: () => size,
         ready: () => !!session,
         get comeFrom() { return comeFrom; },
