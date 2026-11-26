@@ -8,6 +8,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { createWormholes, buildUniverse, hueFor, HOLE_R } from './wormholes.js?v=68';
 import { createGame, tierColor } from './game.js?v=1';
 import { createVoice } from './voice.js?v=1';
+import { createEmpresas } from './empresas.js?v=1';
 
 const canvas = document.getElementById('world');
 const loader = document.querySelector('[data-loader]');
@@ -1314,7 +1315,7 @@ function upsertRemote(p) {
     r.ry = p.ry || 0;
     // Escena donde está (mundo principal o un agujero de gusano): solo se ve si es la tuya.
     // "sala": está en una sala privada que no es la tuya (el servidor no dice cuál): no se ve.
-    const sceneId = p.scene === MAIN || p.scene === HIDDEN_ROOM || portals.has(p.scene) || rooms.has(p.scene) ? p.scene : MAIN;
+    const sceneId = p.scene === MAIN || p.scene === HIDDEN_ROOM || portals.has(p.scene) || rooms.has(p.scene) || corp.owns(p.scene) ? p.scene : MAIN;
     if (r.scene !== sceneId) {
         // Al cambiar de escena aparece directo en su lugar, sin caminar desde el otro mundo.
         if (r.scene) r.group.position.copy(r.target);
@@ -1613,6 +1614,13 @@ const HIDDEN_ROOM = 'sala';
 const here = { id: MAIN, scene, radius: WORLD_RADIUS, obstacles };
 let pendingScene = null;
 let holeArmed = true;
+// Mundo Empresas (empresas.js): las empresas de S-ERP, con su propia escena y su puente de regreso.
+const corp = createEmpresas({
+    wormholes, net, flashHint, MAIN, radius: WORLD_RADIUS,
+    hereId: () => here.id,
+    travel: (id) => enterHole(id),
+    onLeave: () => enterHole(MAIN),
+});
 let warping = false;
 
 function makeHoleLabel() {
@@ -1682,7 +1690,7 @@ function fillBanner(p) {
     banner.querySelector('[data-scene-name]').textContent = p.name;
     banner.querySelector('[data-scene-desc]').textContent = desc || '';
     banner.querySelector('[data-scene-desc]').hidden = !desc;
-    banner.querySelector('[data-scene-owner]').textContent = isRoom
+    banner.querySelector('[data-scene-owner]').textContent = p.byline ? p.byline : isRoom
         ? ['🔒 Sala privada' + (p.owner_name ? ` de ${p.owner_name}` : ''), formatDate(p.created_at) && `creada ${formatDate(p.created_at)}`].filter(Boolean).join(' · ')
         : holeByline(p.owner_name, p.created_at) || 'Puente de Einstein-Rosen';
     banner.querySelector('[data-scene-copy]').hidden = !isRoom;
@@ -1696,6 +1704,11 @@ banner.querySelector('[data-scene-copy]').addEventListener('click', (e) => {
 // Pasa a otra escena. pos: posición guardada (al recargar); from: agujero por el que se sale.
 function goTo(id, { from = null, pos = null } = {}) {
     const toMain = id === MAIN;
+    const toCorp = corp.owns(id);
+    if (toCorp) {
+        corp.show(id);   // arma el lugar (sus puertas dicen dónde aparecer)
+        pos ||= corp.spawnFor(id, corp.comeFrom);
+    }
     let x, z, ry;
     if (pos) {
         x = pos.x; z = pos.z; ry = pos.ry || 0;
@@ -1716,12 +1729,12 @@ function goTo(id, { from = null, pos = null } = {}) {
         x = Math.sin(ry) * EXIT_DIST; z = Math.cos(ry) * EXIT_DIST;
     }
 
-    const target = toMain ? scene : dest.scene;
+    const target = toMain ? scene : toCorp ? corp.scene : dest.scene;
     target.add(actors);
     here.id = id;
     here.scene = target;
-        here.obstacles = toMain ? obstacles : dest.obstacles;
-    if (!toMain) showUniverse(id);
+    here.obstacles = toMain ? obstacles : toCorp ? corp.obstacles : dest.obstacles;
+    if (!toMain && !toCorp) showUniverse(id);
 
     const offset = camera.position.clone().sub(controls.target);
     player.position.set(x, 0, z);
@@ -1731,7 +1744,7 @@ function goTo(id, { from = null, pos = null } = {}) {
         // Al cruzar, la cámara mira a Ruddy de frente con el agujero detrás (se ve que acaba de
         // salir); al recargar dentro de un agujero, queda detrás de él. Misma distancia y altura.
         const flat = Math.hypot(offset.x, offset.z) || 4.2;
-        const side = pos ? -1 : 1;
+        const side = pos && !toCorp ? -1 : 1;   // en el Mundo Empresas también se ve que acabas de salir por la puerta
         controls.target.copy(player.position).setY(1);
         camera.position.set(x + side * Math.sin(ry) * flat, controls.target.y + offset.y, z + side * Math.cos(ry) * flat);
         controls.update();
@@ -1740,7 +1753,7 @@ function goTo(id, { from = null, pos = null } = {}) {
     banner.hidden = toMain;
     syncRoomUrl();
     if (!toMain) {
-        fillBanner(portals.get(id)?.data || rooms.get(id) || { name: 'Puente de Einstein-Rosen' });
+        fillBanner(portals.get(id)?.data || rooms.get(id) || corp.banner(id) || { name: 'Puente de Einstein-Rosen' });
         banner.classList.remove('is-compact');
         clearTimeout(bannerTimer);
         bannerTimer = setTimeout(() => banner.classList.add('is-compact'), 7000);
@@ -1766,6 +1779,7 @@ function enterHole(id) {
 
 function checkHoles() {
     if (warping || editingPortal()) return;   // mientras mueves tu puente no te mete adentro
+    if (corp.owns(here.id) && corp.checkDoors(player.position.x, player.position.z)) return;
     let nearest = Infinity, hit = null;
     const test = (id, x, z) => {
         const d = Math.hypot(player.position.x - x, player.position.z - z);
@@ -1806,7 +1820,7 @@ function updateHoleLabels() {
 
 // Lo que se ve dentro del agujero más cercano: el destino, o el mundo principal desde adentro.
 function otherSide(hole) {
-    if (hole === returnHole) return scene;
+    if (hole === returnHole || hole === corp.returnHole) return scene;
     showUniverse(hole.id);
     return dest.scene;
 }
@@ -2026,6 +2040,11 @@ document.querySelector('[data-room-open]').addEventListener('click', () => {
     setTimeout(() => roomForm.name.focus(), 50);
 });
 roomBox.querySelector('[data-room-close]').addEventListener('click', () => { roomBox.hidden = true; });
+// Ajustes → Mundo → Mundo Empresas: login de S-ERP (o directo al barrio si ya entraste).
+document.querySelector('[data-serp-open]').addEventListener('click', () => {
+    if (!getProfile()) return showLogin();
+    corp.openLogin();
+});
 roomForm.addEventListener('submit', (e) => {
     e.preventDefault();
     if (!net.loggedIn) return roomMessage('Sin conexión con el servidor. Prueba otra vez en un momento.');
@@ -7127,6 +7146,7 @@ renderer.setAnimationLoop(() => {
     updateEditor(t);
     game.update(dt, t);
     checkHoles();
+    if (corp.owns(here.id)) corp.update(dt, t);
     dest.update(t);
     syncPosition();
 

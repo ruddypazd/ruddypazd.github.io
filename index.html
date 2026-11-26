@@ -134,6 +134,7 @@
                         </header>
                         <div class="settings__list">
                             <button class="settings__item" type="button" data-env-open data-desc="Luz, grama o alfombra de este lugar">🎛️ Configuración del mundo</button>
+                            <button class="settings__item" type="button" data-serp-open data-desc="Tus empresas de S-ERP, sus sucursales y cajas">🏢 Mundo Empresas</button>
                         </div>
                     </section>
 
@@ -352,6 +353,24 @@
                 <ul></ul>
             </div>
             <button class="login__back" type="button" data-room-close>Cerrar</button>
+        </form>
+    </div>
+    <!-- Mundo Empresas (empresas.js): login con el usuario de S-ERP. La contraseña no se guarda. -->
+    <div class="login login--scroll" data-serp-box role="dialog" aria-modal="true" aria-labelledby="serp-title" hidden>
+        <form class="login__card" data-serp-form autocomplete="on">
+            <p class="totem-panel__tag">Mundo Empresas · S-ERP</p>
+            <h2 id="serp-title">Tus empresas en 3D</h2>
+            <p class="login__note">Un edificio por cada empresa tuya de S-ERP. Adentro, sus sucursales; y en cada sucursal, sus puntos de venta (luz verde = caja abierta), las ventas de hoy y el equipo. Solo te ven tus compañeros de la misma empresa.</p>
+            <div data-serp-fields>
+                <label>Usuario de S-ERP<input name="usuario" autocomplete="username" spellcheck="false" autocapitalize="off"></label>
+                <label>Contraseña<input name="password" type="password" autocomplete="current-password"></label>
+                <p class="login__note">La contraseña no se guarda: solo se usa para entrar.</p>
+            </div>
+            <p class="login__note" data-serp-who hidden></p>
+            <p class="login__error" data-serp-error hidden></p>
+            <button class="chat__send" type="submit" data-serp-submit>Entrar al Mundo Empresas</button>
+            <button class="login__back" type="button" data-serp-logout hidden>Salir de S-ERP</button>
+            <button class="login__back" type="button" data-serp-close>Cerrar</button>
         </form>
     </div>
     <div class="login login--scroll" data-stats-box role="dialog" aria-modal="true" aria-labelledby="stats-title" hidden>
@@ -780,7 +799,7 @@
         <button class="scene-banner__copy" type="button" data-scene-copy hidden>🔗 Copiar enlace de la sala</button>
     </div>
     <div class="warp" data-warp aria-hidden="true"></div>
-    <script type="module" src="world.js?v=78"></script>
+    <script type="module" src="world.js?v=79"></script>
     <script type="module" src="portafolio/firebase.js"></script>
 </body>
 </html>

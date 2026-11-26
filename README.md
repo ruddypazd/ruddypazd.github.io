@@ -9,6 +9,7 @@ Publicado vía GitHub Pages en https://ruddypazd.github.io
 - `/` — el **Mundo 3D** (portada del sitio)
   - `index.html`, `style.css`, `world.js`, `wormholes.js` — escena three.js
   - `models/` — personajes `.glb`; `images/` — imágenes compartidas (perfil, cuadros, tótem)
+  - `empresas.js` — Mundo Empresas: las empresas de S-ERP (Ajustes → Mundo; el servidor es `serp.py` en nvidianim)
 - `/portafolio/` — el portafolio / currículum
   - `index.html` — contenido y secciones (hero, sobre mí, skills, experiencia, contacto)
   - `style.css` — tema, layout y animaciones (también lo usa `/cotizaciones/`)
